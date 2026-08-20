@@ -346,6 +346,70 @@ suggestion rests on it.**
 `model_changed_from` / `rebuild_reason` (#500's fields) rather than discover a
 re-embed by watching the clock.
 
+**2026-08-20: #447 (@elfrost) IMPLEMENTED BY US via PR #519 at timebox expiry;
+#443 CLOSED with credit.** `install-pack`'s pre-scan rejected a leading separator
+and `..`, which is necessary and not sufficient: `C:/Windows/Temp/evil.txt`
+carries neither, and `base / relative` DISCARDS `base` when `relative` is
+absolute. `mkdir(parents=True)` ran BEFORE the write, so a hostile member created
+directories outside the install root before any content existed. Unreleased.
+⚠⚠ **THE PROVENANCE IS THE FIRST THING TO SAY, EVERY TIME.** elfrost found it,
+analysed it and wrote a correct fix. We shipped our own pre-existing
+`_safe_content_path` pattern applied to the call site that lacked it — an
+INDEPENDENT path, not a clean-room copy — and said exactly that on both threads.
+⚠ **Confinement by RESOLUTION, never by pattern.** A string test cannot finish
+enumerating separator and drive spellings; resolving and comparing does not have
+to. The pre-scan stays as an EARLY ABORT with the per-member check as the
+authority — two checks, one authoritative, recorded at the call site.
+⚠⚠ **The rule had THREE spellings already** (`security.validate_path` + a private
+copy on `IndexStore` + another on `SQLiteIndexStore`) **and the new call site
+would have been a fourth.** `security.resolve_within()` is the one definition now;
+`SQLiteIndexStore` keeps its resolved-base cache by PASSING IT IN, so the hot path
+survives without duplicating the rule to preserve it. A ratchet fails on a
+`commonpath` anywhere else in `src/`.
+⚠⚠ **THE FIRST REGRESSION TEST PASSED AGAINST THE UNFIXED SOURCE, AND THE
+NON-VACUITY PASS WROTE A REAL FILE INTO A REAL WINDOWS SYSTEM DIRECTORY.** It
+named the reported path verbatim, so the escape went OUTSIDE the directory the
+assertion searched — invisible to `tmp_path.rglob`. **A test for an
+ARBITRARY-WRITE defect EXECUTES that defect every time you prove it is not
+vacuous, so the target must be somewhere the test OWNS.** Rebuilt against a
+`tmp_path` sentinel; the artifact was deleted.
+⚠ **The refusal is deliberately NOT platform-pinned.** `C:/...` is absolute on
+Windows and an ordinary relative name on POSIX, where resolving it under the base
+is CORRECT. Assert confinement; asserting that a string is refused writes platform
+trivia into a security test.
+⚠ **A second test of mine asserted an OS ACCIDENT** — that an embedded NUL fails
+to resolve — and **passed serially while failing under xdist**, where the longer
+worker temp path takes the other branch. The rule is that a RAISING resolve
+refuses; which inputs happen to raise is the OS's business. Same tell as
+Maintenance Practice 9: it stated a mechanism instead of an outcome.
+⚠ Suite: **8083 passed, 17 skipped, 0 failed** + ruff clean, all 12 CI checks
+green. 3 red at the call site, 1 red on the one-definition guard.
+⚠⚠ **#443 cost EIGHT DAYS and SEVEN of our own conflicts and bought nothing.**
+See policy 3a, now absolute at 24 hours.
+
+**2026-08-20: #517 (@marcelruhf) MERGED; #518 finished it.** PyPI published the
+entire LICENSE text as `info.license` because `license = { file = "LICENSE" }`,
+so a commercial user could not allowlist us BY IDENTIFIER — there was no
+identifier to allowlist. PEP 639 now:
+`license = "LicenseRef-jCodeMunch-Dual-Use-1.1"` + `license-files`, classifier
+dropped. Unreleased.
+⚠ **Verified on BUILT ARTIFACTS, not on the diff**: `License-Expression` +
+`License-File` at `Metadata-Version: 2.5`, LICENSE still at
+`dist-info/licenses/LICENSE`, `twine check` green on both.
+⚠⚠ **He could see ONE surface and we declare the licence on THREE.**
+`.claude-plugin/plugin.json` and the mcpb manifest both said `LicenseRef-Dual-Use`
+— no product prefix, no version — so an allowlist keyed on the identifier still
+needed two entries. **That is the reported defect one surface over**, the same
+shape as #515 the day before. mcpb now DERIVES it from `pyproject.toml`.
+⚠ **The version suffix is load-bearing.** LICENSE 1.2 must produce a NEW
+identifier, or an allowlist that approved 1.1's terms keeps matching terms nobody
+read. `test_license_identifier_agreement.py` pins the suffix to the file's own
+`Version` line. **Raised the recurring-cost trade-off with the reporter rather
+than deciding it for him** — he is the one operating an allowlist.
+⚠ **PyPI metadata is IMMUTABLE per version**, so none of this reaches PyPI until
+the next release and 1.108.287 keeps the full text. Said so on the thread; a
+contributor who fixes packaging metadata needs to know when it takes effect.
+
 **2026-08-19: #515 (@rknighton) FIXED BY US via PR #516 — the reference table
 gave the wrong default.** `CONFIGURATION.md`'s Tools row read `[]` while
 `DEFAULTS["disabled_tools"]` ships `["test_summarizer"]`, so a reader expected
@@ -1590,6 +1654,23 @@ retracting one to save six days costs more than the six days. ⚠⚠ **Reaffirme
 jjg when this rule widened: #447 (2026-08-20), #465 (2026-08-21) and #456
 (2026-08-27) stand AS POSTED.** The new ceiling applies to timeboxes offered
 after that date, and to nothing already promised.
+
+⚠⚠ **CLOSED OUT 2026-08-20, and 3a is now ABSOLUTE: 24 hours, no exceptions,
+never again.** jjg, on reading the 08-12 comment on #443 offering **2026-08-26**:
+"Not again. 24 hour. Tops. Ever." Every grandfathered window above has since
+expired or closed and there are no live long timeboxes; **the grandfathering
+clause is spent and must not be revived as precedent for a new one.** The next
+posted window that exceeds 24 hours is a mistake regardless of what produced it.
+
+⚠⚠ **The failure mode has a NAME now and naming it is the point: a CLA hostage
+negotiation.** #443 went eight days — a real security fix, reviewed and green,
+held behind a 30-second form, while SEVEN of our own merges conflicted its
+branch. Not one of those days bought anything. The window never decides whether
+the fix ships (the default action ships it) and never decides credit (the default
+preserves it), so **a window longer than 24 hours purchases exactly one thing:
+the chance the contributor's commit is theirs — and it pays for that chance in
+the user's exposure to an unfixed defect.** Twenty-four hours is already generous
+for that trade; eight days is not a trade at all.
 
 ⚠⚠ **Do NOT answer "an issue is stuck" with aggregate stats.** Measured
 2026-07-28: jcm median 0 days to close (80 issues, 70 within a day, 2 ever past
