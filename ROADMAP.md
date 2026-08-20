@@ -648,8 +648,8 @@ standing disclosure that has to be argued past every time.
 BUILD IT.** v1.108.253 identified the missing rank-1 discriminator — "most
 likely 'does the task name an identifier-shaped token'" — and declined to guess
 without fresh data. It was measured instead of built:
-`benchmarks/route_recall/measure_shape_separation.py`, artifact
-`shape_separation_results.json`, over the same corpus digest the emitted-task run
+`benchmarks/route_recall/measure_route_discriminators.py`, artifact
+`route_discriminator_results.json`, over the same corpus digest the emitted-task run
 used.
 
 | sample | rule | majority floor | lift | coverage |
@@ -676,9 +676,36 @@ and that ordering is the only thing separating this from a search for a pattern
 that fits. Anyone re-testing a discriminator hypothesis here does the same or the
 result means nothing.
 
-⚠ **What this does NOT refute.** The signal may be in the VERB rather than the
-token — "where is X defined" against "everywhere X appears". That is a different
-hypothesis and gets the same cheap pre-test before anyone writes a rule.
+⚠⚠ **THE VERB HYPOTHESIS WAS TESTED THE SAME DAY AND ALSO REFUTED.** "Where is
+X defined" against "everywhere X appears", predicate declared before labels,
+same script and artifact (H2).
+
+| sample | rule | floor | lift | coverage |
+| --- | ---: | ---: | ---: | ---: |
+| 35 emitted tasks | 48.6% | 51.4% | **-2.9 pts** | 14% |
+| 164 raw prompts | 51.2% | 50.0% | +1.2 pts | **5%** |
+
+⚠⚠ **On emitted tasks the sign is BACKWARDS, not merely absent**: the
+`definition` bucket is **1 `search_symbols` / 4 `search_text`.** n=5, so
+directional rather than proven — but the mechanism is plausible and worth
+stating. **A request that names what it wants DESCRIPTIVELY — "the function that
+parses config" — gives a symbol-name index nothing to match**, so descriptive
+definition-seeking favours `search_text`. The hypothesis assumed the opposite.
+⚠ `occurrence` fires **once in 164 prompts**, partly because .253's content rule
+already covers that phrasing and partly because people do not talk that way.
+
+⚠⚠ **THE JOINT FINDING IS WORTH MORE THAN EITHER REFUTATION: BOTH FAIL ON
+COVERAGE, NOT PURITY.** H1 fires on ~15% of cases, H2 on 5-14%, and in both the
+untouched residue sits at ~50% purity. **Two independent properties of the query
+TEXT, each absent from 85-95% of real requests.** That is not two unlucky
+guesses; it is evidence that **the information needed to route these requests is
+not in the query string at all.** A third text-feature hypothesis should expect
+the same result. ⚠ What is NOT ruled out is a signal from OUTSIDE the string —
+the repository, a first-pass retrieval, or the caller's prior turns.
+
+⚠ **The rows survive both tests.** Each predicate was declared before labels and
+run ONCE; nothing was fitted, so the corpus retains its value for the next
+hypothesis. **A tuning pass would have spent it.**
 ⚠⚠ **The likelier reading is that .253 was right on the merits: "find X" is
 genuinely undecidable without more signal.** `route` returns 2-3 candidates on 38
 of 40 cases BY DESIGN, and `strict@3` is 80% against a 70% floor. **`@1` is the
