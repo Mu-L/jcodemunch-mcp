@@ -644,12 +644,52 @@ the emitted distribution, not a citation of 69.5%.**
 counter-evidence becomes a number to clear and then forget. Under (a) it stays a
 standing disclosure that has to be argued past every time.
 
-⚠ **The next piece of work is named and its data already exists.** v1.108.253
-identified the missing rank-1 discriminator — most likely "does the task name an
-identifier-shaped token" — and declined to guess it without fresh data. The
-corpus holds **157 unused rows** (197 minus the 40 sampled). The author's
-standing offer on #422: *"willing, but do not wait on me... if you or anyone
-else wants to run it, take it."*
+⚠⚠ **THE NAMED NEXT PIECE OF WORK WAS TESTED AND REFUTED, 2026-08-20. DO NOT
+BUILD IT.** v1.108.253 identified the missing rank-1 discriminator — "most
+likely 'does the task name an identifier-shaped token'" — and declined to guess
+without fresh data. It was measured instead of built:
+`benchmarks/route_recall/measure_shape_separation.py`, artifact
+`shape_separation_results.json`, over the same corpus digest the emitted-task run
+used.
+
+| sample | rule | majority floor | lift | coverage |
+| --- | ---: | ---: | ---: | ---: |
+| 164 raw prompts | 48.8% | 50.0% | **-1.2 pts** | 15% |
+| 35 emitted tasks | 60.0% | 51.4% | +8.6 pts | 14% |
+
+⚠ **The positive row is n=5.** Identifier-shape fires on five emitted tasks and
+gets four right. Under the null that is **p = 0.17** — a one-in-six coincidence,
+and one case flipping moves it twenty points. **The larger sample is the one to
+read, and there the rule is WORSE THAN A CONSTANT ANSWER.**
+
+⚠⚠ **COVERAGE IS THE FINDING, AND IT KILLS THE IDEA EVEN AT PERFECT PURITY.**
+The predicate fires on ~15% of family cases either way, so **the 85% residue —
+at 51-57% purity, which is the coin flip we started with — is untouched by any
+version of this rule.** A discriminator that cannot reach the majority case is
+not a discriminator for this problem. ⚠ Per-pattern breakdown is in the artifact
+and nothing survives: `snake_case` 3/6, `PascalCase` 7/13, `camelCase` 1/3.
+**Seven patterns were tested on one sample, so expect one to look good by
+chance; none is a finding.**
+
+⚠ **The predicate is declared in the script ABOVE the point labels are read**,
+and that ordering is the only thing separating this from a search for a pattern
+that fits. Anyone re-testing a discriminator hypothesis here does the same or the
+result means nothing.
+
+⚠ **What this does NOT refute.** The signal may be in the VERB rather than the
+token — "where is X defined" against "everywhere X appears". That is a different
+hypothesis and gets the same cheap pre-test before anyone writes a rule.
+⚠⚠ **The likelier reading is that .253 was right on the merits: "find X" is
+genuinely undecidable without more signal.** `route` returns 2-3 candidates on 38
+of 40 cases BY DESIGN, and `strict@3` is 80% against a 70% floor. **`@1` is the
+metric that penalises a router for being honest about ambiguity** — a perfectly
+calibrated one that says "it is one of these two" scores zero on it. Decide
+whether `@1` is the objective before optimising it.
+
+⚠ **157 corpus rows remain unused** (197 minus the 40 sampled) and the author's
+standing offer on #422 holds: *"willing, but do not wait on me... if you or
+anyone else wants to run it, take it."* **That data is still there for the next
+hypothesis; it has now answered this one.**
 
 ⚠ **Progress is measured from 45.8, never from 42.4.** The 3.4-point move
 between them was v1.108.218's corpus correction, not routing work. A reader who
