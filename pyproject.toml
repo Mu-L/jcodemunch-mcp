@@ -7,7 +7,8 @@ requires-python = ">=3.10"
 authors = [
     { name = "J. Gravelle", email = "j@gravelle.us" },
 ]
-license = { file = "LICENSE" }
+license = "LicenseRef-jCodeMunch-Dual-Use-1.1"
+license-files = ["LICENSE"]
 keywords = [
     "mcp",
     "model-context-protocol",
@@ -23,7 +24,6 @@ keywords = [
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
