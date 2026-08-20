@@ -72,26 +72,37 @@ def test_mcpb_manifest_derives_the_identifier_rather_than_copying_it() -> None:
     assert build_manifest()["license"] == _declared_expression()
 
 
-def test_the_version_suffix_tracks_the_license_file() -> None:
+def test_the_version_suffix_and_the_license_file_imply_each_other() -> None:
     """A LICENSE version bump that forgets the identifier is the failure here.
 
     Without this, 1.2's terms ship under 1.1's identifier and every allowlist
     that approved 1.1 keeps matching — consent inherited by terms nobody read.
+
+    ⚠ The implication runs BOTH WAYS, which is @marcelruhf's improvement on the
+    version I first wrote for this file. Mine asserted a suffix exists, which is
+    only true while this LICENSE happens to carry a `Version` line — jdocmunch's
+    and jdatamunch's do not, and there the same assertion would have demanded a
+    version the file never states. **A version line and a suffix must imply each
+    other; asserting one unconditionally encodes this repo's accident.**
     """
     expression = _declared_expression()
     suffix = re.search(r"-(\d+\.\d+)$", expression)
-    assert suffix, (
-        f"{expression!r} carries no version suffix. If that is deliberate, "
-        "delete this test and say why on the commit — but see the module "
-        "docstring first; the suffix is what forces re-approval."
-    )
     header = LICENSE.read_text(encoding="utf-8")[:400]
     in_file = re.search(r"^Version\s+(\d+\.\d+)", header, re.M)
-    assert in_file, f"{LICENSE.name} no longer states its version in its header"
-    assert suffix.group(1) == in_file.group(1), (
-        f"the identifier claims license version {suffix.group(1)}; "
-        f"{LICENSE.name} says {in_file.group(1)}"
-    )
+    if in_file:
+        assert suffix, (
+            f"{expression!r} carries no version suffix but {LICENSE.name} "
+            f"says Version {in_file.group(1)}"
+        )
+        assert suffix.group(1) == in_file.group(1), (
+            f"the identifier claims license version {suffix.group(1)}; "
+            f"{LICENSE.name} says {in_file.group(1)}"
+        )
+    else:
+        assert not suffix, (
+            f"{expression!r} carries version suffix {suffix.group(1)} but "
+            f"{LICENSE.name} has no Version line"
+        )
 
 
 def test_no_license_classifier_survives_beside_the_expression() -> None:
