@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### The license-identifier ratchet asserted this repo's accident (@marcelruhf)
+
+`test_the_version_suffix_tracks_the_license_file` required the identifier to
+carry a `-X.Y` suffix unconditionally, which is only correct while this LICENSE
+happens to state a version. @marcelruhf ported the ratchet into jdocmunch-mcp
+and jdatamunch-mcp, whose LICENSE files carry no `Version` line, and wrote the
+general form: **a version line and a suffix imply each other, in both
+directions.** Adopted here.
+
+⚠ The half that only his version catches is the one nobody would think to test —
+an identifier claiming a version the licence text does not state. Both directions
+were proven to fail against a temporarily edited LICENSE.
+
 ## [1.108.288] - 2026-08-20 - The reported surface was never the only one
 
 Four fixes, and in three of them the report named one site while the tree held
