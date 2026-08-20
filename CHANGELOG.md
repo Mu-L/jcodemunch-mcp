@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### The licence identifier tracks the MAJOR version only (@marcelruhf)
+
+1.108.288 shipped `LicenseRef-jCodeMunch-Dual-Use-1.1`, which invalidates a
+downstream allowlist on every minor bump — including a typo fix. @marcelruhf,
+who operates an allowlist against this identifier, proposed keying it to the
+major version instead: a minor bump is editorial and must not churn anyone, a
+major bump means the terms changed substantively and re-approval is the honest
+outcome. The identifier is `LicenseRef-jCodeMunch-Dual-Use-1` from the next
+release.
+
+⚠ **1.108.288 keeps `-1.1` permanently** — PyPI metadata is immutable per
+version. Since .288 is the only release that has ever carried an identifier at
+all, this is the cheapest moment this change will ever have; every further
+release makes the transition wider.
+
+⚠⚠ **We have already broken the promise this identifier makes, which is why it
+is not left as a convention.** `f3c925c` (2026-07-10) ADDED a redistribution and
+attribution obligation to condition 2 — a substantive change to what a licensee
+may do — while the header stayed at `Version 1.1 — effective 2026-06-30`.
+**Nothing failed, because a version line is a convention and conventions do not
+fail builds.** A licensee reading the identifier would have been told the terms
+were unchanged.
+
+So `test_the_license_text_cannot_change_without_a_decision_being_made` pins the
+LICENSE text to the declared version by digest. Any edit fails it, and clearing
+the failure means choosing: substantive (bump the major version, the identifier
+and the digest) or editorial (update the digest alone). **It cannot make that
+judgement and does not try — it forces the judgement to happen where the text
+moves, rather than be discovered downstream.**
+
+⚠ The three behaviours were proven against a temporarily edited LICENSE: terms
+changed under a static version FAILS, a major bump with a static identifier
+FAILS, and a minor bump does NOT churn the identifier. LICENSE restored
+byte-for-byte after each.
+
+⚠ jdocmunch-mcp and jdatamunch-mcp state no licence version at all, so their
+identifiers stay suffix-less and the bidirectional check is already correct
+there. Giving those files a version line is a licence edit, not a packaging one.
+
 ### The license-identifier ratchet asserted this repo's accident (@marcelruhf)
 
 `test_the_version_suffix_tracks_the_license_file` required the identifier to
