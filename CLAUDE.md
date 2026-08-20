@@ -387,6 +387,45 @@ green. 3 red at the call site, 1 red on the one-definition guard.
 ⚠⚠ **#443 cost EIGHT DAYS and SEVEN of our own conflicts and bought nothing.**
 See policy 3a, now absolute at 24 hours.
 
+**2026-08-20: the licence identifier is MAJOR-ONLY, and jdoc/jdata are synced.**
+@marcelruhf is a PLATFORM CUSTOMER operating an allowlist against this
+identifier; jjg's standing instruction is top-tier consideration, bounded by no
+harm to the rest of the user base. Unreleased (jcm PR #521).
+⚠⚠ **His cheapest-looking option was the one worst FOR HIM and that is the
+reusable half.** Dropping the version entirely means a substantive re-licence is
+INVISIBLE to every allowlist — the identifier keeps matching while the terms
+change. **It buys us zero churn by moving risk onto the licensee.** Keeping
+`-1.1` churns him for a typo. Major-only says the thing he needs: minor is
+editorial, major means read it again.
+⚠⚠ **WE HAD ALREADY BROKEN THAT PROMISE ONCE, and checking is what found it.**
+`f3c925c` (2026-07-10) ADDED a redistribution and attribution obligation to
+LICENSE condition 2 while the header stayed at `Version 1.1`. **Nothing failed,
+because a version line is a CONVENTION and conventions do not fail builds.** So
+the terms text is pinned by DIGEST: any edit fails, and clearing it forces the
+substantive-or-editorial choice AT the edit rather than downstream. **The test
+cannot make that judgement and does not try — it makes the judgement happen.**
+⚠ **Do it NOW was part of the answer, not a separate question.** .288 is the ONLY
+release that ever carried an identifier, and PyPI metadata is immutable per
+version, so every later release widens the transition. **Deferring a metadata
+decision for discussion is not free when the cost grows monotonically.**
+⚠⚠ **The digest was RED on all four Ubuntu legs and GREEN on all four Windows
+legs**: it hashed RAW BYTES, and git rewrites line endings on checkout, so it
+pinned a property of the CHECKOUT rather than of the terms. **A licence says the
+same thing in either encoding.** Normalise before hashing. Second
+platform-shaped self-inflicted test defect in two days (the other was xdist).
+⚠ **jdoc #122 / jdata #4 (same reporter) MERGED, and BOTH had held CI.** Only
+`license/cla` was reported — the matrices had runs sitting `action_required` and
+had NEVER run: four on jdoc, two on jdata. `fork-pr-contributor-approval` was
+`first_time_contributors` on both; relaxed to match jcm, which fixed it
+2026-08-13. **A setting fixed in one repo of a suite is fixed in one repo.**
+⚠ **He ported #518's ratchet into both siblings unasked and his version is
+BETTER**: mine asserted a version suffix EXISTS, his makes a `Version` line and a
+suffix imply each other BOTH WAYS — those LICENSE files state no version, where
+mine would have demanded one. Adopted back into jcm as #520. **Ours was right
+only about this repo's accident.**
+⚠ Policy 3a/3b now present in jdoc and jdata CLAUDE.md; they carried policy 3 as
+a single line and had neither the 24-hour ceiling nor the held-run diagnosis.
+
 **2026-08-20: #517 (@marcelruhf) MERGED; #518 finished it.** PyPI published the
 entire LICENSE text as `info.license` because `license = { file = "LICENSE" }`,
 so a commercial user could not allowlist us BY IDENTIFIER — there was no
