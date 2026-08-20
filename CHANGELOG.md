@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### The aside came out of the LICENSE files
+
+`He's kinda full of himself.` sat inside condition 2 of all three LICENSE files,
+in the middle of the derivation-and-attribution obligation. It stays in the
+README, where it reads as the author's voice; a licence is the document a
+customer's counsel reads before allowlisting, and a joke inside an operative
+clause makes a reader stop and work out whether it is operative.
+
+⚠ **This is the first exercise of the digest pin shipped an hour earlier, and it
+routed correctly.** The edit grants and removes nothing, so it is EDITORIAL:
+`_LICENSE_DIGEST` was updated and the version, the identifier and the suffix were
+left alone. **A downstream allowlist on `LicenseRef-jCodeMunch-Dual-Use-1` is not
+churned by this**, which is the whole reason the identifier is major-only.
+
+⚠ Removed from jdocmunch-mcp and jdatamunch-mcp too, where the same line sat in
+the same clause.
+
 ### The licence identifier tracks the MAJOR version only (@marcelruhf)
 
 1.108.288 shipped `LicenseRef-jCodeMunch-Dual-Use-1.1`, which invalidates a
