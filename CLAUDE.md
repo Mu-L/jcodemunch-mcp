@@ -346,6 +346,47 @@ suggestion rests on it.**
 `model_changed_from` / `rebuild_reason` (#500's fields) rather than discover a
 re-embed by watching the clock.
 
+**2026-08-19: #515 (@rknighton) FIXED BY US via PR #516 — the reference table
+gave the wrong default.** `CONFIGURATION.md`'s Tools row read `[]` while
+`DEFAULTS["disabled_tools"]` ships `["test_summarizer"]`, so a reader expected
+91 canonical tools in the schema and found 90. Unreleased.
+⚠⚠ **FOUR SURFACES DESCRIBE THIS DEFAULT AND THE THREE THAT AGREE ARE THE
+POINT.** The generated config template, the `config --init` comment and
+`test_guide_respects_disabled_tools.py`'s pin all state it correctly; only the
+reference page disagreed, and it is the page a user opens when a tool they
+expected is missing from the schema. **A value pinned by a test can still be
+mis-documented — the pin guards the value, not every claim about it.**
+⚠ **`tool_tier_bundles` was wrong the same way and he scoped it out**: documented
+`{}`, ships populated. He was right that nothing observable changes (set-identical
+to the `_TOOL_TIER_CORE` / `_TOOL_TIER_STANDARD` fallback the row already
+described, verified). Fixed anyway — a cell that is accidentally harmless is still
+a cell that will be read, and leaving it would have forced the ratchet to carry it
+as an unexplained exception.
+⚠⚠ **`tests/test_configuration_md_defaults.py` is the deliverable**, written over
+the TABLE rather than the two reported rows: it parses every `| Key | Type |
+Default | Description |` block and compares each cell against `config.DEFAULTS`,
+so the next key someone documents is covered on the commit that documents it.
+3 red pre-fix, 63 green after. The cross-check over all 60 documented keys found
+exactly the two he named — his "every other documented default matches" held.
+⚠ **The exemption is load-bearing, not a hole.** `tool_tier_bundles` cannot be
+inlined so its cell is prose, and the test asserts its repr is genuinely too long
+to fit — a small wrong value cannot hide behind the same escape hatch — plus it
+asserts the claim the prose makes rather than trusting it. **An exemption that
+does not police itself is how the ratchet becomes the next defect's cover.**
+⚠ Suite: **8067 passed, 17 skipped, 0 failed** + ruff clean, all 12 CI checks
+green on the merged SHA. Same-tree collect 8084 with the new file / 8021 without
+= exactly its 63.
+⚠⚠ **#443 conflicted for the SEVENTH time, on a DOCUMENTATION merge.** Policy 3b
+governs order and was unavailable — #443 is CLA-BLOCKED, so it cannot go first —
+so we shipped and owned the resolution. `license/cla` SURVIVED this push
+(`pending`, count=1 on the new head), which is a genuinely unsigned state and not
+an erasure. **Read the status; the tally is 3 erased / 3 returned now.**
+⚠ **`gh pr checkout` sets the branch's upstream to the FORK but `git push origin`
+still means OUR repo** — pushing the resolution with `origin` created a stray
+branch in `jgravelle/jcodemunch-mcp` instead of updating theirs, and the PR stayed
+`CONFLICTING`. Push to the FORK REMOTE by name (`git push elfrost HEAD:<branch>`);
+the tell is the PR not changing state after an apparently successful push.
+
 **2026-08-19: #506/#507/#508/#509 (@rknighton) FIXED BY US via PRs #510/#511/#512.**
 All four were filed at 00:24-00:25 and every one probes a surface ADJACENT to
 something we shipped the day before. Unreleased.
