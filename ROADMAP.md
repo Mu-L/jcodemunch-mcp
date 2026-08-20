@@ -587,6 +587,70 @@ by writing queries that paraphrase tool descriptions — the exact failure
 v1.108.218's target audit was run to avoid. Both move together or neither
 counts.
 
+⚠⚠ **CONDITIONS 1 AND 2 BOTH PASS TODAY AND THAT IS NOT CLEARANCE. READ THIS
+BEFORE CONCLUDING THE FREEZE CAN LIFT.** Measured 2026-08-20 on `main`:
+`route@1` = **69.5%** against the 60% bar, mean name leakage = **0.133** against
+the 0.15 ceiling. Both conditions as written are satisfied, and have been since
+v1.108.253.
+
+**What the conditions did not anticipate is that they name a CORPUS as well as a
+bar.** `benchmarks/route_recall/queries.json` is human-phrased — the words a
+person types. `route` does not receive those words. It receives the `task`
+string an AGENT emits, and that is a different distribution.
+
+**Measured on the emitted distribution** (`emitted_task_results.json`, run
+2026-08-07, 40 cases sampled seed 421 from the non-pilot rows of
+`rknighton/jcm-route-benchmark-corpus` v0.1.0, MIT-0, so it does not overlap the
+corpus author's own pilot):
+
+| metric | `route@1` | blind floor | vs floor |
+| --- | ---: | ---: | ---: |
+| strict | 30.0% | 45.0% | **-15.0** |
+| exact | 55.0% | 80.0% | **-25.0** |
+| family | 60.0% | 95.0% | **-35.0** |
+
+**A result at or below its own floor is not routing** — a constant answer beats
+it. ⚠ **The floors differ sharply per metric, so no number here may be quoted
+against another metric's bar**, and none of them may be compared to the 60% in
+condition 1, which is a different corpus and a different measurement.
+
+⚠ **v1.108.253 answered the `@3` half and said so.** A content-search rule above
+the broad `find` trigger, plus that trigger now offering `search_text` as an
+appended alternate. On a held-out 20 the fix was never developed against,
+strict@3 went **20% -> 80% against a 70% floor**, and single-recommendation
+returns went 12 of 20 to zero. Human corpora did not regress. ⚠⚠ **`@1` did NOT
+improve and remains far below floor**, deliberately: the `search_text` /
+`search_symbols` split sits inside the labelling uncertainty the corpus author
+flagged himself, and reordering to chase it fits the sample rather than the
+intent.
+
+⚠⚠ **DECIDED 2026-08-20 BY JJG: THE THREE CONDITIONS STAND AS WRITTEN. NO
+FOURTH CONDITION.** A fourth for emitted-task `strict@1` was considered and
+REFUSED, and the reason is the sentence four paragraphs above: **neither side
+picks the bar after seeing results.** The case for adding one was real — the
+discovery was the wrong POPULATION rather than a disappointing number — and it
+was still refused, because "the measurement turned out to be of the wrong thing"
+is exactly what every post-hoc bar change sounds like from the inside. **A gate
+that can be amended once it is inconvenient is not a gate.**
+
+⚠⚠ **THE CONDITIONS ARE THEREFORE NECESSARY AND NOT SUFFICIENT, AND THIS BLOCK
+IS THE DISCLOSURE THAT MUST TRAVEL WITH THEM.** Quote it wherever they are
+cited. Meeting all three permits the freeze to lift; it does not establish that
+`route` selects well on the traffic it actually serves, and the table above is
+the evidence that it does not. **Anyone proposing to exit owes an argument about
+the emitted distribution, not a citation of 69.5%.**
+
+⚠ **This is deliberately the harder-to-abuse arrangement.** Under (b) the
+counter-evidence becomes a number to clear and then forget. Under (a) it stays a
+standing disclosure that has to be argued past every time.
+
+⚠ **The next piece of work is named and its data already exists.** v1.108.253
+identified the missing rank-1 discriminator — most likely "does the task name an
+identifier-shaped token" — and declined to guess it without fresh data. The
+corpus holds **157 unused rows** (197 minus the 40 sampled). The author's
+standing offer on #422: *"willing, but do not wait on me... if you or anyone
+else wants to run it, take it."*
+
 ⚠ **Progress is measured from 45.8, never from 42.4.** The 3.4-point move
 between them was v1.108.218's corpus correction, not routing work. A reader who
 anchors to 42.4 will credit routing with a correction it did not make.
@@ -606,10 +670,25 @@ sound thorough.
 
 **The fastest way out** is route-recall work.
 `benchmarks/route_recall/explain_misses.py` prints the live defect list with
-each miss labelled by the gate that caused it: as of v1.108.218, 7
-`rule_preempted` (a curated rule claims the query and the right action is never
-scored — ranking work cannot touch these) and 8 `no_lexical_overlap` (zero
-shared tokens; unreachable at any weight).
+each miss labelled by the gate that caused it. ⚠ **RUN IT; do not quote from
+here.** The composition has changed twice since this line was written and the
+buckets are not stable across releases.
+
+Measured 2026-08-20 on `main`: **11 misses, 3 `rule_preempted` and 8
+`ranked_below_cutoff`.** Only the second bucket is reachable by ranking work —
+`rule_preempted` means a curated rule claimed the query and the right action was
+NEVER SCORED. ⚠ The v1.108.218 line this replaces read 7 `rule_preempted` and 8
+`no_lexical_overlap`, and **`no_lexical_overlap` is now empty**, so a reader
+working from the old figures would have gone looking for a bucket that no longer
+exists.
+
+⚠ Three of the current misses are one query — *"is this name used anywhere at
+all or can I drop it"* — claimed by `search_text` while wanting
+`check_delete_safe`, `check_references` and `find_references`. ⚠⚠ **The severe
+ones are not near-misses:** `get_churn_rate` at **rank 16**,
+`get_dependency_graph` at **rank 17**, `register_edit` at **rank 34**. ⚠ And
+*"I just edited a file, refresh it"* loses `index_file` at rank 5 to
+`get_file_risk` — about as common an intent as this tool has.
 
 ---
 
