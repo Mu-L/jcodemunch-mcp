@@ -624,15 +624,25 @@ improve and remains far below floor**, deliberately: the `search_text` /
 flagged himself, and reordering to chase it fits the sample rather than the
 intent.
 
-⚠⚠ **THE OPEN DECISION, and it is jjg's, not to be resolved by whoever reads
-this next.** Either (a) the conditions stand as written and this block is a
-disclosure that must be quoted whenever they are cited, or (b) a fourth
-condition is added for emitted-task `strict@1` clearing its floor. **(b) is
-adding a bar after seeing a result, which this section forbids in the sentence
-above** — the argument for it anyway is that the discovery was not a
-disappointing number but the wrong POPULATION, and a bar over a corpus that does
-not represent the input is not the bar anyone intended. **State which one is in
-force before exiting; do not exit while this is unresolved.**
+⚠⚠ **DECIDED 2026-08-20 BY JJG: THE THREE CONDITIONS STAND AS WRITTEN. NO
+FOURTH CONDITION.** A fourth for emitted-task `strict@1` was considered and
+REFUSED, and the reason is the sentence four paragraphs above: **neither side
+picks the bar after seeing results.** The case for adding one was real — the
+discovery was the wrong POPULATION rather than a disappointing number — and it
+was still refused, because "the measurement turned out to be of the wrong thing"
+is exactly what every post-hoc bar change sounds like from the inside. **A gate
+that can be amended once it is inconvenient is not a gate.**
+
+⚠⚠ **THE CONDITIONS ARE THEREFORE NECESSARY AND NOT SUFFICIENT, AND THIS BLOCK
+IS THE DISCLOSURE THAT MUST TRAVEL WITH THEM.** Quote it wherever they are
+cited. Meeting all three permits the freeze to lift; it does not establish that
+`route` selects well on the traffic it actually serves, and the table above is
+the evidence that it does not. **Anyone proposing to exit owes an argument about
+the emitted distribution, not a citation of 69.5%.**
+
+⚠ **This is deliberately the harder-to-abuse arrangement.** Under (b) the
+counter-evidence becomes a number to clear and then forget. Under (a) it stays a
+standing disclosure that has to be argued past every time.
 
 ⚠ **The next piece of work is named and its data already exists.** v1.108.253
 identified the missing rank-1 discriminator — most likely "does the task name an
