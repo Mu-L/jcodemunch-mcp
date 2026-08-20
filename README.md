@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
+- **[v1.108.288](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.288)** (2026-08-20) — The reported surface was never the only one
 - **[v1.108.287](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.287)** (2026-08-19) — Yesterday's fixes stopped where the reports did
 - **[v1.108.286](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.286)** (2026-08-18) — Three surfaces that advertised a product we were not running
-- **[v1.108.285](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.285)** (2026-08-18) — Five answers that were asserted, not established
 <!-- WHATSNEW:END -->
 
 ---

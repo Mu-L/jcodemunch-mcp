@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.108.288] - 2026-08-20 - The reported surface was never the only one
+
+Four fixes, and in three of them the report named one site while the tree held
+several. v1.108.287's own entry says we keep fixing the reported call site and
+leaving the mechanism; this release is what checking first looks like. The rule
+`install-pack` needed had three spellings already and the new call site would
+have been a fourth. The licence identifier @marcelruhf could not allowlist was
+declared on three surfaces, and he could only see the one PyPI publishes. The
+default @rknighton found mis-documented was one cell in a table nothing checked,
+so the whole column is checked now. **In each, the fix is the same sentence — ask
+the authority instead of reproducing its logic — and in each we had to go looking
+to find out where else it applied.**
+
 ### `install-pack` extracted drive-absolute archive members outside the install directory ([#447](https://github.com/jgravelle/jcodemunch-mcp/issues/447))
 
 The pre-scan rejected a leading separator and `..` anywhere in a member name,
