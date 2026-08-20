@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### PyPI published the whole LICENSE file where an identifier belonged (#517, @marcelruhf)
+
+`license = { file = "LICENSE" }` makes PyPI put the entire licence text into
+`info.license`, so a commercial user could not allowlist us by identifier — there
+was no identifier to allowlist. Packaging metadata is PEP 639 now:
+`license = "LicenseRef-jCodeMunch-Dual-Use-1.1"` plus
+`license-files = ["LICENSE"]`, and the deprecated
+`License :: Other/Proprietary License` classifier is gone, which PEP 639 requires
+beside an expression.
+
+The LICENSE file is unchanged and still ships — `dist-info/licenses/LICENSE` in
+the wheel, repo root in the sdist. Verified on a built artifact, not inferred from
+the diff: `License-Expression` and `License-File` both present at
+`Metadata-Version: 2.5`, `twine check` green on both.
+
+⚠ **PyPI metadata is immutable per version, so this starts at the next release.**
+Every version up to 1.108.287 keeps the full-text `info.license`.
+
+⚠⚠ **The report named one surface and we declared the licence on three.**
+`.claude-plugin/plugin.json` and the mcpb manifest both said
+`LicenseRef-Dual-Use` — no product prefix, no version — so an allowlist keyed on
+the identifier still needed two entries. **That is the reported defect one surface
+over, and fixing only what was reported would have left it.** Both now name the
+same identifier, and the mcpb generator DERIVES it from `pyproject.toml` rather
+than carrying its own copy, which is how the two spellings drifted apart to begin
+with.
+
+⚠ **The version suffix is load-bearing, not decoration.** LICENSE 1.2 must
+produce a new identifier, or an allowlist that approved 1.1's terms keeps matching
+terms nobody read — consent inherited by silence.
+`tests/test_license_identifier_agreement.py` pins the suffix to the `Version X.Y`
+line in the file, so a licence bump that forgets the identifier fails the build
+instead of shipping quietly. 5 red against the pre-#517 tree, 2 red against the
+reported-surface-only fix, 5 green now.
+
 ### `CONFIGURATION.md` gave the wrong default for `disabled_tools` (#515, @rknighton)
 
 The Tools table documented the default as `[]`. The shipped default is
