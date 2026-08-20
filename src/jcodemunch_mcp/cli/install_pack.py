@@ -12,6 +12,8 @@ from urllib.parse import quote
 
 import httpx
 
+from ..security import resolve_within
+
 # The packs are built by the jcodemunch-starter-packs CI job, which deploys to
 # jcodemunch.com. The legacy j.gravelle.us copy is no longer refreshed and served
 # an April build for months after the pipeline moved -- a stale artifact reads as
@@ -380,7 +382,14 @@ def _install_pack(
 
     try:
         with zipfile.ZipFile(tmp_path, "r") as zf:
-            # Validate -- no path traversal
+            # Validate -- no path traversal.
+            #
+            # This pre-scan is an EARLY ABORT, not the guard. A string test can
+            # never finish enumerating separator and drive spellings, so the
+            # authoritative check is the per-member confinement below, which
+            # resolves the destination and refuses anything landing outside
+            # `base`. Both are kept: the scan refuses an obviously hostile
+            # archive before a byte is written, the confinement decides.
             for info in zf.infolist():
                 if info.filename.startswith("/") or ".." in info.filename:
                     print(
@@ -408,7 +417,19 @@ def _install_pack(
                     symbol_count = manifest_data.get("total_symbols", 0)
                     continue
 
-                dest = base / relative
+                # `base / relative` DISCARDS `base` when `relative` is
+                # absolute, so a member named `C:/Windows/Temp/evil.txt` -- which
+                # carries neither a leading separator nor `..` -- writes outside
+                # the install directory. Resolve and confine before anything is
+                # created, `mkdir` included.
+                dest = resolve_within(base, relative)
+                if dest is None:
+                    print(
+                        f"  {_RED}{_CROSS} Archive member '{info.filename}' resolves "
+                        f"outside the install directory. Aborting.{_RESET}",
+                        file=sys.stderr,
+                    )
+                    return 1
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info.filename) as src, open(dest, "wb") as dst:
                     dst.write(src.read())

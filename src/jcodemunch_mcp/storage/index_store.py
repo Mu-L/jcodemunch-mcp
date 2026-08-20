@@ -532,14 +532,9 @@ class IndexStore:
         Prevents path traversal when writing/reading cached raw files from
         untrusted repository paths.
         """
-        try:
-            base = content_dir.resolve()
-            candidate = (content_dir / relative_path).resolve()
-            if os.path.commonpath([str(base), str(candidate)]) != str(base):
-                return None
-            return candidate
-        except (OSError, ValueError):
-            return None
+        from ..security import resolve_within
+
+        return resolve_within(content_dir, relative_path)
 
     def _write_cached_text(self, path: Path, content: str) -> None:
         """Write cached text without newline translation."""

@@ -2713,18 +2713,17 @@ class SQLiteIndexStore:
 
     def _safe_content_path(self, content_dir: Path, relative_path: str) -> Optional[Path]:
         """Resolve a content path and ensure it stays within content_dir."""
-        try:
-            dir_key = str(content_dir)
-            base_str = self._resolved_content_dirs.get(dir_key)
-            if base_str is None:
+        from ..security import resolve_within
+
+        dir_key = str(content_dir)
+        base_str = self._resolved_content_dirs.get(dir_key)
+        if base_str is None:
+            try:
                 base_str = str(content_dir.resolve())
-                self._resolved_content_dirs[dir_key] = base_str
-            candidate = (content_dir / relative_path).resolve()
-            if os.path.commonpath([base_str, str(candidate)]) != base_str:
+            except (OSError, ValueError):
                 return None
-            return candidate
-        except (OSError, ValueError):
-            return None
+            self._resolved_content_dirs[dir_key] = base_str
+        return resolve_within(content_dir, relative_path, base_resolved=base_str)
 
     def _write_cached_text(self, path: Path, content: str) -> None:
         """Write cached text atomically, without newline translation.

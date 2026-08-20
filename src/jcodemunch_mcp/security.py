@@ -69,6 +69,47 @@ def validate_path(root: Path, target: Path) -> bool:
         return False
 
 
+def resolve_within(
+    base: Path,
+    relative: str,
+    *,
+    base_resolved: Optional[str] = None,
+) -> Optional[Path]:
+    """Join ``relative`` onto ``base`` and return it only if it stays inside.
+
+    The rule is CONFINEMENT BY RESOLUTION, deliberately not a string test on the
+    member name. A pre-scan for a leading separator and ``..`` is necessary and
+    not sufficient: ``C:/Windows/Temp/evil.txt`` contains neither, and
+    ``base / relative`` with an absolute ``relative`` DISCARDS ``base``. No
+    enumeration of separator and drive spellings ever finishes; resolving and
+    comparing does not have to.
+
+    ⚠ Whether a given name escapes is PLATFORM-DEPENDENT and that is correct
+    rather than a gap. ``C:/Windows/...`` is absolute on Windows and an ordinary
+    relative name on Linux and macOS, where resolving it under the base is the
+    right answer. Assert confinement, never that a particular string is refused.
+
+    Args:
+        base: The directory the result must stay inside.
+        relative: An untrusted path fragment (archive member, stored file path).
+        base_resolved: ``str(base.resolve())`` when the caller already has it.
+            Callers on a hot path pass their cached value; the rule is unchanged.
+
+    Returns:
+        The resolved destination, or None if it escapes or cannot be resolved.
+    """
+    try:
+        base_str = base_resolved if base_resolved is not None else str(base.resolve())
+        candidate = (base / relative).resolve()
+        if os.path.commonpath([base_str, str(candidate)]) != base_str:
+            return None
+        return candidate
+    except (OSError, ValueError):
+        # ValueError also covers Windows' different-drive commonpath, which is
+        # an escape by definition.
+        return None
+
+
 def is_symlink_escape(root: Path, path: Path) -> bool:
     """Check if a symlink points outside the root directory.
 

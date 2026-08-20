@@ -2,6 +2,57 @@
 
 ## [Unreleased]
 
+### `install-pack` extracted drive-absolute archive members outside the install directory ([#447](https://github.com/jgravelle/jcodemunch-mcp/issues/447))
+
+The pre-scan rejected a leading separator and `..` anywhere in a member name,
+which is necessary and not sufficient. `C:/Windows/Temp/evil.txt` contains
+neither — and `base / relative` **discards `base`** when `relative` is absolute,
+so the write went wherever the archive said. `dest.parent.mkdir(parents=True)`
+ran first, so a hostile member created directories outside the install root
+before a byte of content was written.
+
+Confinement is by RESOLUTION now, not by pattern. A string test can never finish
+enumerating separator and drive spellings; resolving the destination and refusing
+anything outside the base does not have to. The pre-scan is kept as an early
+abort — it refuses an obviously hostile archive before any work — with the
+per-member check as the authority.
+
+⚠ **Reported by [@elfrost](https://github.com/elfrost), who also wrote a correct
+fix in [#443](https://github.com/jgravelle/jcodemunch-mcp/pull/443) that we could
+not merge because the CLA went unsigned.** The vulnerability, the analysis and
+the design of the remedy are theirs. What shipped applies our own pre-existing
+`_safe_content_path` pattern to the call site that lacked it — an independent
+path, not a clean-room copy of their diff — and their PR is closed with that said
+plainly on the thread.
+
+⚠ **One definition of the rule.** Three spellings of resolve-and-compare existed
+(`security.validate_path` plus a private copy on `IndexStore` and another on
+`SQLiteIndexStore`). The new call site would have been a fourth. `resolve_within`
+in `security.py` is now the one definition and both stores delegate to it;
+`SQLiteIndexStore` keeps its resolved-base cache by passing it in, so the hot
+path is unchanged and the rule is not duplicated to preserve it.
+
+⚠ **The refusal is deliberately NOT pinned to a platform.** `C:/Windows/...` is
+absolute on Windows and an ordinary relative name on Linux and macOS, where
+resolving it under the base is correct behaviour. The tests assert **confinement**
+— nothing appeared outside the install directory — rather than that a particular
+string was rejected, which would encode platform trivia as a security property.
+
+⚠⚠ **The first version of the regression test named the reported path verbatim
+and PASSED against the unfixed source**, because the escape landed outside the
+directory the assertion was looking in. Worse, the non-vacuity pass — which runs
+the unfixed source on purpose — wrote a real file into a real Windows system
+directory. **A test for an arbitrary-write defect executes that defect every time
+you prove the test is not vacuous, so the target must be somewhere the test
+owns.** Rebuilt against a `tmp_path` sentinel: 3 red at the call site, 1 red on
+the one-definition guard, controls green both sides.
+
+⚠ A second test of ours asserted an OS accident rather than the rule — that an
+embedded NUL byte fails to resolve — and it passed serially and failed under
+xdist, where the longer worker temp path takes the other branch. **The rule is
+that a raising resolve refuses; which inputs happen to raise is the OS's
+business.** Rewritten to force the raise.
+
 ### PyPI published the whole LICENSE file where an identifier belonged (#517, @marcelruhf)
 
 `license = { file = "LICENSE" }` makes PyPI put the entire licence text into
