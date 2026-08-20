@@ -37,6 +37,12 @@ changed under a static version FAILS, a major bump with a static identifier
 FAILS, and a minor bump does NOT churn the identifier. LICENSE restored
 byte-for-byte after each.
 
+⚠⚠ **The digest is taken over the NORMALISED text, and the first version was not
+— it was red on all four Ubuntu legs and green on all four Windows legs.** Git
+rewrites line endings on checkout, so a digest over raw bytes pins a property of
+the CHECKOUT rather than of the terms. **A licence says the same thing in either
+encoding**, and a pin that disagrees is measuring the wrong object.
+
 ⚠ jdocmunch-mcp and jdatamunch-mcp state no licence version at all, so their
 identifiers stay suffix-less and the bidirectional check is already correct
 there. Giving those files a version line is a licence edit, not a packaging one.

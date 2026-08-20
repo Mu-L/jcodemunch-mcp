@@ -76,7 +76,18 @@ def test_mcpb_manifest_derives_the_identifier_rather_than_copying_it() -> None:
 # The LICENSE text as it stands at the declared major version. Bump the
 # identifier's suffix AND this digest together when the terms change
 # substantively; update the digest alone for an editorial change.
-_LICENSE_DIGEST = "17b9d6d9922b7988544bd91c84dccfa41c5e75027cb9bdc856c93d822283cf92"
+#
+# ⚠ Over the NORMALISED text, never the raw bytes. Git rewrites line endings
+# on checkout, so a byte digest is a property of the checkout rather than of the
+# terms: this pin was red on all four Ubuntu legs and green on all four Windows
+# legs on its first run. **A licence says the same thing in either encoding.**
+_LICENSE_DIGEST = "646a3993057657577c2e3f56977a18ccf329fd0b85f827b1673d151747ccda11"
+
+
+def _license_terms() -> bytes:
+    """The licence text with line endings normalised, so the digest is portable."""
+    normalised = LICENSE.read_text(encoding="utf-8").replace("\r\n", "\n")
+    return normalised.encode("utf-8")
 
 
 def test_the_suffix_and_the_license_major_version_imply_each_other() -> None:
@@ -127,7 +138,7 @@ def test_the_license_text_cannot_change_without_a_decision_being_made() -> None:
     It cannot make that judgement — it forces it to be made at the moment the
     text moves, rather than discovered by a licensee later.
     """
-    actual = hashlib.sha256(LICENSE.read_bytes()).hexdigest()
+    actual = hashlib.sha256(_license_terms()).hexdigest()
     assert actual == _LICENSE_DIGEST, (
         f"{LICENSE.name} changed (digest {actual}).\n"
         "  Substantive change to the terms -> bump the MAJOR version in the "
