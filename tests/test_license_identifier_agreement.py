@@ -81,7 +81,7 @@ def test_mcpb_manifest_derives_the_identifier_rather_than_copying_it() -> None:
 # on checkout, so a byte digest is a property of the checkout rather than of the
 # terms: this pin was red on all four Ubuntu legs and green on all four Windows
 # legs on its first run. **A licence says the same thing in either encoding.**
-_LICENSE_DIGEST = "646a3993057657577c2e3f56977a18ccf329fd0b85f827b1673d151747ccda11"
+_LICENSE_DIGEST = "66ed60bbc2a646e4bf7cde22a636b1a7ddeef514bb95b3b88af1e944457d6f38"
 
 
 def _license_terms() -> bytes:
