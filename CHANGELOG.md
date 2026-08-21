@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.290] - 2026-08-21 - Charging ourselves for the calls before the one that worked
+
 ### Added — retrieval inflation: what one information need actually cost
 
 `analyze_regret` now returns an `inflation` block beside its six cluster
