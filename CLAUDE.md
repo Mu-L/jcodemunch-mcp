@@ -516,15 +516,28 @@ change in what a handoff IS, not only in how long it lasts. It is the intended
 trade — our throughput over their commit — and it should be made in the open
 rather than discovered at expiry.
 
-**3d. `license/cla` IS A REQUIRED STATUS CHECK ON `main`** (jjg, 2026-08-17).
+**3d. `license/cla` IS A REQUIRED STATUS CHECK ON THE DEFAULT BRANCH OF ALL
+THREE REPOS** (jjg, 2026-08-17 for jcm; extended suite-wide 2026-08-21).
 Enabled because it was NOT one: until this date the repo had **no branch
 protection, no rulesets and no required checks**, so the CLA was read but never
 enforced and one distracted click could have merged unsigned code. Open PRs now
 read `MERGEABLE/BLOCKED` rather than `MERGEABLE/UNSTABLE`.
 
+⚠⚠ **For four days this was fixed in ONE repo of three, which is the recurring
+shape.** jdoc was protected but required NOTHING; jdata had **no protection at
+all**. Measured 2026-08-21 on jdata PR #5: the CLA was genuinely unsigned, the PR
+read `MERGEABLE/UNSTABLE`, and nothing would have stopped the merge. **A setting
+fixed in one repo of a suite is fixed in one repo** — the same sentence jdata's
+own brief already carried about `fork-pr-contributor-approval`, written after a
+contributor hit it first. All three now read identically: `contexts
+["license/cla"]`, `strict false`, `enforce_admins false`, force-push and deletion
+off.
+
 ```bash
-GITHUB_TOKEN="" gh api repos/jgravelle/jcodemunch-mcp/branches/main/protection \
-  --jq '{contexts:.required_status_checks.contexts, strict:.required_status_checks.strict, enforce_admins:.enforce_admins.enabled}'
+# All three; the default branch is `main` for jcm and `master` for jdoc/jdata.
+for r in jcodemunch-mcp:main jdocmunch-mcp:master jdatamunch-mcp:master; do
+  GITHUB_TOKEN="" gh api "repos/jgravelle/${r%%:*}/branches/${r##*:}/protection"     --jq '{contexts:.required_status_checks.contexts, strict:.required_status_checks.strict, enforce_admins:.enforce_admins.enabled}'
+done
 ```
 
 ⚠ **`enforce_admins: false` and `strict: false` are both deliberate.** The admin
