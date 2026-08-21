@@ -707,6 +707,41 @@ PAIR BALANCE rather than uniformly (uniform sampling is what produced a corpus a
 constant list saturates), and the predicate declared before labels are read, same
 protocol as H1/H2.
 
+⚠⚠ **H3 IS NOT RUNNABLE ON THIS CORPUS, AND THE BLOCKER KILLS THE WHOLE REMAINING
+HYPOTHESIS CLASS. Established 2026-08-21 before starting it.** The joint H1/H2
+finding says the information is not in the query string and points at a signal
+from OUTSIDE it — the repo, a first-pass retrieval, prior turns. **Every one of
+those needs context the corpus does not carry.**
+
+`emitted_task_cases.json` rows are
+`{case_id, candidate_rank, prompt_text, gold_primary, gold_alts, emitted_task}`.
+**There is no repository field**, and the tasks are heterogeneous by design:
+"this project", "our mod", "the capture button handler". Of the 35 pair-labelled
+cases, **4 name a resolvable repo.** There is nothing to index, so there is
+nothing to probe — and pointing the probe at one shared index would score
+accidental matches, not the property.
+
+⚠ The 157 unused rows do NOT fix this. They come from the same generator and are
+repo-less for the same reason. **"157 rows remain unused" is an asset only for
+hypotheses about the query STRING — which is exactly the class already refuted
+twice.** Do not cite the unused rows as readiness for an outside-the-string test.
+
+⚠ The source corpus (`rknighton/jcm-route-benchmark-corpus` v0.1.0, MIT-0,
+sha256 pinned in the artifact) is NOT vendored here, so even the string-only
+hypotheses need a fetch first.
+
+**What readiness costs, stated so the decision is priced rather than discovered:**
+a corpus where each case is bound to a REAL repository at a pinned commit, tasks
+generated against that repository, and gold labels assigned by someone who can
+see it. That is corpus construction, not an afternoon. Until it exists,
+`P(correct | gold in {search_text, search_symbols})` is a well-posed objective
+with **no instrument that can measure a repo-grounded answer to it.**
+
+⚠⚠ **This is the more useful half of the H3 work and it came from checking
+readiness instead of assuming it.** The previous entry read as "the next
+hypothesis is ready to run, 157 rows are waiting". It was not, and any of H3/H4/H5
+in the same family would have hit the identical wall after the setup cost.
+
 ⚠ **This is deliberately the harder-to-abuse arrangement.** Under (b) the
 counter-evidence becomes a number to clear and then forget. Under (a) it stays a
 standing disclosure that has to be argued past every time.

@@ -76,6 +76,26 @@ failed on COVERAGE at 5-15%, but the decision needing an answer is one binary
 required **100%** of the time. A predicate reaching 15% cannot move it, so purity
 was never the issue. H3 is named in `ROADMAP.md` and deliberately not started.
 
+⚠⚠ **H3 was checked for readiness and is NOT runnable — the blocker kills the
+whole outside-the-string hypothesis class.** The corpus rows carry no repository
+(`case_id`, `candidate_rank`, `prompt_text`, `gold_primary`, `gold_alts`,
+`emitted_task`) and the tasks are heterogeneous by design — "this project", "our
+mod", "the capture button handler". **Four of the 35 pair-labelled cases name a
+resolvable repo.** There is nothing to index, so there is nothing to probe, and
+every remaining hypothesis in that family — repo state, first-pass retrieval,
+prior turns — needs exactly the context the corpus does not carry.
+
+⚠ **The 157 unused rows do not fix it.** Same generator, repo-less for the same
+reason. They are an asset only for query-STRING hypotheses, which is the class
+already refuted twice. The previous note read as "the next hypothesis is ready,
+157 rows are waiting"; it was not, and H4 or H5 of the same shape would have hit
+the identical wall after paying the setup cost.
+
+⚠ Readiness costs a corpus bound to real repositories at pinned commits, with
+tasks generated against them and labels assigned by someone who can see them.
+That is corpus construction. Priced here so the decision is made rather than
+discovered.
+
 ⚠ Benchmarks and tests only — no source change, no version bump, and the
 moratorium does not move.
 
