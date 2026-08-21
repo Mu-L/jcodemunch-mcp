@@ -2,6 +2,83 @@
 
 ## [Unreleased]
 
+### Fixed — the route benchmark compared three guesses against a baseline allowed one
+
+`run_emitted_task.py` reported route's `@3` recall against the best constant
+SINGLE action, and a comment in the script argued that this was the fair
+comparison because "the floor is RANK-INVARIANT". It is not fair, and it was
+wrong in route's favour: **a baseline gets as many guesses as the system it is
+the floor for.**
+
+Against the best constant 3-SET, on the same 40 emitted cases:
+
+| | route | best constant 3-set | delta |
+|---|---|---|---|
+| strict@3 | 62.5% | 92.5% | **-30.0** |
+| exact@3 | 70.0% | 100% | **-30.0** |
+| family@3 | 70.0% | 100% | **-30.0** |
+
+`strict@3` moves from **+17.5** against the 1-set floor to **-30.0** against the
+k-matched one. **`@3` does not rescue the emitted-task result; it deepens it.**
+Both floors are emitted by the harness now (`blind_floor_kset`,
+`vs_kset_floor_pts`) so neither can be re-derived by hand.
+
+⚠⚠ **The emitted corpus cannot discriminate a router from a fixed list.** Its
+best constant 3-set scores **100% exact**: 40 cases, 6 distinct primary labels,
+87.5% in one family; the holdout is 20 cases and 3 labels. That is a property of
+the SAMPLE, not a verdict on route, and it is now asserted so it stays visible.
+
+⚠ **The human harness reported no floor at all** until now — its headline
+figures had never been compared to a baseline in the artifact, and the 1-set
+number existed only in the OTHER script's docstring. It reports k-matched floors
+now: `@1` 71.2% vs 5.1% (**+66.1**), `@3` 86.4% vs 13.6% (**+72.8**), over 59
+queries with 69 distinct targets. Route routes decisively on human phrasing at
+both k; what it does not do is route on agent wording.
+
+### Fixed — `results.json` had drifted from the code, and CLAUDE.md cited it
+
+The committed human artifact reported `route@1 69.5 / @3 88.1`; a fresh run of
+the same harness against the same corpus returns `71.2 / 86.4`. Two queries had
+moved — one gained rank 1, one fell out of the top 3 — because tool descriptions
+drifted under a frozen artifact. `catalog_actions` was unchanged at 91, so
+nothing about the corpus size gave it away.
+
+**`CLAUDE.md` cited 69.5% as the evidence that catalog-moratorium condition 1 is
+met.** The verdict is unchanged (71.2 is still above the 60% bar), which is
+exactly why it went unnoticed for two weeks. Maintenance Practice 4 forbids
+hand-typing a benchmark number; **a number read out of a stale artifact is that
+defect one level up.**
+
+`tests/test_route_recall_artifacts_are_fresh.py` re-runs both harnesses (about a
+second each) and fails when either committed artifact disagrees. Restoring the
+real stale `results.json` from `HEAD` turns it red — the non-vacuity pass is
+against the actual defect, not a synthetic one.
+
+⚠ A red there on a PR that only touched tool descriptions is the signal working.
+Descriptions are the router's input, and the moratorium conditions are stated
+over these exact numbers.
+
+### Changed — the moratorium's open question is restated as one binary
+
+Stripping the degeneracy away, the emitted corpus is a single decision: **87.5%
+of golds are `search_text` or `search_symbols`, split 18/17.** Majority-class
+baseline **51.4%**; route, on cases where it lands in the pair at all, is
+**12/23 = 52.2%**. Chance. One rule —
+`/find|locate|where is|look up|search for|definition of/ -> search_symbols` —
+takes 21 of 35 rank-1 picks, because agent-emitted tasks open with "find".
+
+So the objective is not `route@1` versus `route@3` over 91 actions. It is
+`P(correct | gold in {search_text, search_symbols})`. Anyone proposing to
+optimise route should say which of those two numbers they intend to move.
+
+⚠ This also explains why the identifier-shape and verb hypotheses died: both
+failed on COVERAGE at 5-15%, but the decision needing an answer is one binary
+required **100%** of the time. A predicate reaching 15% cannot move it, so purity
+was never the issue. H3 is named in `ROADMAP.md` and deliberately not started.
+
+⚠ Benchmarks and tests only — no source change, no version bump, and the
+moratorium does not move.
+
 ### Fixed — the lock tests bet on the scheduler, and the bet lost during a release
 
 `test_wait_seconds_polls_until_lock_released` failed on windows-3.12 during the

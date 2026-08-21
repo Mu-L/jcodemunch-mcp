@@ -3,14 +3,34 @@
     "queries": 59,
     "catalog_actions": 91,
     "menu_recall": {
-      "@1": 44.1,
-      "@3": 67.8,
+      "@1": 47.5,
+      "@3": 66.1,
       "@5": 74.6,
       "@10": 78.0
     },
     "route_recall": {
-      "@1": 69.5,
-      "@3": 88.1
+      "@1": 71.2,
+      "@3": 86.4
+    },
+    "blind_floor_kset": {
+      "@1": {
+        "actions": [
+          "digest"
+        ],
+        "pct": 5.1
+      },
+      "@3": {
+        "actions": [
+          "assemble_task_context",
+          "digest",
+          "find_references"
+        ],
+        "pct": 13.6
+      }
+    },
+    "route_vs_floor_pts": {
+      "@1": 66.1,
+      "@3": 72.8
     },
     "route_path_split": {
       "rule": 24,
@@ -22,6 +42,7 @@
       "is this name used anywhere at all or can I drop it",
       "what is the import chain from this file outward",
       "how often does this file get touched",
+      "which modules are too tangled together",
       "pull down a github project so I can explore it",
       "I just edited a file, refresh it"
     ],
@@ -42,7 +63,7 @@
     ],
     "leakage": {
       "mean_name_overlap": 0.133,
-      "mean_desc_overlap": 0.338,
+      "mean_desc_overlap": 0.36,
       "queries_containing_target_name_token": 19,
       "high_leak_queries": [
         "what columns does the orders model have",
@@ -95,7 +116,7 @@
         "search_text"
       ],
       "leak_name": 0.0,
-      "leak_desc": 0.143
+      "leak_desc": 0.286
     },
     {
       "query": "find every place we swallow an exception without logging",
@@ -139,7 +160,7 @@
         "import_runtime_signal"
       ],
       "leak_name": 0.5,
-      "leak_desc": 0.143
+      "leak_desc": 0.286
     },
     {
       "query": "list functions longer than 50 lines with deep nesting in the parser",
@@ -199,12 +220,12 @@
       "menu_top3": [
         "find_similar_symbols",
         "index_dependency",
-        "announce_model"
+        "diff_health_radar"
       ],
       "route_proposed": [
         "find_similar_symbols",
         "index_dependency",
-        "announce_model"
+        "diff_health_radar"
       ],
       "leak_name": 0.0,
       "leak_desc": 0.2
@@ -374,19 +395,19 @@
         "get_blast_radius",
         "get_impact_preview"
       ],
-      "menu_rank": 3,
+      "menu_rank": 1,
       "route_rank": 1,
       "route_path": "rule",
       "menu_top3": [
+        "check_edit_safe",
         "get_endpoint_impact",
-        "get_changed_symbols",
-        "check_edit_safe"
+        "get_changed_symbols"
       ],
       "route_proposed": [
         "get_blast_radius"
       ],
       "leak_name": 0.0,
-      "leak_desc": 0.571
+      "leak_desc": 0.714
     },
     {
       "query": "who calls this",
@@ -472,7 +493,7 @@
         "get_class_hierarchy"
       ],
       "leak_name": 0.333,
-      "leak_desc": 0.333
+      "leak_desc": 0.444
     },
     {
       "query": "do we have circular imports",
@@ -507,7 +528,7 @@
       "route_path": "rule",
       "menu_top3": [
         "get_endpoint_impact",
-        "get_changed_symbols",
+        "check_edit_safe",
         "get_signal_chains"
       ],
       "route_proposed": [
@@ -636,17 +657,17 @@
         "get_file_tree",
         "get_repo_outline"
       ],
-      "menu_rank": 2,
-      "route_rank": 2,
+      "menu_rank": 1,
+      "route_rank": 1,
       "route_path": "fallback",
       "menu_top3": [
-        "get_repo_map",
         "get_repo_outline",
+        "get_repo_map",
         "diff_health_radar"
       ],
       "route_proposed": [
-        "get_repo_map",
         "get_repo_outline",
+        "get_repo_map",
         "diff_health_radar"
       ],
       "leak_name": 0.0,
@@ -662,6 +683,7 @@
       "route_rank": 1,
       "route_path": "rule",
       "menu_top3": [
+        "get_call_hierarchy",
         "get_coupling_metrics",
         "index_dependency"
       ],
@@ -669,7 +691,7 @@
         "get_tectonic_map"
       ],
       "leak_name": 0.0,
-      "leak_desc": 0.125
+      "leak_desc": 0.25
     },
     {
       "query": "where is every route annotation in the project",
@@ -789,9 +811,9 @@
       "route_rank": 1,
       "route_path": "rule",
       "menu_top3": [
+        "get_pr_risk_profile",
         "embed_repo",
-        "get_cross_repo_map",
-        "get_repo_map"
+        "get_cross_repo_map"
       ],
       "route_proposed": [
         "get_file_risk"
@@ -819,7 +841,7 @@
         "check_rename_safe"
       ],
       "leak_name": 0.667,
-      "leak_desc": 0.571
+      "leak_desc": 0.857
     },
     {
       "query": "will renaming this collide with something else",
@@ -920,7 +942,9 @@
       "menu_rank": null,
       "route_rank": 1,
       "route_path": "rule",
-      "menu_top3": [],
+      "menu_top3": [
+        "test_summarizer"
+      ],
       "route_proposed": [
         "get_pr_risk_profile"
       ],
@@ -976,18 +1000,18 @@
         "get_architecture_metrics",
         "get_coupling_metrics"
       ],
-      "menu_rank": 3,
-      "route_rank": 3,
+      "menu_rank": 5,
+      "route_rank": null,
       "route_path": "fallback",
       "menu_top3": [
         "get_decorator_census",
-        "get_file_risk",
-        "get_coupling_metrics"
+        "check_delete_safe",
+        "check_edit_safe"
       ],
       "route_proposed": [
         "get_decorator_census",
-        "get_file_risk",
-        "get_coupling_metrics"
+        "check_delete_safe",
+        "check_edit_safe"
       ],
       "leak_name": 0.0,
       "leak_desc": 0.167
@@ -1012,7 +1036,7 @@
         "check_rename_safe"
       ],
       "leak_name": 0.0,
-      "leak_desc": 0.143
+      "leak_desc": 0.286
     },
     {
       "query": "which code should be pulled out into a shared module",
@@ -1090,13 +1114,13 @@
       "route_path": "fallback",
       "menu_top3": [
         "get_delivery_metrics",
-        "get_blast_radius",
-        "digest"
+        "test_summarizer",
+        "get_blast_radius"
       ],
       "route_proposed": [
         "get_delivery_metrics",
-        "get_blast_radius",
-        "digest"
+        "test_summarizer",
+        "get_blast_radius"
       ],
       "leak_name": 0.0,
       "leak_desc": 0.4
@@ -1292,7 +1316,7 @@
         "render_diagram"
       ],
       "leak_name": 0.5,
-      "leak_desc": 0.167
+      "leak_desc": 0.333
     },
     {
       "query": "give me a plan for renaming this across the codebase",
