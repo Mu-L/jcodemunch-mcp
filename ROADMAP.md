@@ -588,10 +588,19 @@ v1.108.218's target audit was run to avoid. Both move together or neither
 counts.
 
 ⚠⚠ **CONDITIONS 1 AND 2 BOTH PASS TODAY AND THAT IS NOT CLEARANCE. READ THIS
-BEFORE CONCLUDING THE FREEZE CAN LIFT.** Measured 2026-08-20 on `main`:
-`route@1` = **69.5%** against the 60% bar, mean name leakage = **0.133** against
+BEFORE CONCLUDING THE FREEZE CAN LIFT.** Measured 2026-08-21 on `main`:
+`route@1` = **71.2%** against the 60% bar, mean name leakage = **0.133** against
 the 0.15 ceiling. Both conditions as written are satisfied, and have been since
 v1.108.253.
+
+⚠ **The figure was 69.5% here for two weeks and that was a STALE ARTIFACT, not a
+measurement.** `results.json` had drifted from the code — descriptions moved, two
+queries changed rank, and nothing re-ran the harness. The verdict is unchanged
+(71.2 > 60), which is exactly why it went unnoticed.
+`tests/test_route_recall_artifacts_are_fresh.py` now fails when either artifact
+disagrees with a fresh run. **Maintenance Practice 4 says never hand-type a
+benchmark number; a number read out of a stale artifact is the same defect one
+level up.**
 
 **What the conditions did not anticipate is that they name a CORPUS as well as a
 bar.** `benchmarks/route_recall/queries.json` is human-phrased — the words a
@@ -638,7 +647,100 @@ IS THE DISCLOSURE THAT MUST TRAVEL WITH THEM.** Quote it wherever they are
 cited. Meeting all three permits the freeze to lift; it does not establish that
 `route` selects well on the traffic it actually serves, and the table above is
 the evidence that it does not. **Anyone proposing to exit owes an argument about
-the emitted distribution, not a citation of 69.5%.**
+the emitted distribution, not a citation of 71.2%.**
+
+⚠⚠ **AND @3 IS NOT THE ESCAPE HATCH. Corrected 2026-08-21.** The emitted harness
+compared route's THREE guesses against a floor allowed ONE, and a comment in the
+script argued that this was the fair comparison. It is not, and it was wrong in
+route's favour. **A baseline gets as many guesses as the system it is the floor
+for.** Against the best constant 3-SET:
+
+| emitted, n=40 | route | best constant 3-set | delta |
+|---|---|---|---|
+| strict@3 | 62.5% | **92.5%** | **-30.0** |
+| exact@3 | 70.0% | **100%** | **-30.0** |
+| family@3 | 70.0% | **100%** | **-30.0** |
+
+`strict@3` moves from **+17.5** against the 1-set floor to **-30.0** against the
+k-matched one. **@3 does not rescue the emitted result; it deepens it.** Both
+floors are now emitted by the harness (`blind_floor_kset`, `vs_kset_floor_pts`)
+so neither can be re-derived by hand.
+
+⚠⚠ **THE EMITTED CORPUS CANNOT DISCRIMINATE A ROUTER FROM A FIXED LIST, and that
+is a property of the sample rather than a verdict on route.** Its best constant
+3-set scores **100% exact**. 40 cases, **6** distinct primary labels, **87.5%**
+in one family; the holdout is worse at 20 cases and **3** labels. A benchmark a
+constant answer saturates has no discriminative range left at that k.
+
+⚠ **The human corpus is a different instrument and route clears it decisively at
+BOTH k** — now that it reports a floor at all, which it did not until
+2026-08-21: `@1` 71.2% vs a 5.1% 1-set floor (**+66.1**), `@3` 86.4% vs a 13.6%
+3-set floor (**+72.8**). 59 queries, **69** distinct targets. **Do not read the
+emitted failure as "route does not route"; read it as "route does not route on
+agent wording".**
+
+⚠⚠ **THE OBJECTIVE, STATED PRECISELY.** Strip the degeneracy away and the
+emitted corpus is one decision: **87.5% of golds are `search_text` or
+`search_symbols`, split 18/17.** Majority-class baseline **51.4%**; route, on the
+cases where it lands in the pair at all, is **12/23 = 52.2%**. Chance. One rule
+— `/find|locate|where is|look up|search for|definition of/ -> search_symbols` —
+takes 21 of 35 rank-1 picks because agent tasks open with "find".
+
+**So the question is not `route@1` versus `route@3` over 91 actions. It is
+`P(correct | gold in {search_text, search_symbols})`, currently 52.2 against a
+51.4 chance line.** Anyone proposing to optimise route should say which of those
+two numbers they intend to move.
+
+⚠ **This also reframes why H1 and H2 died.** Both failed on COVERAGE — predicates
+firing on 5-15% of queries. But the decision that needs making is not spread
+across 91 actions; it is ONE binary that must be answered every time. **A
+predicate reaching 15% cannot move a decision required at 100%**, which is why
+purity was never the issue.
+
+**H3, untested and named here rather than started:** `search_symbols` matches
+symbol NAMES, `search_text` matches file CONTENT, so the discriminating fact is
+whether the sought thing IS a symbol name in this repo. That is absent from the
+query string — consistent with both refutations — and cheaply knowable from the
+index. **Its coverage is 100% by construction**, which is precisely the failure
+mode that killed H1 and H2. ⚠ It needs the 157 unused corpus rows sampled for
+PAIR BALANCE rather than uniformly (uniform sampling is what produced a corpus a
+constant list saturates), and the predicate declared before labels are read, same
+protocol as H1/H2.
+
+⚠⚠ **H3 IS NOT RUNNABLE ON THIS CORPUS, AND THE BLOCKER KILLS THE WHOLE REMAINING
+HYPOTHESIS CLASS. Established 2026-08-21 before starting it.** The joint H1/H2
+finding says the information is not in the query string and points at a signal
+from OUTSIDE it — the repo, a first-pass retrieval, prior turns. **Every one of
+those needs context the corpus does not carry.**
+
+`emitted_task_cases.json` rows are
+`{case_id, candidate_rank, prompt_text, gold_primary, gold_alts, emitted_task}`.
+**There is no repository field**, and the tasks are heterogeneous by design:
+"this project", "our mod", "the capture button handler". Of the 35 pair-labelled
+cases, **4 name a resolvable repo.** There is nothing to index, so there is
+nothing to probe — and pointing the probe at one shared index would score
+accidental matches, not the property.
+
+⚠ The 157 unused rows do NOT fix this. They come from the same generator and are
+repo-less for the same reason. **"157 rows remain unused" is an asset only for
+hypotheses about the query STRING — which is exactly the class already refuted
+twice.** Do not cite the unused rows as readiness for an outside-the-string test.
+
+⚠ The source corpus (`rknighton/jcm-route-benchmark-corpus` v0.1.0, MIT-0,
+sha256 pinned in the artifact) is NOT vendored here, so even the string-only
+hypotheses need a fetch first.
+
+**What readiness costs, stated so the decision is priced rather than discovered:**
+a corpus where each case is bound to a REAL repository at a pinned commit, tasks
+generated against that repository, and gold labels assigned by someone who can
+see it. That is corpus construction, not an afternoon. Until it exists,
+`P(correct | gold in {search_text, search_symbols})` is a well-posed objective
+with **no instrument that can measure a repo-grounded answer to it.**
+
+⚠⚠ **This is the more useful half of the H3 work and it came from checking
+readiness instead of assuming it.** The previous entry read as "the next
+hypothesis is ready to run, 157 rows are waiting". It was not, and any of H3/H4/H5
+in the same family would have hit the identical wall after the setup cost.
 
 ⚠ **This is deliberately the harder-to-abuse arrangement.** Under (b) the
 counter-evidence becomes a number to clear and then forget. Under (a) it stays a

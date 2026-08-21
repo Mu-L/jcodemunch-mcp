@@ -23,6 +23,39 @@
    },
    "note": "best single constant answer, per metric. A result at or below its own floor is not routing. The floors differ sharply, so no number may be quoted against another metric's bar."
   },
+  "blind_floor_kset": {
+   "strict": {
+    "actions": [
+     "get_file_tree",
+     "search_symbols",
+     "search_text"
+    ],
+    "pct": 92.5
+   },
+   "exact": {
+    "actions": [
+     "find_references",
+     "search_symbols",
+     "search_text"
+    ],
+    "pct": 100.0
+   },
+   "family": {
+    "actions": [
+     "find_references",
+     "search_symbols",
+     "search_text"
+    ],
+    "pct": 100.0
+   },
+   "k": 3,
+   "note": "best constant 3-ACTION answer, the k-matched bar for any @3 figure. A corpus whose best constant 3-set scores 100% cannot discriminate a router from a fixed list at that k."
+  },
+  "vs_kset_floor_pts": {
+   "strict@3": -30.0,
+   "exact@3": -30.0,
+   "family@3": -30.0
+  },
   "vs_floor_pts": {
    "strict@1": -15.0,
    "strict@3": 17.5,
@@ -47,7 +80,7 @@
     "search_symbols": 24,
     "assemble_task_context": 2,
     "search_text": 2,
-    "check_rename_safe": 1,
+    "check_delete_safe": 1,
     "get_context_bundle": 1,
     "get_symbol_complexity": 1,
     "tune_weights": 1,
@@ -56,7 +89,7 @@
     "get_file_outline": 1,
     "get_call_hierarchy": 1,
     "set_tool_tier": 1,
-    "index_repo": 1,
+    "audit_agent_config": 1,
     "check_edit_safe": 1,
     "jcodemunch_guide": 1
    },
@@ -152,9 +185,9 @@
    "gold_alts": [],
    "emitted_task": "Check whether Wolfram Language is one of the programming languages jcodemunch-mcp supports for indexing and parsing",
    "route_actions": [
-    "check_rename_safe",
-    "jcodemunch_guide",
-    "check_delete_safe"
+    "check_delete_safe",
+    "check_edit_safe",
+    "check_rename_safe"
    ],
    "rank": null,
    "leak_name": 0.0,
@@ -199,8 +232,8 @@
    "emitted_task": "Determine whether the get_context_bundle context bundle generator in jcodemunch also collects global environment skills and running automations, or only repository code symbols and imports",
    "route_actions": [
     "get_context_bundle",
-    "get_ranked_context",
-    "get_session_context"
+    "get_session_context",
+    "get_ranked_context"
    ],
    "rank": null,
    "leak_name": 0.5,
@@ -374,7 +407,7 @@
    "route_actions": [
     "announce_model",
     "index_dependency",
-    "index_repo"
+    "embed_repo"
    ],
    "rank": null,
    "leak_name": 0.0,
@@ -566,9 +599,9 @@
    ],
    "emitted_task": "index the 7 days to die game XML files and config assets into the existing 7d2d repo index so they're searchable without going to the install directory",
    "route_actions": [
+    "audit_agent_config",
     "index_repo",
-    "index_file",
-    "index_folder"
+    "index_file"
    ],
    "rank": null,
    "leak_name": 0.333,

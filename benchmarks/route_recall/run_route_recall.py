@@ -42,6 +42,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import sys
 from pathlib import Path
@@ -196,11 +197,41 @@ def main() -> int:
         hit = sum(1 for r in per_query if r[field] is not None and r[field] <= k)
         return round(100.0 * hit / n, 1)
 
+    # ⚠⚠ THIS HARNESS REPORTED NO FLOOR AT ALL until 2026-08-21, so its headline
+    # numbers had never been compared to a baseline in the artifact. The 1-set
+    # figure existed only in run_emitted_task.py's DOCSTRING ("floors are 5.1%
+    # and 6.8%") -- a fact about this corpus, living in another file, in prose.
+    # Same shape as the finding that produced this fix.
+    #
+    # ⚠ A baseline gets as many guesses as the system it is the floor for, so
+    # every reported @k has a k-MATCHED floor here. On this corpus route clears
+    # both by a wide margin; that is exactly why the bar belongs in the output
+    # rather than being assumed.
+    _label_actions = sorted({a for e in queries for a in e["targets"]})
+    _tgts = [set(e["targets"]) for e in queries]
+
+    def _best_constant_kset(k):
+        best = ((), -1)
+        for combo in itertools.combinations(_label_actions, k):
+            s = set(combo)
+            c = sum(1 for tg in _tgts if tg & s)
+            if c > best[1]:
+                best = (combo, c)
+        return list(best[0]), round(best[1] / n * 100, 1)
+
+    _floors = {f"@{k}": dict(zip(("actions", "pct"), _best_constant_kset(k)))
+               for k in ROUTE_KS}
+
     summary = {
         "queries": n,
         "catalog_actions": len(names),
         "menu_recall": {f"@{k}": _recall("menu_rank", k) for k in MENU_KS},
         "route_recall": {f"@{k}": _recall("route_rank", k) for k in ROUTE_KS},
+        "blind_floor_kset": _floors,
+        "route_vs_floor_pts": {
+            f"@{k}": round(_recall("route_rank", k) - _floors[f"@{k}"]["pct"], 1)
+            for k in ROUTE_KS
+        },
         "route_path_split": {
             "rule": sum(1 for r in per_query if r["route_path"] == "rule"),
             "fallback": sum(1 for r in per_query if r["route_path"] == "fallback"),
