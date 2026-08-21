@@ -1,0 +1,570 @@
+{
+ "seed": 4021,
+ "protocol": "benchmarks/route_binary_pilot/PROTOCOL.md",
+ "predicate_registered_before_cases": "see git log: predicate.py precedes this file",
+ "repos": [
+  {
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f",
+   "indexed_symbols": 200,
+   "class_S": 10,
+   "class_T": 10
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af",
+   "indexed_symbols": 6841,
+   "class_S": 10,
+   "class_T": 10
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea",
+   "indexed_symbols": 1179,
+   "class_S": 10,
+   "class_T": 10
+  }
+ ],
+ "cases": [
+  {
+   "gold": "search_symbols",
+   "task": "Assert that a supertest response does not have a header.",
+   "target": "shouldNotHaveHeader",
+   "target_kind": "symbol",
+   "file": "test/support/utils.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Create an ETag generator function, generating ETags with",
+   "target": "createETagGenerator",
+   "target_kind": "symbol",
+   "file": "lib/utils.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Initialize a new ` ` with the given `name`.",
+   "target": "View",
+   "target_kind": "symbol",
+   "file": "lib/view.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Assert that a supertest response has a specific body.",
+   "target": "shouldHaveBody",
+   "target_kind": "symbol",
+   "file": "test/support/utils.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "using our plain-object database of doom!",
+   "target": "authenticate",
+   "target_kind": "symbol",
+   "file": "examples/auth/index.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "var = function(req, res){ res.end(new Error('wrong ')) };",
+   "target": "handler",
+   "target_kind": "symbol",
+   "file": "test/Router.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Helper function for creating a getter on an object.",
+   "target": "defineGetter",
+   "target_kind": "symbol",
+   "file": "lib/request.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Get the local client address depending on AF_NET of server",
+   "target": "getExpectedClientAddress",
+   "target_kind": "symbol",
+   "file": "test/req.ip.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "function (app, inputUrl, expected, expectedHost, done)",
+   "target": "testRequestedRedirect",
+   "target_kind": "symbol",
+   "file": "test/res.location.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Assert that a supertest response does not have a body.",
+   "target": "shouldNotHaveBody",
+   "target_kind": "symbol",
+   "file": "test/support/utils.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message path must be a string to res.sendFile come from",
+   "target": "path must be a string to res.sendFile",
+   "target_kind": "literal",
+   "file": "lib/response.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message Router.use() requires a middleware function but got a come from",
+   "target": "Router.use() requires a middleware function but got a",
+   "target_kind": "literal",
+   "file": "lib/router/index.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message res.send(status): Use res.sendStatus(status) instead come from",
+   "target": "res.send(status): Use res.sendStatus(status) instead",
+   "target_kind": "literal",
+   "file": "lib/response.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message Failed to lookup view come from",
+   "target": "Failed to lookup view",
+   "target_kind": "literal",
+   "file": "lib/application.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message no routes defined on app come from",
+   "target": "no routes defined on app",
+   "target_kind": "literal",
+   "file": "lib/application.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message Hello from root route. come from",
+   "target": "Hello from root route.",
+   "target_kind": "literal",
+   "file": "examples/multi-router/index.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message utils.flatten: use array-flatten npm module instead come from",
+   "target": "utils.flatten: use array-flatten npm module instead",
+   "target_kind": "literal",
+   "file": "lib/utils.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message res.redirect(url, status): Use res.redirect(status, url) instead come from",
+   "target": "res.redirect(url, status): Use res.redirect(status, url) instead",
+   "target_kind": "literal",
+   "file": "lib/response.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message res.jsonp(status, obj): Use res.status(status).jsonp(obj) instead come from",
+   "target": "res.jsonp(status, obj): Use res.status(status).jsonp(obj) instead",
+   "target_kind": "literal",
+   "file": "lib/response.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message List of APIv1 users. come from",
+   "target": "List of APIv1 users.",
+   "target_kind": "literal",
+   "file": "examples/multi-router/controllers/api_v1.js",
+   "repo": "expressjs/express",
+   "commit": "1faf228935aa0a13111f92c28ee795be64ce3f0f"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "def (background_tasks: BackgroundTasks) -> BackgroundTasks",
+   "target": "add_background_task",
+   "target_kind": "symbol",
+   "file": "tests/test_response_dependency.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "def ( session: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 100, )",
+   "target": "read_heroes",
+   "target_kind": "symbol",
+   "file": "docs_src/sql_databases/tutorial002_an_py310.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "def (user_id: str, expected_response: dict)",
+   "target": "test_get_users",
+   "target_kind": "symbol",
+   "file": "tests/test_tutorial/test_path_params/test_tutorial003.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "def (benchmark, client: TestClient) -> None",
+   "target": "test_sync_return_dict_with_response_model",
+   "target_kind": "symbol",
+   "file": "tests/benchmarks/test_general_performance.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "async def (p: Annotated[list[UploadFile], File()])",
+   "target": "read_list_uploadfile",
+   "target_kind": "symbol",
+   "file": "tests/test_request_params/test_file/test_list.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "async def (x_token: Annotated[str, Header()])",
+   "target": "verify_token",
+   "target_kind": "symbol",
+   "file": "docs_src/dependencies/tutorial012_an_py310.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "async def (files: Annotated[list[bytes], File()]): # return something that makes order obvious",
+   "target": "upload",
+   "target_kind": "symbol",
+   "file": "tests/test_list_bytes_file_order_preserved_issue_14811.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "async def (request: Request) -> Response",
+   "target": "custom_route_handler",
+   "target_kind": "symbol",
+   "file": "docs_src/custom_request_and_route/tutorial003_py310.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "async def (self, value: str) -> AsyncGenerator[str, None]",
+   "target": "__call__",
+   "target_kind": "symbol",
+   "file": "tests/test_dependency_class.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "def ( type_encoder_map: dict[Any, Callable[[Any], Any]], ) -> dict[Callable[[Any]",
+   "target": "generate_encoders_by_class_tuples",
+   "target_kind": "symbol",
+   "file": "fastapi/encoders.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message A frontend path cannot be empty come from",
+   "target": "A frontend path cannot be empty",
+   "target_kind": "literal",
+   "file": "fastapi/routing.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message The original file name. come from",
+   "target": "The original file name.",
+   "target_kind": "literal",
+   "file": "fastapi/datastructures.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message The size of the file in bytes. come from",
+   "target": "The size of the file in bytes.",
+   "target_kind": "literal",
+   "file": "fastapi/datastructures.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message The HTTP Basic password. come from",
+   "target": "The HTTP Basic password.",
+   "target_kind": "literal",
+   "file": "fastapi/security/http.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message pydantic.v1 models are no longer supported by FastAPI. come from",
+   "target": "pydantic.v1 models are no longer supported by FastAPI.",
+   "target_kind": "literal",
+   "file": "fastapi/encoders.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message has a block with a bare except, or a block with except Exception, come from",
+   "target": "has a block with a bare except, or a block with except Exception,",
+   "target_kind": "literal",
+   "file": "fastapi/routing.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message The standard Python file object (non-async). come from",
+   "target": "The standard Python file object (non-async).",
+   "target_kind": "literal",
+   "file": "fastapi/datastructures.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message fallback must be 'auto', 'index.html', '404.html', or None come from",
+   "target": "fallback must be 'auto', 'index.html', '404.html', or None",
+   "target_kind": "literal",
+   "file": "fastapi/routing.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message An optional path prefix for the router. come from",
+   "target": "An optional path prefix for the router.",
+   "target_kind": "literal",
+   "file": "fastapi/routing.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message Freshly pickled plumbus come from",
+   "target": "Freshly pickled plumbus",
+   "target_kind": "literal",
+   "file": "docs_src/dependencies/tutorial008b_py310.py",
+   "repo": "fastapi/fastapi",
+   "commit": "a64dfbbd21a445288ff583d58e1f646fe6baf3af"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "Tests that no XML is rendered if code is 204",
+   "target": "TestContextRenderNoContentXML",
+   "target_kind": "symbol",
+   "file": "context_test.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "returns the value associated with the key as a float64.",
+   "target": "GetFloat64",
+   "target_kind": "symbol",
+   "file": "context.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "func TestTreeDuplicateWildcard(t *testing.",
+   "target": "TestTreeTrailingSlashRedirect",
+   "target_kind": "symbol",
+   "file": "tree_test.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "func (t *testing.T, method, path, badPath, body, badBody string)",
+   "target": "testFormBindingForTimeFailFormat",
+   "target_kind": "symbol",
+   "file": "binding/binding_test.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "serializes the given struct as into the response body.",
+   "target": "YAML",
+   "target_kind": "symbol",
+   "file": "context.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "returns an array with all the error messages.",
+   "target": "Errors",
+   "target_kind": "symbol",
+   "file": "errors.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "TestSingleRouteOK tests that POST route is correctly invoked.",
+   "target": "testRouteNotOK2",
+   "target_kind": "symbol",
+   "file": "routes_test.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "is the parsed multipart form, including file uploads.",
+   "target": "MultipartForm",
+   "target_kind": "symbol",
+   "file": "context.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "returns the specified key from a POST urlencoded form or multipart form",
+   "target": "PostForm",
+   "target_kind": "symbol",
+   "file": "context.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_symbols",
+   "task": "func (json ing) (req *http.Request, obj any) error",
+   "target": "Bind",
+   "target_kind": "symbol",
+   "file": "binding/json.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message Proxy Authorization Required come from",
+   "target": "Proxy Authorization Required",
+   "target_kind": "literal",
+   "file": "auth.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message catch-all wildcard ' come from",
+   "target": "catch-all wildcard '",
+   "target_kind": "literal",
+   "file": "tree.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message can not convert to map of strings come from",
+   "target": "can not convert to map of strings",
+   "target_kind": "literal",
+   "file": "binding/form_mapping.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message s id to key AuthUserKey in this context, the user come from",
+   "target": "s id to key AuthUserKey in this context, the user",
+   "target_kind": "literal",
+   "file": "auth.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message catch-all routes are only allowed at the end of the path in path ' come from",
+   "target": "catch-all routes are only allowed at the end of the path in path '",
+   "target_kind": "literal",
+   "file": "tree.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message path must begin with come from",
+   "target": "path must begin with",
+   "target_kind": "literal",
+   "file": "gin.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message Listening and serving HTTP on listener what come from",
+   "target": "Listening and serving HTTP on listener what",
+   "target_kind": "literal",
+   "file": "gin.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message there must be at least one handler come from",
+   "target": "there must be at least one handler",
+   "target_kind": "literal",
+   "file": "gin.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message s name. For example if the handler is come from",
+   "target": "s name. For example if the handler is",
+   "target_kind": "literal",
+   "file": "context.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  },
+  {
+   "gold": "search_text",
+   "task": "where does the message TrustedPlatform: gin.PlatformGoogleAppEngine' instead. come from",
+   "target": "TrustedPlatform: gin.PlatformGoogleAppEngine' instead.",
+   "target_kind": "literal",
+   "file": "context.go",
+   "repo": "gin-gonic/gin",
+   "commit": "75ccf94d605a05fe24817fc2f166f6f2959d5cea"
+  }
+ ]
+}
