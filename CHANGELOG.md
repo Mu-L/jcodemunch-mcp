@@ -52,7 +52,29 @@ after inspecting the cases and **before the predicate was run once** — no
 prediction was computed against the discarded version, and `predicate.py` is
 untouched since its registration commit.
 
-⚠ Benchmarks and docs only — no source change, no version bump, and the
+⚠⚠ **A spent corpus is an attractive nuisance, so it is GATED rather than
+labelled.** `tests/test_route_binary_pilot_is_frozen.py` pins `predicate.py` by
+digest: editing it while `cases.json` still exists is a fitting pass, and the
+test cannot judge whether a given edit is one — **it makes the judgement happen**,
+the same design as the LICENSE digest pin. The digest is over line-ending-
+normalised text, because hashing raw bytes pins a property of the checkout rather
+than of the file (that mistake went red on every Ubuntu leg and green on every
+Windows one when the LICENSE pin shipped).
+
+⚠ **The pilot cannot have a freshness gate** — re-running it needs three external
+checkouts and three local indexes, none of which exist in CI — so the guard runs
+the other way: every number quotable from `RESULT.md` must match `results.json`,
+the verdict must still be stated, and the at-chance conclusion must still follow
+from the artifact (interval spans the floor, p is not significant). That last one
+is asserted as the PROPERTY rather than the literals, so a genuinely separating
+re-run would fail it and force a re-reading instead of quietly inheriting the old
+conclusion.
+
+⚠ The gate found two prose/artifact mismatches on its first run: `RESULT.md`
+rounded `0.6989` to `0.699` and never used the word "cancelled". The prose was
+corrected, not the gate.
+
+⚠ Benchmarks, tests and docs only — no source change, no version bump, and the
 moratorium does not move.
 
 ### Fixed — the route benchmark compared three guesses against a baseline allowed one

@@ -11,8 +11,8 @@ this directory.
 
 | | accuracy | vs 50% floor | Wilson 95% | p vs chance |
 |---|---|---|---|---|
-| full vocabulary | **53.3%** | +3.3 | [40.9, 65.4] | **0.699** |
-| own name ablated | **50.0%** | 0.0 | [37.7, 62.3] | **1.000** |
+| full vocabulary | **53.3%** | +3.3 | [40.9, 65.4] | **0.6989** |
+| own name ablated | **50.0%** | 0.0 | [37.7, 62.3] | **1.0** |
 
 **Indistinguishable from a coin.** The confidence interval spans the floor in
 both conditions, and ablating each target's own name parts takes what little
@@ -74,7 +74,8 @@ firing often is not firing differently.
 `PROTOCOL.md` registered the asymmetry in advance: *a negative is decisive and
 kills the corpus project.*
 
-**So: do not build the full repo-grounded corpus for this hypothesis family.**
+**So the corpus project is cancelled: do not build the full repo-grounded
+corpus for this hypothesis family.**
 The pilot cost an afternoon and three clones. Building the real corpus — cases
 bound to real repositories, tasks generated against them, labels assigned by
 someone who can see them — would have cost a project and reached the same wall,
