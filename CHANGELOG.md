@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.108.289] - 2026-08-21 - A licence you can point at, and one you cannot churn
+
+A licensing release, no behaviour change. 1.108.288 was the first version to
+publish a licence identifier at all; this is the one that makes it stable.
+
+⚠ **Allowlist `LicenseRef-jCodeMunch-Dual-Use-1` for `>=1.108.289`.** 1.108.288
+carries `-1.1` and keeps it permanently — PyPI metadata is immutable per version,
+and that release is the only one that will ever have it.
+
 ### The aside came out of the LICENSE files
 
 `He's kinda full of himself.` sat inside condition 2 of all three LICENSE files,
