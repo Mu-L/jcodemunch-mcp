@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### Added — the grounded route pilot, and H3 is refuted
+
+`benchmarks/route_binary_pilot/` runs the third hypothesis about the
+`search_text` vs `search_symbols` decision, on 60 cases bound to real
+repositories at the SHAs published in `benchmarks/tasks.json`. **One predicate,
+one run, nothing fitted.** The predicate and the protocol were committed before
+a single case existed; `git log` for that directory is the evidence, because an
+assertion in prose is not.
+
+**Result: indistinguishable from a coin.** Full vocabulary **53.3%** against a
+50% floor, Wilson 95% **[40.9, 65.4]**, **p = 0.699**. Ablating each target's own
+name parts returns **50.0%, p = 1.000**. Leakage existed — 12 of 30 class-S tasks
+matched their own target's name — and bought nothing.
+
+⚠⚠ **The predicate answered `search_symbols` on 58 of 60 tasks** — 100% of class
+S and 28 of 30 of class T. It is a constant classifier wearing a probe's
+clothing, because **in a real repository the symbol vocabulary absorbs ordinary
+English**: fastapi has 6,841 symbols yielding 4,303 matchable name parts, and 14
+of 16 common English words tested are among them (`message`, `path`, `error`,
+`status`, `value`, `name`, `body`, `type`, `data`, `request`, …).
+
+⚠⚠ **Coverage was never the property that mattered, and H3 was argued for on
+exactly that ground.** H1 fires on ~15% of queries, H2 on ~5%, H3 on ~97% — and
+all three fail. The first two decide too few cases; the third decides them all
+the same way. **The property is SEPARATION: a predicate must fire differently on
+the two classes, and firing often is not firing differently.** 100% coverage was
+necessary and not sufficient — the same shape as moratorium conditions 1 and 2
+being met without clearing the freeze. Screen the next hypothesis on separation
+before counting its coverage.
+
+⚠⚠ **The repo-grounded corpus project is cancelled, which is what the pilot was
+built to decide.** The protocol registered the asymmetry in advance: a negative
+is decisive, a positive would have certified nothing. Building the full corpus
+would have cost a project and hit the same wall, because the wall is not the
+corpus — it is that vocabulary membership does not separate these classes in any
+repository large enough to matter.
+
+⚠ Not ruled out, and deliberately not run: a probe keyed on retrieval OUTCOME
+rather than vocabulary membership — does `search_symbols` outrank `search_text`
+for this query against this index. That compares two scores instead of testing
+set membership. **These 60 cases are spent; reusing them for it would be a
+fitting pass wearing an experiment's clothes.**
+
+⚠ One correction made mid-build and disclosed rather than buried: the first
+generated corpus filled class T with `it('should …')` test titles, which would
+have made it a test-title detector. Test paths are excluded now. The fix landed
+after inspecting the cases and **before the predicate was run once** — no
+prediction was computed against the discarded version, and `predicate.py` is
+untouched since its registration commit.
+
+⚠ Benchmarks and docs only — no source change, no version bump, and the
+moratorium does not move.
+
 ### Fixed — the route benchmark compared three guesses against a baseline allowed one
 
 `run_emitted_task.py` reported route's `@3` recall against the best constant
