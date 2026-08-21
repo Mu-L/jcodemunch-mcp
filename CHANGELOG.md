@@ -2,6 +2,92 @@
 
 ## [Unreleased]
 
+### Added — retrieval inflation: what one information need actually cost
+
+`analyze_regret` now returns an `inflation` block beside its six cluster
+signals, and `suggest_corrections` and `digest` surface it. The clusters have
+always named WHICH queries went wrong; this says what the wrongness cost.
+
+Inflation is the ratio of calls actually made to information needs served. A
+need is `(session_uid, query_hash)`. A clean ledger reads `1.0`; a repo where
+the agent re-asks reads above it, and `excess_calls` is the count of calls that
+bought nothing.
+
+The shape follows arXiv:2608.13571, which defines token inflation as the ratio
+of true workflow cost to single-call cost — the gap between what one call is
+priced at and what the workflow spent once the failures are counted. We had
+never charged ourselves for that gap: `_meta.tokens_saved` reports the saving on
+the call that worked and says nothing about the two before it.
+
+⚠⚠ **The basis is CALLS, not tokens, and the `basis` field says so on every
+shape the block can take.** `ranking_events` carries no token column. A ratio
+named after tokens while counting calls would be measuring one thing and named
+for another; renaming it needs a column, not a better adjective.
+
+⚠⚠ **A row with no `session_uid` is UNKNOWN and is excluded, never folded into a
+synthetic session.** #456 added that column by `ALTER`, so every row written
+before it carries NULL — and treating NULL as one shared session fuses the
+entire historical ledger into a single need with a spectacular fake ratio. The
+excluded count is reported as `events_without_session`.
+
+⚠⚠ **`repeats_after_index_change` is disclosed and NOT subtracted.** A re-ask
+after the index moved under the query is arguably a different question, so it is
+arguably not waste — but subtracting it lowers our own inflation number, and a
+self-flattering adjustment applied silently is the one direction this metric
+must not drift. Both numbers are reported; the reader can adjust.
+
+⚠ Unmeasurable is a first-class answer, and it is passed through rather than
+omitted. A ledger with no session column, a window with too few needs, and a
+repo with no events each return `measurable: false` with a reason — because a
+caller who cannot see WHY the ratio is absent reads its absence as no inflation
+(#500: a number computed and then discarded is the same defect as not computing
+it).
+
+⚠ The reader is a second query, `token_tracker.ranking_db_inflation_rows`,
+returning **None for could-not-ask and never `[]`**. `ranking_db_query`'s
+12-tuple is read positionally by `regret`, `tuning`, `ledger_trust` and
+`analyze_perf`, and it opens the database directly rather than through
+`_ensure_perf_db` — so selecting a column that may not exist there would raise,
+hit that function's catch-all, and return `[]` for every ledger consumer. One
+missing column would have silently disabled all six regret signals.
+
+⚠ Read-only, no new tables, no schema change, and nothing is billed. Requires
+`perf_telemetry_enabled` like the rest of the ledger.
+
+⚠ `tests/test_retrieval_inflation.py` (17). Non-vacuity run per falsification:
+keying a need on `query_hash` alone turns 10 red, folding NULL sessions into a
+synthetic one turns 2 red, subtracting the index-change repeats turns 1 red, and
+returning `[]` instead of `None` from the reader turns 1 red.
+
+### Changed — `CLAUDE.md` rotates, and the budget is now the whole file
+
+`CLAUDE.md` reached 200,543 characters and stopped loading. Closed dated issue
+and PR history moved verbatim to `ISSUE-HISTORY.md`, which no session
+loads; the `Tests:` line dropped its per-release counts below the three-release
+rotation to the same place. 200,543 → 113,074, nothing deleted.
+
+⚠⚠ **Maintenance Practice 5 was followed and the file broke anyway.** It said
+"keep `Current State` to the 3 newest releases", and `Current State` was 14% of
+the file. The growth was in dated issue history (82k) and a `Tests:` line
+carrying counts back to 1.108.268 (16k). **A rule that names one section
+licenses every other section to grow.** The practice now covers the whole file
+and `tests/test_claude_md_size.py` enforces it, on the same argument as
+`test_claude_md_rotation.py`: a convention that has already failed needs a gate.
+
+⚠ The lessons those entries earned stayed behind as a **Standing lessons** list,
+each naming a date to grep for in the archive. A stray Maintenance Practice 9
+that had been sitting 300 lines above the Practices list moved into it.
+
+⚠⚠ **The archive was first written to `docs/`, which this repo gitignores.**
+Every check passed -- the file existed, the pointer resolved, the budget was met
+-- while the history would have vanished on the next clone and taken CI red with
+it. `test_the_archive_is_tracked_by_git` closes that: **"does the file exist"
+answers a question about one working tree, not about the repository.**
+
+⚠ Suite on the settled tree: **8105 passed, 17 skipped, 0 failed** + `ruff check
+src/` clean. Reconciled against 1.108.289's 8101 total: +17 inflation +4 size
+gate = 8122 exactly, so nothing else moved.
+
 ## [1.108.289] - 2026-08-21 - A licence you can point at, and one you cannot churn
 
 A licensing release, no behaviour change. 1.108.288 was the first version to

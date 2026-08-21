@@ -325,12 +325,19 @@ def _compose_regret(repo: str, storage_path: Optional[str]) -> Optional[dict]:
         if not clusters:
             return None
         top = clusters[0]
-        return {
+        summary = {
             "count": len(clusters),
             "events": out.get("events_analyzed", 0),
             "top_signal": top.get("signal"),
             "top_severity": top.get("severity"),
         }
+        # v1.108.290. Only when it is measurable AND above 1.0 -- a digest line
+        # reading "inflation 1.0x" is a fact nobody needs on a stand-up briefing.
+        inflation = out.get("inflation") or {}
+        if inflation.get("measurable") and (inflation.get("ratio") or 0) > 1.0:
+            summary["inflation_ratio"] = inflation["ratio"]
+            summary["excess_calls"] = inflation.get("excess_calls", 0)
+        return summary
     except Exception:
         logger.debug("compose_regret failed", exc_info=True)
         return None
@@ -401,7 +408,10 @@ def _render_markdown(s: dict) -> str:
         lines.append(
             f"\n### Retrieval regret\n{regret['count']} regret cluster(s) this window; "
             f"top: {regret['top_signal']} ({regret['top_severity']}). "
-            f"Run `reflect` for suggested fixes."
+            + (f"Retrieval inflation {regret['inflation_ratio']}x calls per "
+               f"information need ({regret['excess_calls']} excess). "
+               if "inflation_ratio" in regret else "")
+            + "Run `reflect` for suggested fixes."
         )
 
     scip = s.get("scip")
