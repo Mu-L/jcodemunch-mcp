@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Fixed — the lock tests bet on the scheduler, and the bet lost during a release
+
+`test_wait_seconds_polls_until_lock_released` failed on windows-3.12 during the
+1.108.290 release, green on the other eight jobs and on two local Windows runs.
+It released the lock from a thread that slept 0.5s and asserted the elapsed time
+landed inside `0.4 < elapsed < 3.0`. Its sibling `test_wait_seconds_gives_up`
+asserted `elapsed < 1.5` on a 0.3s wait — a 5x jitter tolerance and no more.
+
+Both now pin the INTERLEAVING instead of the clock. A `_FakeClock` replaces the
+`time` module inside `process_locks`, advancing by the sleep amount from inside
+the patched sleep; the polls test releases the lock on the third poll and asserts
+the poll sequence, and the gives-up test asserts the deadline arithmetic exactly.
+No wall-clock assertion survives in either.
+
+⚠⚠ **The property under test was never "this takes about half a second".** It is
+"the loop polls, and it acquires once the lock is free". A test that states the
+timing instead of the property is testing its own machine's scheduler — and this
+one had already been re-tuned once for "Windows CI jitter", which is the tell
+that the assertion was never about the code.
+
+⚠ **The fake clock RAISES on unknown attributes rather than falling through to
+the real module.** A pass-through would look harmless and be the worse outcome:
+if `held` ever switched its deadline to `time.perf_counter()`, half the clock
+would be fake and half real, and the test would go quietly wrong instead of
+loudly absent.
+
+⚠ Non-vacuity, per falsification: removing the poll loop turns both red;
+replacing the retried `acquire` with a constant `False` turns only the polls test
+red (the gives-up test expects False either way, which is the correct
+discrimination); hardcoding a poll interval other than `poll_seconds` turns both
+red.
+
+⚠ Test-only, no source change and no version bump; rides the next release.
+`Path` and `_is_pid_alive` are unused imports in that file, were unused before
+this change, and are left alone — recorded, not swept.
+
 ## [1.108.290] - 2026-08-21 - Charging ourselves for the calls before the one that worked
 
 ### Added — retrieval inflation: what one information need actually cost

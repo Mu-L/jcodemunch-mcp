@@ -8,7 +8,6 @@ fields (client_id, scope, target).
 import json
 import os
 import sys
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -191,44 +190,98 @@ class TestHeldContextManager:
         finally:
             release("test", "alpha", str(tmp_path))
 
-    def test_wait_seconds_polls_until_lock_released(self, tmp_path):
-        """Lock acquired by another 'process' is released; held() with wait
-        should acquire after a brief poll."""
-        # Pre-acquire, then release on a timer via thread.
-        # Release delay and elapsed ceiling sized to absorb Windows CI jitter:
-        # `time.sleep(N)` is a floor, not a ceiling, and contended Actions
-        # runners can stretch a 0.3s sleep enough to miss the deadline.
-        acquire("test", "alpha", str(tmp_path))
-        import threading
-        def _release_after():
-            time.sleep(0.5)
-            release("test", "alpha", str(tmp_path))
-        threading.Thread(target=_release_after, daemon=True).start()
+    def test_wait_polls_until_the_lock_is_released(self, tmp_path, monkeypatch):
+        """``held(wait_seconds=...)`` retries until the holder lets go.
 
-        start = time.monotonic()
+        ⚠⚠ **Pinned by INTERLEAVING, not by wall clock.** The previous version
+        released the lock from a thread that slept 0.5s and asserted the elapsed
+        time landed inside ``0.4 < elapsed < 3.0``. That is a bet on the
+        scheduler: ``time.sleep(N)`` is a floor, not a ceiling, and a contended
+        Actions runner can stretch it past any ceiling worth asserting. It had
+        already been re-tuned once for "Windows CI jitter" and it failed again on
+        windows-3.12 during the 1.108.290 release -- green on the other eight
+        jobs, green on two local Windows runs, and reproducing nothing.
+
+        The property under test was never "this takes about half a second". It
+        is "the loop polls, and it acquires once the lock is free". Releasing on
+        the third poll states exactly that and costs no wall-clock time.
+        """
+        acquire("test", "alpha", str(tmp_path))
+        clock = _FakeClock()
+        clock.on_poll = lambda n: (
+            release("test", "alpha", str(tmp_path)) if n == 3 else None
+        )
+        monkeypatch.setattr(process_locks, "time", clock)
+
         with held(
             "test", "alpha", str(tmp_path),
             wait_seconds=5.0, poll_seconds=0.1,
         ) as got:
-            elapsed = time.monotonic() - start
             assert got is True
-            assert 0.4 < elapsed < 3.0  # waited briefly, not instantaneous, not too long
 
-    def test_wait_seconds_gives_up(self, tmp_path):
-        """If lock stays held longer than wait_seconds, held() returns False."""
+        # Three polls, each at poll_seconds -- it retried rather than spinning,
+        # and it stopped as soon as the lock was free.
+        assert clock.sleeps == [0.1, 0.1, 0.1]
+
+    def test_wait_gives_up_at_the_deadline(self, tmp_path, monkeypatch):
+        """A lock held past ``wait_seconds`` yields False.
+
+        ⚠ Same treatment as its sibling above, and it needed it more: the old
+        ceiling was ``elapsed < 1.5`` on a 0.3s wait, i.e. it tolerated 5x jitter
+        and no more.
+        """
         acquire("test", "alpha", str(tmp_path))
+        clock = _FakeClock()
+        monkeypatch.setattr(process_locks, "time", clock)
         try:
-            start = time.monotonic()
             with held(
                 "test", "alpha", str(tmp_path),
                 wait_seconds=0.3, poll_seconds=0.1,
             ) as got:
-                elapsed = time.monotonic() - start
                 assert got is False
-                assert 0.25 <= elapsed < 1.5
         finally:
             release("test", "alpha", str(tmp_path))
 
+        # Polled until the deadline, then stopped -- not one poll more.
+        assert clock.sleeps == [0.1, 0.1, 0.1]
+        assert clock.now == pytest.approx(0.3)
+
+
+class _FakeClock:
+    """Deterministic stand-in for the ``time`` module inside ``process_locks``.
+
+    ``held.__enter__`` reads ``time.monotonic()`` once for its deadline and calls
+    ``time.sleep(poll_seconds)`` between attempts. Advancing the clock BY the
+    sleep amount, inside the patched sleep, reproduces the real relationship
+    between the two while spending no wall-clock time at all.
+
+    ⚠⚠ **Unknown attributes RAISE rather than falling through to the real
+    module.** A pass-through would look harmless and be the worst outcome: if
+    ``process_locks`` ever switches a deadline to ``time.perf_counter()``, half
+    the clock would be fake and half real, and the test would go quietly wrong
+    instead of loudly absent. Model the new call here.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+        self.on_poll = None
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+        if self.on_poll is not None:
+            self.on_poll(len(self.sleeps))
+
+    def __getattr__(self, name):
+        raise AttributeError(
+            f"process_locks now calls time.{name}, which this fake clock does "
+            f"not model. Model it here rather than letting a real clock leak "
+            f"back into a deterministic test."
+        )
 
 # ---------------------------------------------------------------------------
 # current_holder_diagnostic
