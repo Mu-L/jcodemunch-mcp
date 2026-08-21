@@ -1,0 +1,124 @@
+{
+ "H1_identifier_shape": {
+  "hypothesis": "identifier-shape predicts search_symbols over search_text",
+  "verdict": "REFUTED",
+  "emitted_tasks": {
+   "n": 35,
+   "table": {
+    "shaped": {
+     "search_symbols": 4,
+     "search_text": 1
+    },
+    "unshaped": {
+     "search_symbols": 13,
+     "search_text": 17
+    }
+   },
+   "rule_accuracy_pct": 60.0,
+   "majority_floor_pct": 51.4,
+   "lift_over_floor_pts": 8.6,
+   "coverage_pct": 14.3,
+   "residue_purity_pct": 56.7,
+   "null_p_of_shaped_bucket": 0.17
+  },
+  "raw_prompts": {
+   "n": 164,
+   "table": {
+    "shaped": {
+     "search_symbols": 11,
+     "search_text": 13
+    },
+    "unshaped": {
+     "search_symbols": 71,
+     "search_text": 69
+    }
+   },
+   "rule_accuracy_pct": 48.8,
+   "majority_floor_pct": 50.0,
+   "lift_over_floor_pts": -1.2,
+   "coverage_pct": 14.6,
+   "residue_purity_pct": 50.7
+  },
+  "per_pattern_exploratory": {
+   "snake_case": {
+    "fires": 6,
+    "search_symbols": 3
+   },
+   "camelCase": {
+    "fires": 3,
+    "search_symbols": 1
+   },
+   "PascalCase": {
+    "fires": 13,
+    "search_symbols": 7
+   },
+   "CONSTANT_CASE": {
+    "fires": 1,
+    "search_symbols": 0
+   },
+   "call_form": {
+    "fires": 1,
+    "search_symbols": 1
+   },
+   "dotted_path": {
+    "fires": 3,
+    "search_symbols": 1
+   },
+   "backticked": {
+    "fires": 0
+   }
+  }
+ },
+ "H2_verb_intent": {
+  "hypothesis": "definition-seeking phrasing predicts search_symbols, occurrence-seeking predicts search_text",
+  "verdict": "REFUTED",
+  "emitted_tasks": {
+   "n": 35,
+   "table": {
+    "definition": {
+     "search_symbols": 1,
+     "search_text": 4
+    },
+    "neither": {
+     "search_symbols": 16,
+     "search_text": 14
+    }
+   },
+   "coverage_pct": 14.3,
+   "rule_accuracy_pct": 48.6,
+   "majority_floor_pct": 51.4,
+   "lift_over_floor_pts": -2.9,
+   "covered_correct": "1/5"
+  },
+  "raw_prompts": {
+   "n": 164,
+   "table": {
+    "definition": {
+     "search_symbols": 5,
+     "search_text": 3
+    },
+    "occurrence": {
+     "search_symbols": 0,
+     "search_text": 1
+    },
+    "neither": {
+     "search_symbols": 77,
+     "search_text": 78
+    }
+   },
+   "coverage_pct": 5.5,
+   "rule_accuracy_pct": 51.2,
+   "majority_floor_pct": 50.0,
+   "lift_over_floor_pts": 1.2,
+   "covered_correct": "6/9"
+  },
+  "note": "On emitted tasks the `definition` bucket is 1 search_symbols / 4 search_text -- the sign is BACKWARDS, not merely absent. A request that names what it wants DESCRIPTIVELY ('the function that parses config') gives a symbol-name index nothing to match, so descriptive definition-seeking favours search_text. n=5; directional, not proven."
+ },
+ "joint_finding": "Both hypotheses fail on COVERAGE, not purity: H1 fires on ~15% of cases, H2 on 5-14%, and the residue sits at ~50% purity in both. Two independent properties of the query TEXT, both absent from 85-95% of real requests. The information needed to route them is not in the query string.",
+ "corpus": {
+  "source": "https://raw.githubusercontent.com/rknighton/jcm-route-benchmark-corpus/main/data/route_candidates_v0.1.csv",
+  "sha256": "25d09f6ae9e8e668d1a3b9a30755cf8dbd7d063ce08868529cc152fdfe84b86e"
+ },
+ "per_pattern_note": "Seven patterns tested on one sample. Expect one to look good by chance; none is a finding on its own.",
+ "rows_remain_usable": "Both predicates were declared before labels were read and each was run ONCE. Nothing was fitted to these rows, so they retain their value for the next hypothesis -- which a tuning pass would have destroyed."
+}
