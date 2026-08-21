@@ -1527,6 +1527,63 @@ def ranking_db_query(
         return []
 
 
+def ranking_db_inflation_rows(
+    base_path: Optional[str] = None,
+    window_seconds: Optional[float] = None,
+    repo: Optional[str] = None,
+    limit: int = 10_000,
+) -> "Optional[list[tuple]]":
+    """Rows for the retrieval-inflation ratio: ``(session_uid, query_hash, tool,
+    query, ts, repo_is_stale)``, newest first.
+
+    ⚠⚠ **Returns ``None`` for could-not-ask, never ``[]``.** ``session_uid`` was
+    added by ALTER in #456, so a ``telemetry.db`` whose ``ranking_events`` table
+    predates it and has not since been opened by a writer does not carry the
+    column. An empty list would read as "no inflation", which is the one answer
+    this must never invent -- same asymmetry as ``_paths_changed_between`` and
+    ``freshness.classify``.
+
+    ⚠ Deliberately a SECOND query rather than a wider ``ranking_db_query``. That
+    function's 12-tuple is a documented contract read positionally by
+    ``regret``, ``tuning``, ``ledger_trust`` and ``analyze_perf``, and it opens
+    the db directly rather than through ``_ensure_perf_db`` -- so selecting a
+    column that may not exist would raise ``OperationalError``, hit that
+    function's catch-all, and return ``[]`` for **every** ledger consumer. One
+    missing column would silently disable all six regret signals.
+    """
+    path = perf_db_path(base_path)
+    if not path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(path), timeout=2.0)
+        try:
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(ranking_events)")}
+            if not columns or "session_uid" not in columns:
+                return None
+            sql = (
+                "SELECT session_uid, query_hash, tool, query, ts, repo_is_stale "
+                "FROM ranking_events"
+            )
+            args: list = []
+            clauses: list[str] = []
+            if window_seconds is not None:
+                clauses.append("ts >= ?")
+                args.append(time.time() - float(window_seconds))
+            if repo:
+                clauses.append("repo = ?")
+                args.append(repo)
+            if clauses:
+                sql += " WHERE " + " AND ".join(clauses)
+            sql += " ORDER BY ts DESC LIMIT ?"
+            args.append(int(limit))
+            return conn.execute(sql, args).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        logger.debug("ranking_db_inflation_rows failed at %s", path, exc_info=True)
+        return None
+
+
 def perf_db_query(
     base_path: Optional[str] = None,
     window_seconds: Optional[float] = None,

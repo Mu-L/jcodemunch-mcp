@@ -10,6 +10,11 @@ Pure read over the existing ``ranking_events`` ledger via
 list of regret *clusters*; correction synthesis (``tools/suggest_corrections``)
 turns clusters into suggested (never applied) config patches.
 
+v1.108.290 adds an ``inflation`` block beside the clusters: how many calls one
+information need actually cost, against the one call it should have. Clusters
+name WHICH queries went wrong; inflation says what the wrongness cost in total.
+⚠ Its basis is CALLS -- the ledger has no token column.
+
 Ledger tuple layout (matches the SELECT in ``token_tracker.ranking_db_query``):
     0 ts            5 returned_ids (JSON)   10 identity_hit
     1 repo          6 top1_score            11 repo_is_stale
@@ -50,6 +55,8 @@ VOCAB_CONF_FLOOR = 0.30     # identity miss rescued by semantic with >= this con
 VOCAB_RECUR = 2
 MAX_EXAMPLES = 3            # example queries carried per cluster
 MAX_CLUSTERS_PER_SIGNAL = 5
+INFLATION_MIN_NEEDS = 5     # fewer information needs than this => ratio is noise
+INFLATION_WORST = 3         # worst-offending needs carried in the block
 
 
 def _sev(count: int, hi: int, med: int) -> str:
@@ -243,6 +250,109 @@ def _detect_vocabulary_gap(by_qh: "dict[str, list[tuple]]") -> list[dict]:
     return out[:MAX_CLUSTERS_PER_SIGNAL]
 
 
+# --------------------------------------------------------------------------- #
+# Retrieval inflation (v1.108.290)
+# --------------------------------------------------------------------------- #
+#
+# arXiv:2608.13571 defines token inflation as the ratio of true workflow cost to
+# single-call cost -- the gap between what one call is priced at and what the
+# workflow actually spent once the failures are counted. Retrieval has the same
+# gap and we have never charged ourselves for it: `_meta.tokens_saved` reports
+# the saving on the call that worked and says nothing about the two before it.
+#
+# ⚠⚠ **THE BASIS IS CALLS, NOT TOKENS, AND THE FIELD SAYS SO.** `ranking_events`
+# carries no token column -- see the schema in `token_tracker` -- so a ratio
+# named after tokens would be measuring one thing and named for another. The
+# paper's ratio is cost-agnostic; ours is honest about which cost it counted.
+# Renaming this to tokens requires a token column, not a better adjective.
+#
+# ⚠ An information NEED is `(session_uid, query_hash)`, not `query_hash` alone.
+# The same query asked in two sessions a week apart is two needs; collapsing
+# them would charge us for the agent having a second conversation.
+#
+# ⚠⚠ A row with no `session_uid` is UNKNOWN and is EXCLUDED, never folded into a
+# synthetic session. #456 added the column by ALTER, so pre-#456 rows carry
+# NULL, and treating NULL as one shared session would fuse every historical
+# query in the ledger into a single need with a spectacular fake ratio.
+#
+# ⚠⚠ **`repeats_after_index_change` is DISCLOSED AND NOT SUBTRACTED.** A re-ask
+# after the index moved under the query is arguably a different question, so it
+# is arguably not waste -- but subtracting it lowers our own inflation number,
+# and a self-flattering adjustment applied silently is the one direction this
+# metric must not drift. Report both and let the reader adjust.
+
+
+def _detect_inflation(rows: "Optional[list[tuple]]") -> dict:
+    """Retrieval inflation over `(session_uid, query_hash)` information needs.
+
+    ``rows`` are ``token_tracker.ranking_db_inflation_rows`` output: ``None``
+    means the ledger could not answer, which is NOT the same as no inflation.
+    """
+    _SID, _QHASH, _TL, _Q, _TIME, _STL = 0, 1, 2, 3, 4, 5
+
+    if rows is None:
+        return {
+            "basis": "calls",
+            "measurable": False,
+            "reason": "ledger_has_no_session_column",
+            "hint": (
+                "This telemetry.db predates the session correlation keys (#456). "
+                "Inflation needs them to tell a re-ask apart from a later "
+                "session asking the same thing; events recorded from now on "
+                "will carry them."
+            ),
+        }
+
+    without_session = sum(1 for r in rows if not r[_SID])
+    needs: "dict[tuple, list[tuple]]" = defaultdict(list)
+    for r in rows:
+        if r[_SID]:
+            needs[(r[_SID], r[_QHASH])].append(r)
+
+    out: dict = {"basis": "calls"}
+    if without_session:
+        out["events_without_session"] = without_session
+
+    if len(needs) < INFLATION_MIN_NEEDS:
+        out["measurable"] = False
+        out["reason"] = "too_few_needs"
+        out["needs"] = len(needs)
+        out["hint"] = (
+            f"A ratio over {len(needs)} information need(s) is noise; "
+            f"{INFLATION_MIN_NEEDS} is the floor. Widen the window with "
+            f"all_time, or run more searches."
+        )
+        return out
+
+    calls = sum(len(v) for v in needs.values())
+    changed = 0
+    worst: list[dict] = []
+    for (_sid, _qh), evs in needs.items():
+        evs = sorted(evs, key=lambda e: e[_TIME])
+        for prev, cur in zip(evs, evs[1:]):
+            if prev[_STL] != cur[_STL]:
+                changed += 1
+        if len(evs) > 1:
+            worst.append({
+                "query": evs[0][_Q],
+                "tool": evs[0][_TL],
+                "calls": len(evs),
+                "excess_calls": len(evs) - 1,
+            })
+    worst.sort(key=lambda w: -w["calls"])
+
+    out.update({
+        "measurable": True,
+        "needs": len(needs),
+        "calls": calls,
+        "ratio": round(calls / len(needs), 3),
+        "excess_calls": calls - len(needs),
+        "repeats_after_index_change": changed,
+        "worst": worst[:INFLATION_WORST],
+    })
+    return out
+
+
 def analyze_regret(
     repo: str,
     *,
@@ -252,10 +362,11 @@ def analyze_regret(
 ) -> dict:
     """Mine the ranking_events ledger for retrieval regret for ``repo``.
 
-    Returns a dict with ``telemetry_present``, ``events_analyzed``, and
+    Returns a dict with ``telemetry_present``, ``events_analyzed``,
     ``clusters`` (a flat list of regret clusters across all six signals,
-    severity-ranked). Honest no-telemetry / no-events shapes are returned
-    rather than fabricated regret. Pure read — never writes.
+    severity-ranked) and ``inflation`` (the calls-per-information-need ratio;
+    see ``_detect_inflation``). Honest no-telemetry / no-events shapes are
+    returned rather than fabricated regret. Pure read — never writes.
     """
     telemetry_on = bool(_config.get("perf_telemetry_enabled", False))
     window = None if all_time else float(window_days) * 86_400
@@ -271,6 +382,9 @@ def analyze_regret(
     }
     if not events:
         base["clusters"] = []
+        base["inflation"] = {
+            "basis": "calls", "measurable": False, "reason": "no_events",
+        }
         base["hint"] = (
             "No ranking telemetry for this repo. Enable it with "
             "`perf_telemetry_enabled: true` (or JCODEMUNCH_PERF_TELEMETRY=1) and "
@@ -305,4 +419,11 @@ def analyze_regret(
     _rank = {"high": 0, "medium": 1, "low": 2}
     clusters.sort(key=lambda c: (_rank.get(c["severity"], 9), -c["event_count"]))
     base["clusters"] = clusters
+    # Read over the same window the clusters were read over, so the two halves
+    # of the response describe the same slice of the ledger.
+    base["inflation"] = _detect_inflation(
+        _tt.ranking_db_inflation_rows(
+            base_path=storage_path, repo=repo, window_seconds=window, limit=10_000,
+        )
+    )
     return base

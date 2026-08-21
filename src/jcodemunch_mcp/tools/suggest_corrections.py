@@ -271,6 +271,8 @@ def suggest_corrections(
     regret = analyze_regret(
         repo, window_days=window_days, storage_path=storage_path, all_time=all_time,
     ) if repo else {"telemetry_present": False, "clusters": [], "events_analyzed": 0,
+                    "inflation": {"basis": "calls", "measurable": False,
+                                  "reason": "no_repo"},
                     "hint": "Pass a repo to mine its retrieval ledger."}
 
     # Config files (for patch targets + dedupe) and the static audit.
@@ -358,6 +360,11 @@ def suggest_corrections(
         "telemetry_present": regret.get("telemetry_present", False),
         "window_days": regret.get("window_days"),
         "events_analyzed": regret.get("events_analyzed", 0),
+        # v1.108.290. Passed through rather than recomputed, and passed through
+        # even when unmeasurable: a caller who cannot see WHY the ratio is absent
+        # reads its absence as zero inflation. #500's lesson -- a number computed
+        # and then discarded is the same defect as not computing it.
+        "inflation": regret.get("inflation"),
         "corrections": corrections,
         "weight_proposal": weight_proposal,
         "config_files_scanned": [os.path.basename(f["path"]) for f in files],
