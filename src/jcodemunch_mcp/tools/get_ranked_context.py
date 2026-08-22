@@ -6,7 +6,7 @@ from fnmatch import fnmatch
 from typing import Optional
 
 from ..storage import IndexStore, record_savings, estimate_savings, cost_avoided as _cost_avoided
-from ._utils import index_status_to_tool_error, ledger_base_path as _ledger_base_path, resolve_repo
+from ._utils import distinct_file_bytes, index_status_to_tool_error, ledger_base_path as _ledger_base_path, resolve_repo
 from .get_context_bundle import _count_tokens
 from .search_symbols import (
     _tokenize,
@@ -540,9 +540,8 @@ def get_ranked_context(
     negative_evidence = None
 
     # Token savings estimate
-    raw_bytes = sum(
-        index.file_sizes.get(sym.get("file", ""), 0)
-        for _, _, _, sym in scored[:items_considered]
+    raw_bytes = distinct_file_bytes(
+        index.file_sizes, [sym for _, _, _, sym in scored[:items_considered]]
     )
     response_bytes = total_tokens * BYTES_PER_TOKEN
     tokens_saved = estimate_savings(raw_bytes, response_bytes)
@@ -785,10 +784,7 @@ def _get_ranked_context_fusion(
             **_prune_fields(_prune_registry, sym["id"]),
         })
 
-    raw_bytes = sum(
-        index.file_sizes.get(sym.get("file", ""), 0)
-        for _, sym, _, _ in packed
-    )
+    raw_bytes = distinct_file_bytes(index.file_sizes, [sym for _, sym, _, _ in packed])
     response_bytes = total_tokens * BYTES_PER_TOKEN
     tokens_saved = estimate_savings(raw_bytes, response_bytes)
     total_saved = record_savings(tokens_saved, tool_name="get_ranked_context")

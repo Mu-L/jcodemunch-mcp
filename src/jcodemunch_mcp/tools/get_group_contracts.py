@@ -25,6 +25,7 @@ from typing import Optional
 from ..storage import IndexStore, record_savings, estimate_savings, cost_avoided
 from ..storage.generation import connect_readonly
 from .package_registry import build_package_registry, extract_root_package_from_specifier
+from ._utils import symbol_span_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -433,9 +434,8 @@ def get_group_contracts(
     # Token-savings ledger
     total_symbols = sum(len(getattr(idx, "symbols", [])) for idx in indexes.values())
     raw_bytes = sum(
-        int(s.get("byte_length", 0) or 0)
+        symbol_span_bytes(getattr(idx, "symbols", []))
         for idx in indexes.values()
-        for s in getattr(idx, "symbols", [])
     )
     response_bytes = total_tokens * 4
     tokens_saved = estimate_savings(raw_bytes, response_bytes)

@@ -5,8 +5,10 @@ file-level import graph the index already builds:
 
   concentration (Gini)  How EVENLY is the codebase's mass distributed? The Gini
                         coefficient (0 = perfectly even, ->1 = hoarded in a few
-                        files) over per-file symbol count, byte size, fan-in
-                        (importers), and fan-out (imports), plus the top
+                        files) over per-file symbol count, byte mass (the source
+                        each file's symbol spans MERGED, so a class and its
+                        methods are not counted twice), fan-in (importers), and
+                        fan-out (imports), plus the top
                         concentrators. Answers "is complexity/coupling piling up
                         in a handful of files?" — which a hotspot list (the peaks)
                         can't tell you.
@@ -34,7 +36,7 @@ from collections import Counter, deque
 from typing import Optional
 
 from ..storage import IndexStore
-from ._utils import index_status_to_tool_error, resolve_repo
+from ._utils import file_byte_mass, index_status_to_tool_error, resolve_repo
 from .get_dependency_cycles import _find_cycles
 from .get_dependency_graph import _build_adjacency
 
@@ -122,13 +124,17 @@ def get_architecture_metrics(
 
     # Per-file mass from the symbol table.
     sym_count: Counter = Counter()
-    byte_sum: Counter = Counter()
     for sym in index.symbols:
         f = (sym.get("file", "") or "").replace("\\", "/")
         if not f:
             continue
         sym_count[f] += 1
-        byte_sum[f] += int(sym.get("byte_length", 0) or 0)
+
+    # Byte mass merges each file's symbol spans: a class and its methods cover
+    # the same source, so summing byte_length counts those bytes twice and the
+    # inflation tracks how class-heavy a file is. Files whose spans cannot be
+    # trusted are unmeasurable, not zero, and are excluded + disclosed.
+    byte_mass, bytes_unmeasurable = file_byte_mass(index.symbols)
 
     code_files = sorted(sym_count.keys())
     if not code_files:
@@ -151,20 +157,27 @@ def get_architecture_metrics(
     fan_out = {f: len(adj.get(f, [])) for f in code_files}
     fan_in = {f: len(rev.get(f, [])) for f in code_files}
 
+    # bytes_per_file is measured over a possibly smaller file set than the other
+    # three axes; None (never 0.0) when no file has a trustworthy span, because
+    # 0.0 reads as "perfectly even" rather than "could not measure".
+    byte_files = [f for f in code_files if f in byte_mass]
+
     concentration = {
         "gini": {
             "symbols_per_file": _gini([sym_count[f] for f in code_files]),
-            "bytes_per_file": _gini([byte_sum[f] for f in code_files]),
+            "bytes_per_file": _gini([byte_mass[f] for f in byte_files]) if byte_files else None,
             "fan_in": _gini([fan_in[f] for f in code_files]),
             "fan_out": _gini([fan_out[f] for f in code_files]),
         },
         "top_concentrators": {
             "symbols_per_file": _top(sym_count, code_files, top_n),
-            "bytes_per_file": _top(byte_sum, code_files, top_n),
+            "bytes_per_file": _top(byte_mass, byte_files, top_n),
             "fan_in": _top(fan_in, code_files, top_n),
             "fan_out": _top(fan_out, code_files, top_n),
         },
         "files_measured": len(code_files),
+        "bytes_files_measured": len(byte_files),
+        "bytes_unmeasurable_files": len(bytes_unmeasurable),
     }
 
     # ---- Dependency depth (Lakos) + modularity (DSM insight) ----------------

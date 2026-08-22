@@ -2,6 +2,135 @@
 
 ## [Unreleased]
 
+## [1.108.291] - 2026-08-22 - Counting each byte of source once
+
+### Added — the savings meter can say which tool earned it
+
+`_savings.json` gains `by_tool`, a lifetime token count per tool, alongside the
+scalar it has always kept. `get_session_stats` reports it as `lifetime_by_tool`.
+
+The gap it closes is a question we could not answer about our own meter: after
+correcting the baseline above, "how much did that change the total" had no
+answer at any scale, because the ledger stored one number and the wire payload
+carries no breakdown. It is answerable from the next call onward.
+
+⚠⚠ **LOCAL ONLY, and pinned by a test.** The telemetry payload stays exactly
+`{delta, total, anon_id}`; per-tool data is never shared.
+`test_savings_by_tool.py::TestAttributionStaysLocal` reads the sender's own
+source and fails if that dict changes shape or if `by_tool` reaches it —
+verified by putting the leak in and watching it fail, not only by watching it
+pass. Disclosed in `SECURITY.md` beside the meter it sits next to.
+
+⚠⚠ **The history cannot be backfilled and is NOT quietly dropped.** A ledger
+predating this holds savings that no tool can be credited with, so
+`sum(by_tool)` starts below `total_tokens_saved`. The difference is reported as
+`lifetime_unattributed` and `by_tool_since` dates the start. **An unexplained
+shortfall between two numbers in the same payload reads as missing data**, which
+is how a disclosure becomes a bug report.
+
+⚠ Tool names only — no code, paths, queries or repo names — and an absent
+`tool_name` opens no key. Savings still count toward the total when the caller
+is unknown; only the attribution is absent, and it shows up in
+`lifetime_unattributed` rather than being assigned to a guess.
+
+### Fixed — the savings baseline counts each byte of source once
+
+`raw_bytes` is the "what would this have cost to read by hand" half of the
+`tokens_saved` figure these tools report. Two ways of building it over-counted,
+in seven places, so the affected tools credited themselves with more than they
+had saved. Found and corrected on our own tree.
+
+**Shape 1, nested spans.** `sum(byte_length for s in symbols)` counts a class's
+span and then each of its methods again. **25.1% above the merged spans**, and
+**2.85x the real size of the files it describes**. Nobody reads a method twice
+for being inside a class. Five sites: `assemble_task_context`,
+`find_implementations`, `find_similar_symbols`, `winnow_symbols`,
+`get_group_contracts`.
+
+**Shape 2, a file charged per symbol.** `get_ranked_context` looked
+`index.file_sizes` up once per packed symbol, so a file with eight symbols in
+the answer was billed eight times: **12.3x at 40 symbols, 32.2x at 1000**.
+
+⚠⚠ **The second shape was ALSO under-reporting, and saying only the 32x would be
+cherry-picking in the direction that flatters us.** `file_sizes` is populated
+from retained raw content, which covers **244 of 858 source files (28.4%)** on a
+local-folder index — for the other 71.6% that expression contributed **zero**.
+Two errors in opposite directions in one line, so the corrected figure for that
+tool is not simply lower; it is computed on the right basis for the first time,
+and the sign for any single call depends on how much of the pack came from files
+whose size was known.
+
+Two helpers, one definition each, in `tools/_utils`: `symbol_span_bytes()` merges
+spans, `distinct_file_bytes()` charges a file once. ⚠ **Both are deliberately
+CONSERVATIVE** — bytes outside every symbol span (imports, comments, module
+docstrings, data literals) are not counted, and a file whose spans cannot be
+trusted contributes 0 rather than a guess. Understating our own savings is the
+safe way to be wrong about a number we publish.
+
+⚠⚠ **The lifetime total is STAMPED, not restated.** `SAVINGS_BASIS_GENERATION`
+is 2; `_savings.json` records the generation it was first written under, and
+`get_session_stats` reports `total_tokens_saved_basis` beside the figure, so a
+total spanning the change reads `mixed_basis: true` instead of passing as one
+consistent measurement. **A recomputed history would be a guess wearing a
+measurement's clothes.** ⚠ A ledger holding counts but naming no generation IS
+generation 1 — defaulting that to the current one would quietly claim every
+historical count was taken the corrected way, which is the single thing this
+field exists to prevent. A fresh install reads `mixed_basis: false`.
+
+⚠ **The reported list was four sites; the property found seven.** Both shapes are
+ratcheted in `tests/test_savings_baseline.py` over the whole of `src/`.
+⚠⚠ **The first ratchet was written wrong and the non-vacuity pass is what caught
+it**: a depth-limited regex walked straight past
+`sum(int(s.get("byte_length", 0) or 0) for ...)`, two parens deep, and PASSED
+against the reintroduced defect. It scans paren depth now. A third test pins
+that summing distinct file sizes over `source_files` still passes, so the
+ratchet cannot become standing pressure to "fix" the two sites already correct.
+
+⚠ **Scope, because `tokens_saved` values move and readers will ask how far.**
+The affected sites are six analytical tools. The high-volume retrieval path is
+NOT among them and never was: `search_symbols`, `search_text` and
+`get_symbol_source` accumulate their baseline under a `seen_files` guard, and
+`get_file_content` measures one file. Those were already counting each file
+once, which is checkable in the diff.
+
+### Fixed — a class and its methods are not two files' worth of source
+
+`get_architecture_metrics` summed `byte_length` over every symbol in a file to
+get that file's byte mass. A class's span already covers its methods, and each
+method is a symbol of its own, so those bytes were counted twice.
+
+⚠⚠ **The inflation is not uniform, which is why it corrupts the metric rather
+than scaling it.** It tracks how class-heavy a file is. Measured on this repo:
+**33.4% overall** (12,201,425 vs 9,143,088 real bytes) and up to **2.28x on a
+single file** — `test_watcher_serve.py` x2.28, `sqlite_store.py` x1.81,
+`extractor.py` x1.40. A Gini coefficient is a comparison ACROSS files, so an
+error that varies with each file's style is bias, not a constant factor.
+
+⚠ **Two things were wrong, and the second is the one callers act on.**
+`bytes_per_file` moves 0.5682 -> **0.5519**, and the top-concentrator ranking
+changes: `sqlite_store.py` drops from 2nd to 3rd. A ranking is the output of
+this tool that turns into someone's refactoring decision.
+
+Byte mass now merges each file's symbol spans, in ONE definition —
+`tools/_utils.file_byte_mass()` — rather than at the call site that reported it.
+`tests/test_architecture_metrics.py::TestByteMassRatchet` fails on any
+`x[f] += ... byte_length` anywhere in `src/`, so a second spelling cannot
+reappear.
+
+⚠ **Untrustworthy spans are UNKNOWN, never 0.** More than one symbol carrying
+real length at `byte_offset == 0` is the signature of a parser that never set
+offsets (the field defaults to 0, so "unset" and "starts at byte 0" are
+indistinguishable for one symbol but not for two). Those files leave the metric
+and are disclosed as `bytes_unmeasurable_files`; `bytes_files_measured` says how
+many the byte axis actually covered, which can be fewer than `files_measured`.
+With nothing measurable `bytes_per_file` is **`None`** — `0.0` would read as
+"perfectly even", a confident wrong answer.
+
+⚠⚠ **The same mechanism ran in the token-savings baseline, and the sweep for it
+found seven sites where the report named four.** Fixed in the entry above, in
+the same release rather than filed as follow-up work: a metric that credits us
+is the one direction a defect must never be left to sit.
+
 ### Changed — 71.4% of the routing decision does not need making
 
 The emitted harness now emits `pair_availability`, and it reframes the figure the

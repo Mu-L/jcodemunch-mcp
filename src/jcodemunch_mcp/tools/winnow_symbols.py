@@ -34,6 +34,7 @@ from collections import defaultdict
 from typing import Any, Optional
 
 from ..storage import IndexStore, record_savings, estimate_savings, cost_avoided
+from ._utils import symbol_span_bytes
 from ._utils import resolve_repo
 from .pagerank import compute_pagerank
 
@@ -317,7 +318,7 @@ def winnow_symbols(
 
     # Telemetry: estimate tokens saved vs agent doing the work by hand.
     try:
-        raw_bytes = sum((s.get("byte_length") or 0) for s in index.symbols)
+        raw_bytes = symbol_span_bytes(index.symbols)
         response_bytes = sum(
             len(r.get("signature", "")) + len(r.get("summary", "")) + 200
             for r in results
