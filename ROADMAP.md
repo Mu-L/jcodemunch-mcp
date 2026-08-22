@@ -707,6 +707,49 @@ PAIR BALANCE rather than uniformly (uniform sampling is what produced a corpus a
 constant list saturates), and the predicate declared before labels are read, same
 protocol as H1/H2.
 
+⚠⚠ **H3 WAS RUN AS A GROUNDED PILOT ON 2026-08-21 AND IS REFUTED.** 60 cases,
+balanced 30/30, three repos pinned at the SHAs in `benchmarks/tasks.json`,
+predicate registered before any case existed (`benchmarks/route_binary_pilot/`,
+and `git log` shows `predicate.py` preceding `cases.json`). Full vocabulary
+**53.3%** against a 50% floor, Wilson 95% **[40.9, 65.4]**, **p = 0.699**;
+ablating each target's own name parts returns **50.0%, p = 1.000**. Leakage
+existed (12 of 30 class-S tasks matched their own name) and bought nothing.
+
+⚠⚠ **The mechanism inverts the whole family. The predicate answered
+`search_symbols` on 58 of 60 tasks** — 100% of class S and **28 of 30 of class
+T** — because in a real repository the symbol vocabulary absorbs ordinary
+English. fastapi: 6,841 symbols to **4,303 matchable name parts**, and 14 of 16
+common English words tested are among them (`message`, `path`, `error`,
+`status`, `value`, `name`, `body`, `type`, `data`, `request`, ...). A membership
+test fires on nearly any sentence.
+
+| hypothesis | fires on | fails because |
+|---|---|---|
+| H1 identifier shape | ~15% | decides too few cases |
+| H2 imperative verb | ~5% | decides too few cases |
+| H3 vocabulary probe | **~97%** | decides them all the same way |
+
+⚠⚠ **COVERAGE WAS NEVER THE PROPERTY THAT MATTERED, AND H3 WAS ARGUED FOR ON
+EXACTLY THAT GROUND.** 100% coverage was necessary and not sufficient — the same
+shape as conditions 1 and 2 being met without clearing the freeze. The property
+all three lack is **separation**: a predicate must fire DIFFERENTLY on the two
+classes, and firing often is not firing differently. **Any future hypothesis
+should be screened on separation before anyone counts its coverage.**
+
+⚠⚠ **THE CORPUS PROJECT IS CANCELLED, which is what the pilot was for.** The
+protocol registered the asymmetry in advance: a negative is decisive. Building
+cases bound to real repositories with labels assigned by someone who can see them
+would have cost a project and hit the same wall, because the wall is not the
+corpus — it is that vocabulary membership does not separate these classes in any
+repository large enough to matter.
+
+⚠ **Not ruled out, and it must NOT be run on these 60 cases:** a probe keyed on
+retrieval OUTCOME rather than vocabulary membership — does `search_symbols`
+actually outrank `search_text` for this query against this index? That compares
+two scores instead of testing set membership, and index size does not trivially
+defeat it. **That is H4; this corpus is spent, and reusing it would be a fitting
+pass wearing an experiment's clothes.**
+
 ⚠⚠ **H3 IS NOT RUNNABLE ON THIS CORPUS, AND THE BLOCKER KILLS THE WHOLE REMAINING
 HYPOTHESIS CLASS. Established 2026-08-21 before starting it.** The joint H1/H2
 finding says the information is not in the query string and points at a signal
