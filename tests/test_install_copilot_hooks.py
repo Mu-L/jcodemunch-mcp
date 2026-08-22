@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 
 import pytest
 
@@ -58,3 +56,39 @@ class TestInstallCopilotHooks:
         msg = install_copilot_hooks(dry_run=True)
         assert "would" in msg
         assert not (in_tmp_cwd / ".github" / "hooks" / "hooks.json").exists()
+
+    def test_upgrades_stale_bare_name_command_in_place(self, in_tmp_cwd):
+        """Pre-fix installs wrote the bare name, which dies under the agent
+        hook shell's minimal PATH; re-install must upgrade it, not report
+        'already present' while the hook stays dead."""
+        path = in_tmp_cwd / ".github" / "hooks" / "hooks.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({
+            "version": 1,
+            "hooks": {"postToolUse": [{
+                "type": "command",
+                "bash": "jcodemunch-mcp hook-copilot-posttooluse",
+                "powershell": "jcodemunch-mcp hook-copilot-posttooluse",
+            }]},
+        }), encoding="utf-8")
+        msg = install_copilot_hooks(backup=False)
+        assert "updated" in msg
+        rules = json.loads(path.read_text(encoding="utf-8"))["hooks"]["postToolUse"]
+        assert len(rules) == 1
+        from jcodemunch_mcp.cli.init import _hook_invocation
+        assert rules[0]["bash"] == f"{_hook_invocation()} hook-copilot-posttooluse"
+
+    def test_uninstall_removes_absolute_path_install(self, in_tmp_cwd):
+        """Round-trip: uninstall must match the absolute-path command install
+        now writes — the old bare-name prefix check could never match it."""
+        from jcodemunch_mcp.cli.init import uninstall_copilot_hooks
+
+        install_copilot_hooks()
+        msg = uninstall_copilot_hooks(backup=False)
+        assert "remove" in msg
+        path = in_tmp_cwd / ".github" / "hooks" / "hooks.json"
+        if path.exists():
+            rules = json.loads(
+                path.read_text(encoding="utf-8")
+            ).get("hooks", {}).get("postToolUse", [])
+            assert all("hook-copilot" not in r.get("bash", "") for r in rules)

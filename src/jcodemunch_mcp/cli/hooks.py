@@ -1,9 +1,13 @@
 """Claude Code hook handlers for jCodemunch enforcement.
 
-PreToolUse  — two nudges toward jCodemunch before a native file tool runs:
+PreToolUse  — steering toward jCodemunch before a native file tool runs, all
+              gated on the target being inside an INDEXED repo (jcm can serve
+              it there; elsewhere the hints would just error):
               Read on a large code file → get_file_outline / get_symbol_source;
-              Grep inside an indexed repo → search_text / search_symbols /
-              find_references (exhaust the credited jcm routes before a raw scan).
+              Grep → search_text / search_symbols / find_references;
+              Glob → get_file_tree / search_symbols / get_repo_outline;
+              Bash command lines that OPEN with a search command
+              (grep/rg/find/...) → the same jcm routes.
 PostToolUse — auto-reindex after Edit/Write to keep the index fresh.
 
 Both read JSON from stdin and write JSON to stdout per the Claude Code
@@ -11,15 +15,21 @@ hooks specification.
 
 Output channels — the one rule this module turns on: a hook that exits 0 reaches
 the model ONLY via ``hookSpecificOutput.additionalContext``. Both stderr and
-top-level ``systemMessage`` surface to the user instead, so steering text written
+top-level ``systemMessage`` surface to the user instead (on events that honor
+them — PreCompact discards ``systemMessage`` outright), so steering text written
 to either is silently inert. Exit 2 does feed stderr to the model, but it also
 blocks the call, which is not what an advisory nudge wants.
 """
 
+import itertools
 import json
+import logging
 import os
+import re
 import subprocess
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def _note_transcript_root(data) -> None:
@@ -83,7 +93,24 @@ _CODE_EXTENSIONS: set[str] = {
 
 # Minimum file size to trigger jCodemunch suggestion.
 # Override with JCODEMUNCH_HOOK_MIN_SIZE env var.
-_MIN_SIZE_BYTES = int(os.environ.get("JCODEMUNCH_HOOK_MIN_SIZE", "4096"))
+# Garbage parses to the DEFAULT, never to a crash: this module is imported by
+# every hook subcommand, so a ValueError here would kill all hooks at once.
+try:
+    _MIN_SIZE_BYTES = int(os.environ.get("JCODEMUNCH_HOOK_MIN_SIZE", "4096"))
+except ValueError:
+    _MIN_SIZE_BYTES = 4096
+
+
+def _norm_path(path: str) -> str:
+    """Normalise a path for comparison against indexed source roots.
+
+    ``realpath`` is load-bearing: ``index_folder`` records ``source_root`` via
+    ``Path.resolve()`` (symlinks resolved), so an ``abspath``-only comparison
+    never matches a session addressed through a symlink component (macOS
+    ``/tmp`` -> ``/private/tmp``, symlinked homes/worktrees) and the whole
+    steering layer goes silently inert.
+    """
+    return os.path.normcase(os.path.realpath(path))
 
 
 def _enforce_mode() -> str:
@@ -146,17 +173,23 @@ def _emit_additional_context(event_name: str, text: str) -> int:
     return 0
 
 
+def _read_hook_payload() -> "dict | None":
+    """Parse the hook's stdin JSON; None for unparseable or non-dict payloads.
+
+    A hook must never crash on hostile input; callers treat None as allow.
+    """
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def run_pretooluse() -> int:
     """PreToolUse hook: steer Claude toward jCodemunch before native file tools.
 
-    Dispatches on the tool being called:
-      * ``Grep`` whose search root falls inside an indexed repo → the credited
-        jcm routes (``search_text`` / ``search_symbols`` / ``find_references``)
-        serve the same scan, ranked and on the savings meter.
-      * ``Read`` on a code file above the size threshold → ``get_file_outline``
-        + ``get_symbol_source`` instead.
-
-    Strength is set by ``_enforce_mode()`` (``JCODEMUNCH_ENFORCE``): the default
+    Dispatch per tool (Grep/Glob/Bash-search/Read) is described in the module
+    docstring. Strength is set by ``_enforce_mode()`` (``JCODEMUNCH_ENFORCE``): the default
     ``advisory`` tier nudges the model but allows (so Read-before-Edit and the
     Grep fallback keep working); ``strict`` denies the same calls but only when
     an indexed-repo jcm route can serve them — targeted reads (``offset`` /
@@ -165,10 +198,9 @@ def run_pretooluse() -> int:
 
     Returns exit code (always 0 — errors are swallowed to avoid blocking).
     """
-    try:
-        data = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        return 0  # Unparseable → allow
+    data = _read_hook_payload()
+    if data is None:
+        return 0  # Unparseable or hostile payload shape → allow
 
     _note_transcript_root(data)
 
@@ -176,22 +208,40 @@ def run_pretooluse() -> int:
     if mode == "off":
         return 0  # No nudge, no deny.
 
-    tool_input = data.get("tool_input", {}) or {}
+    tool_input = data.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
 
-    # Grep is the tool that most often does a job a jcm route already covers,
-    # entirely off the savings meter — intercept it first. Defensive: the hook
-    # must never crash the agent's Grep, so swallow anything unexpected.
-    if data.get("tool_name", "") == "Grep":
+    tool_name = data.get("tool_name", "")
+
+    # Search interception: Grep/Glob do a job a jcm route already covers,
+    # entirely off the savings meter; Bash (grep/rg/find at the start of the
+    # command line) is the dominant unhooked route for the same job — and
+    # under strict mode, the escape hatch a denied Grep funnels the model
+    # into. Defensive: the hook must never crash the agent's search, so
+    # swallow anything unexpected.
+    if tool_name in ("Grep", "Glob", "Bash"):
         try:
-            if mode == "strict":
-                return _strict_grep(tool_input, data.get("cwd", ""))
-            return _nudge_grep(tool_input, data.get("cwd", ""))
+            cwd = data.get("cwd", "")
+            if tool_name == "Bash":
+                return _handle_bash(tool_input, cwd, mode)
+            deny = mode == "strict"
+            if not deny and not _search_nudge_enabled():
+                return 0  # Guaranteed silent — skip the store load below.
+            if not _path_overlaps(
+                _grep_search_root(tool_input, cwd), _indexed_source_roots()
+            ):
+                return 0  # Nothing indexed / outside every repo → allow.
+            pattern = (tool_input.get("pattern") or "").strip()
+            what = f"this {tool_name}" + (f" for `{pattern}`" if pattern else "")
+            return _emit_search_steering(tool_name, what, deny=deny)
         except Exception:
+            logger.debug("%s interception failed", tool_name, exc_info=True)
             return 0
 
     # --- Read interception ---
-    file_path: str = tool_input.get("file_path", "")
-    if not file_path:
+    file_path = tool_input.get("file_path", "")
+    if not isinstance(file_path, str) or not file_path:
         return 0
 
     # Check extension
@@ -202,8 +252,8 @@ def run_pretooluse() -> int:
     # Check size
     try:
         size = os.path.getsize(file_path)
-    except OSError:
-        return 0  # Can't stat → allow (file may not exist yet)
+    except (OSError, ValueError):
+        return 0  # Can't stat (missing, or hostile path e.g. NUL byte) → allow
 
     if size < _MIN_SIZE_BYTES:
         return 0  # Small file → allow
@@ -212,24 +262,27 @@ def run_pretooluse() -> int:
     if tool_input.get("offset") is not None or tool_input.get("limit") is not None:
         return 0
 
+    # Both tiers only speak when the file lives inside an indexed repo — jcm
+    # can actually serve it there. Outside every indexed repo the recommended
+    # tools would just error, teaching the model that jcm hints are unreliable.
+    try:
+        roots = _indexed_source_roots()
+        if not roots or not _path_overlaps(_norm_path(file_path), roots):
+            return 0
+    except Exception:
+        logger.debug("indexed-roots gate failed", exc_info=True)
+        return 0  # Never block on a store hiccup.
+
     if mode == "strict":
-        # Strict: deny the full-file read, but only when the file lives inside an
-        # indexed repo (jcm can actually serve it). Reads outside every indexed
-        # repo pass — denying them would block work jcm can't help with.
-        try:
-            roots = _indexed_source_roots()
-            norm = os.path.normcase(os.path.abspath(file_path))
-            if roots and _path_overlaps(norm, roots):
-                return _emit_pretooluse_deny(
-                    f"jCodemunch strict mode: this {size:,}-byte code file is in an "
-                    "indexed repo. Use get_file_outline + get_symbol_source instead "
-                    "of a full Read. For an exact-line pre-Edit read, pass "
-                    "offset/limit and it will pass. (JCODEMUNCH_ENFORCE=advisory "
-                    "for warn-only, =off to disable.)"
-                )
-        except Exception:
-            return 0  # Never block on a store hiccup.
-        return 0
+        # Strict: deny the full-file read. Targeted reads (offset/limit) have
+        # already passed above, so the pre-Edit escape hatch is always open.
+        return _emit_pretooluse_deny(
+            f"jCodemunch strict mode: this {size:,}-byte code file is in an "
+            "indexed repo. Use get_file_outline + get_symbol_source instead "
+            "of a full Read. For an exact-line pre-Edit read, pass "
+            "offset/limit and it will pass. (JCODEMUNCH_ENFORCE=advisory "
+            "for warn-only, =off to disable.)"
+        )
 
     # Advisory: full-file exploratory read on a large code file — warn but allow.
     # Hard deny breaks the Edit workflow (Claude Code requires Read before Edit).
@@ -242,11 +295,12 @@ def run_pretooluse() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Grep → jCodemunch nudge (PreToolUse, matcher "Grep")
+# Grep/Glob/Bash-search → jCodemunch nudge (PreToolUse, matcher
+# "Read|Grep|Glob|Bash")
 # ---------------------------------------------------------------------------
 
-def _grep_nudge_enabled() -> bool:
-    """Whether the Grep→jcm nudge is active. Set JCODEMUNCH_HOOK_GREP_NUDGE=0
+def _search_nudge_enabled() -> bool:
+    """Whether the search→jcm nudge is active. Set JCODEMUNCH_HOOK_GREP_NUDGE=0
     (or false/no/off) to silence it."""
     return os.environ.get("JCODEMUNCH_HOOK_GREP_NUDGE", "1").strip().lower() not in {
         "0", "false", "no", "off",
@@ -257,8 +311,8 @@ def _indexed_source_roots() -> list[str]:
     """Normalised absolute source roots of every locally-indexed repo.
 
     Loaded fresh per call (the hook is a short-lived process). Best-effort:
-    any failure yields ``[]`` so the hook silently allows the Grep rather than
-    ever blocking it on a store hiccup.
+    any failure yields ``[]`` so the hook silently allows the search rather
+    than ever blocking it on a store hiccup.
     """
     try:
         from ..storage import IndexStore
@@ -266,14 +320,14 @@ def _indexed_source_roots() -> list[str]:
         for entry in IndexStore().list_repos():
             sr = (entry.get("source_root") or "").strip()
             if sr:
-                roots.append(os.path.normcase(os.path.abspath(sr)))
+                roots.append(_norm_path(sr))
         return roots
     except Exception:
         return []
 
 
 def _grep_search_root(tool_input: dict, cwd: str) -> str:
-    """Resolve the directory a Grep call will actually scan (normalised)."""
+    """Resolve the directory a Grep/Glob call will actually scan (normalised)."""
     path = (tool_input.get("path") or "").strip()
     base = cwd or os.getcwd()
     if not path:
@@ -282,7 +336,7 @@ def _grep_search_root(tool_input: dict, cwd: str) -> str:
         root = path
     else:
         root = os.path.join(base, path)
-    return os.path.normcase(os.path.abspath(root))
+    return _norm_path(root)
 
 
 def _path_overlaps(root: str, source_roots: list[str]) -> bool:
@@ -297,46 +351,154 @@ def _path_overlaps(root: str, source_roots: list[str]) -> bool:
     return False
 
 
-def _nudge_grep(tool_input: dict, cwd: str) -> int:
-    """Grep PreToolUse branch: when the search targets an indexed repo, steer
-    the agent to the credited jcm retrieval routes first. Allows the Grep
-    regardless (exit 0, no permissionDecision) — this is a nudge, not a block."""
-    if not _grep_nudge_enabled():
-        return 0
-    roots = _indexed_source_roots()
-    if not roots:
-        return 0  # Nothing indexed → jcm can't help here, stay silent.
-    if not _path_overlaps(_grep_search_root(tool_input, cwd), roots):
-        return 0  # Grep is outside every indexed repo → allow silently.
-
-    pattern = (tool_input.get("pattern") or "").strip()
-    for_pat = f" for `{pattern}`" if pattern else ""
-    return _emit_additional_context(
-        "PreToolUse",
-        f"jCodemunch: this Grep{for_pat} targets an indexed repo. Exhaust the jcm "
-        "routes first, since they're tighter and credited (raw Grep is neither):\n"
+# jcm alternative-route text per intercepted search tool.
+_SEARCH_ROUTES = {
+    "Grep": (
         "  - search_text     : same regex/substring scan, ranked + winnowed\n"
         "  - search_symbols  : when hunting a definition (function/class/const/type)\n"
-        "  - find_references / find_importers : 'where is X used / who imports this'\n"
-        "Fall back to Grep only once those come up empty.",
+        "  - find_references / find_importers : 'where is X used / who imports this'"
+    ),
+    "Glob": (
+        "  - get_file_tree   : ranked, token-budgeted file listing\n"
+        "  - search_symbols  : when the filename hunt is really a symbol hunt\n"
+        "  - get_repo_outline: structure overview without a directory walk"
+    ),
+}
+# Bash covers the same searches as Grep, plus find-style file discovery.
+_SEARCH_ROUTES["Bash"] = (
+    _SEARCH_ROUTES["Grep"]
+    + "\n  - get_file_tree   : instead of `find` for file discovery"
+)
+
+
+def _emit_search_steering(tool_name: str, what: str, *, deny: bool) -> int:
+    """Emit the nudge or deny for an already-gated search interception.
+
+    Emit-only by design: each caller owns its own gate (nudge switch, store
+    load, indexed-root overlap), because the Bash caller needs the loaded
+    roots for its token scan and a gate here would either re-check what the
+    caller proved or force a second store load.
+    """
+    routes = _SEARCH_ROUTES[tool_name]
+    if deny:
+        return _emit_pretooluse_deny(
+            f"jCodemunch strict mode: {what} targets an indexed repo. Use the jcm "
+            f"routes instead:\n{routes}\n"
+            "(JCODEMUNCH_ENFORCE=advisory for warn-only, =off to disable.)"
+        )
+    return _emit_additional_context(
+        "PreToolUse",
+        f"jCodemunch: {what} targets an indexed repo. Exhaust the jcm "
+        "routes first, since they're tighter and credited (a raw scan is neither):\n"
+        f"{routes}\n"
+        f"Fall back to {tool_name} only once those come up empty.",
     )
 
 
-def _strict_grep(tool_input: dict, cwd: str) -> int:
-    """Strict-mode Grep branch: **deny** a Grep that targets an indexed repo so
-    the agent uses the credited jcm routes. A Grep outside every indexed repo
-    (jcm can't serve it) is allowed silently."""
+# Search commands intercepted at the START of a Bash command line (a grep
+# after a pipe filters the previous command's output, which jcm cannot serve),
+# mapped to whether strict mode may DENY them. Only pure searches are
+# deniable: `find ... -delete` / `-exec` open with the same word, and a deny
+# steering to search routes cannot do the deletion.
+_BASH_SEARCH_COMMANDS = {
+    "grep": True, "egrep": True, "fgrep": True,
+    "rg": True, "ag": True, "ack": True,
+    "find": False,
+}
+_BASH_SEARCH_RE = re.compile(
+    r"^\s*(?:command\s+)?(" + "|".join(_BASH_SEARCH_COMMANDS) + r")\b"
+)
+
+# Absolute or ~-anchored path tokens inside a command line.
+_BASH_PATH_TOKEN_RE = re.compile(r"(?:^|[\s=])((?:/|~/)[^\s;|&)>\"']+)")
+
+
+def _bash_targets_outside_roots(command: str, roots: "list[str]") -> bool:
+    """True when the command names an absolute/home path outside every indexed
+    root — a search jcm cannot serve, so a strict deny would block real work
+    while falsely claiming the search targets an indexed repo."""
+    for tok in _BASH_PATH_TOKEN_RE.findall(command):
+        if not _path_overlaps(_norm_path(os.path.expanduser(tok)), roots):
+            return True
+    return False
+
+
+def _handle_bash(tool_input: dict, cwd: str, mode: str) -> int:
+    """Bash PreToolUse branch: intercept command lines that OPEN with a local
+    search command (grep/rg/find/...) scanning an indexed repo — the dominant
+    route by which the model does exactly the job the jcm routes cover, and
+    the escape hatch a strict-denied Grep would otherwise funnel it into.
+
+    Any other Bash command (builds, git, pipelines that merely filter output
+    through grep) passes silently. Strict mode denies only the pure-search
+    commands, and only when the command names no path outside every indexed
+    root; everything else it can only nudge, because the hook cannot judge an
+    arbitrary command line safely enough to block it.
+    """
+    command = tool_input.get("command", "")
+    if not isinstance(command, str):
+        return 0
+    m = _BASH_SEARCH_RE.match(command)
+    if not m:
+        return 0
+    cmd_word = m.group(1)
+    deny = mode == "strict" and _BASH_SEARCH_COMMANDS[cmd_word]
+    if not deny and not _search_nudge_enabled():
+        return 0  # Guaranteed silent — skip the store load below.
     roots = _indexed_source_roots()
-    if not roots or not _path_overlaps(_grep_search_root(tool_input, cwd), roots):
-        return 0  # Nothing indexed / outside every repo → allow.
-    pattern = (tool_input.get("pattern") or "").strip()
-    for_pat = f" for `{pattern}`" if pattern else ""
-    return _emit_pretooluse_deny(
-        f"jCodemunch strict mode: this Grep{for_pat} targets an indexed repo. Use "
-        "search_text (same scan, ranked + credited), search_symbols (definitions), "
-        "or find_references / find_importers ('where is X used / who imports this') "
-        "instead. (JCODEMUNCH_ENFORCE=advisory for warn-only, =off to disable.)"
-    )
+    # Overlap is judged on cwd only — parsing arbitrary shell for target
+    # paths is not worth it; relative-path searches from the repo root are
+    # the dominant pattern.
+    root = _norm_path(cwd or os.getcwd())
+    if not _path_overlaps(root, roots):
+        return 0  # Outside every indexed repo — allow silently.
+    if _bash_targets_outside_roots(command, roots):
+        return 0  # Search names a path jcm cannot serve — stay silent.
+    return _emit_search_steering("Bash", f"this `{cmd_word}` command", deny=deny)
+
+
+def _self_invocation() -> list[str]:
+    """Argv prefix that re-invokes THIS jcodemunch-mcp install.
+
+    The hook process inherits Claude Code's minimal hook-shell PATH — the very
+    reason ``init``'s ``_hook_invocation`` writes an absolute path into
+    settings.json — so a bare-name child spawn dies silently on exactly the
+    installs (pipx, pip --user, framework Python) that needed the absolute
+    path. Prefer the path this process was launched with; fall back to
+    ``python -m jcodemunch_mcp`` which needs no PATH lookup at all.
+    """
+    argv0 = sys.argv[0] or ""
+    base = os.path.basename(argv0).lower()
+    # isabs is load-bearing: a RELATIVE argv0 would be re-resolved against the
+    # hook's cwd — the checked-out (untrusted) repo — where a file named
+    # jcodemunch-mcp must never become the thing we execute. init writes
+    # absolute paths, so absolute is the only legitimate shape.
+    if base.startswith("jcodemunch-mcp") and os.path.isabs(argv0) and os.path.exists(argv0):
+        return [argv0]
+    return [sys.executable, "-m", "jcodemunch_mcp"]
+
+
+def _spawn_index_file(file_path: str) -> None:
+    """Fire-and-forget `index-file` spawn shared by both PostToolUse handlers.
+
+    One owner for the spawn kwargs, the Windows console flag, and the except
+    tuple (ValueError covers hostile NUL-byte paths) — a hardening applied to
+    one handler must not miss the other.
+    """
+    try:
+        kwargs: dict = dict(
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # On Windows, CREATE_NO_WINDOW prevents a console flash
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+        subprocess.Popen(
+            _self_invocation() + ["index-file", file_path],
+            **kwargs,
+        )
+    except (OSError, ValueError):
+        pass  # executable unavailable / hostile path → skip silently
 
 
 def run_posttooluse() -> int:
@@ -350,15 +512,17 @@ def run_posttooluse() -> int:
 
     Returns exit code (always 0).
     """
-    try:
-        data = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+    data = _read_hook_payload()
+    if data is None:
         return 0
 
     _note_transcript_root(data)
 
-    file_path: str = data.get("tool_input", {}).get("file_path", "")
-    if not file_path:
+    tool_input = data.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
+    file_path = tool_input.get("file_path", "")
+    if not isinstance(file_path, str) or not file_path:
         return 0
 
     # Only re-index code files
@@ -367,21 +531,7 @@ def run_posttooluse() -> int:
         return 0
 
     # Fire-and-forget: spawn index-file in background
-    try:
-        kwargs: dict = dict(
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        # On Windows, CREATE_NO_WINDOW prevents a console flash
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-        subprocess.Popen(
-            ["jcodemunch-mcp", "index-file", file_path],
-            **kwargs,
-        )
-    except (OSError, FileNotFoundError):
-        pass  # jcodemunch-mcp not in PATH → skip silently
-
+    _spawn_index_file(file_path)
     return 0
 
 
@@ -411,9 +561,8 @@ def run_copilot_posttooluse() -> int:
     Copilot ignores postToolUse stdout/exit code, so a failing reindex
     must never disrupt the agent flow.
     """
-    try:
-        data = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+    data = _read_hook_payload()
+    if data is None:
         return 0
 
     tool_args_raw = data.get("toolArgs", "")
@@ -422,6 +571,8 @@ def run_copilot_posttooluse() -> int:
             tool_args = json.loads(tool_args_raw) if tool_args_raw else {}
         except (json.JSONDecodeError, ValueError):
             return 0
+        if not isinstance(tool_args, dict):
+            return 0  # toolArgs decoded to a non-dict (list/str/number)
     elif isinstance(tool_args_raw, dict):
         tool_args = tool_args_raw
     else:
@@ -440,35 +591,21 @@ def run_copilot_posttooluse() -> int:
     if ext.lower() not in _CODE_EXTENSIONS:
         return 0
 
-    try:
-        kwargs: dict = dict(
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-        subprocess.Popen(
-            ["jcodemunch-mcp", "index-file", file_path],
-            **kwargs,
-        )
-    except (OSError, FileNotFoundError):
-        pass
-
+    _spawn_index_file(file_path)
     return 0
 
 
-def _build_session_snapshot() -> "tuple[str, bool]":
-    """Render the session snapshot, returning ``(text, used_fallback)``.
+def _build_session_snapshot() -> str:
+    """Render the session snapshot; "" when there is nothing worth injecting.
 
-    Shared by ``run_precompact`` (which reports it to the user before compaction)
-    and ``run_sessionstart`` (which injects it into the model afterwards), so the
-    two can never drift into describing the same session differently.
+    Consumed by ``run_sessionstart``, which injects it into the model after a
+    compact/resume/fork (``run_precompact`` no longer emits it — PreCompact has
+    no exit-0 output channel).
 
     The hook runs as a SEPARATE process from the MCP server, so the in-process
     SessionJournal is empty (#334). Read the live journal the server persists
     incrementally first; fall back to the in-process journal (covers embedded
-    invocations); finally emit an explicit "no live session" message rather than
-    a misleading zero-state snapshot.
+    invocations). Never renders a zero-state snapshot as if it were data.
     """
     snapshot_text = ""
     live_context = None
@@ -492,8 +629,9 @@ def _build_session_snapshot() -> "tuple[str, bool]":
             snapshot_text = ""
 
     if not snapshot_text:
-        # Honest fallback — never emit a healthy-looking zero-state snapshot.
-        return _precompact_no_journal_message(), True
+        # No journal → nothing worth injecting. (The old user-facing fallback
+        # text died with PreCompact's discarded output channel.)
+        return ""
 
     # Enrich with structural landmarks (PageRank top-N) and recently-changed
     # symbols. Seed from the live journal context when we have one so landmarks
@@ -505,27 +643,24 @@ def _build_session_snapshot() -> "tuple[str, bool]":
     except Exception:
         pass  # Landmark enrichment must not block compaction
 
-    return snapshot_text, False
+    return snapshot_text
 
 
 def run_precompact() -> int:
-    """PreCompact hook: report the snapshot to the user before compaction.
+    """PreCompact hook: register the transcript root before compaction.
 
-    PreCompact has no additionalContext channel, so this cannot reach the model;
-    ``run_sessionstart`` restores it there afterwards.
+    PreCompact has NO exit-0 output channel at all: it has no
+    ``additionalContext``, and Claude Code documents that it discards a
+    PreCompact hook's ``systemMessage`` (this hook used to emit the session
+    snapshot there — into a field nobody ever received). The snapshot reaches
+    the model via ``run_sessionstart`` on ``source=compact`` instead, which is
+    the half that matters.
 
     Returns exit code (always 0 — errors are swallowed to avoid blocking).
     """
-    try:
-        _note_transcript_root(json.load(sys.stdin))  # Also validates stdin
-    except (json.JSONDecodeError, ValueError):
-        return 0
-
-    snapshot_text, _ = _build_session_snapshot()
-    result = {
-        "systemMessage": snapshot_text,
-    }
-    json.dump(result, sys.stdout)
+    data = _read_hook_payload()
+    if data is not None:
+        _note_transcript_root(data)
     return 0
 
 
@@ -538,9 +673,8 @@ def run_sessionstart() -> int:
 
     Returns exit code (always 0 — errors are swallowed to avoid blocking).
     """
-    try:
-        data = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+    data = _read_hook_payload()
+    if data is None:
         return 0
 
     # Earliest hook to fire on a resumed session, so this is the earliest point
@@ -549,17 +683,18 @@ def run_sessionstart() -> int:
     # the root is a property of the session, not of whether we inject anything.
     _note_transcript_root(data)
 
-    source = (data.get("source") or "").strip().lower()
+    source = data.get("source")
+    source = source.strip().lower() if isinstance(source, str) else ""
     if source not in {"compact", "resume", "fork"}:
         return 0  # Fresh session — no prior state worth restoring.
 
     try:
-        snapshot_text, used_fallback = _build_session_snapshot()
+        snapshot_text = _build_session_snapshot()
     except Exception:
         return 0  # Never block session startup.
 
-    if used_fallback or not snapshot_text.strip():
-        return 0  # Do not inject the user-facing no-journal fallback.
+    if not snapshot_text.strip():
+        return 0  # Nothing worth injecting.
 
     label = {
         "compact": "restored after compaction",
@@ -572,27 +707,45 @@ def run_sessionstart() -> int:
     )
 
 
-def _precompact_no_journal_message() -> str:
-    """Explicit fallback when no live jCodeMunch session journal is readable.
-
-    The PreCompact hook runs in a separate process from the MCP server (#334);
-    when the server has not persisted a live journal this session, say so plainly
-    instead of emitting a `Files explored: 0` snapshot that looks successful.
-    """
-    return (
-        "## Session Snapshot (jCodemunch)\n"
-        "No live jCodeMunch session journal was available to this PreCompact hook "
-        "process. The hook runs separately from the MCP server, so it could not "
-        "read in-flight session state. If jCodeMunch tools were used this session, "
-        "their snapshot is unavailable here; otherwise no code exploration was "
-        "recorded. (Set JCODEMUNCH_LIVE_JOURNAL=0 only if you intend to disable "
-        "the live journal.)"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Landmark enrichment helpers (Gap 4A — Structural Landmarks)
 # ---------------------------------------------------------------------------
+
+def _repo_owner_name(entry: dict) -> "tuple[str, str]":
+    """(owner, name) from an ``IndexStore.list_repos()`` entry, or ("", "").
+
+    The real store keys entries ``{"repo": "owner/name", ...}`` — there is no
+    top-level ``owner``/``name``. Three hook loops read those absent keys for
+    months and silently skipped every repo (briefing, landmarks, task
+    diagnostics all dead); the only producer of the owner/name shape was a
+    wrong test mock, so no fallback for it — ``repo`` is the one authority.
+    """
+    repo = entry.get("repo") or ""
+    if isinstance(repo, str) and "/" in repo:
+        owner, name = repo.split("/", 1)
+        if owner and name:
+            return owner, name
+    return "", ""
+
+
+def _iter_loaded_repos(store, repos):
+    """Yield ``(repo_id, idx)`` for each loadable entry of ``list_repos()``.
+
+    Membership and scoping guards stay with each caller — the landmark,
+    taskcomplete and subagent loops genuinely differ there.
+    """
+    for entry in repos:
+        owner, name = _repo_owner_name(entry)
+        if not owner or not name:
+            continue
+        try:
+            idx = store.load_index(owner, name)
+        except Exception:
+            continue
+        if not idx:
+            continue
+        yield f"{owner}/{name}", idx
+
 
 def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> str:
     """Build a compact landmarks + recently-changed section for PreCompact.
@@ -606,9 +759,6 @@ def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> s
     journal. Returns a markdown string to append to the snapshot, or "" if no
     data.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-
     try:
         from ..storage import IndexStore
         from ..tools.pagerank import compute_pagerank
@@ -634,20 +784,11 @@ def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> s
     except Exception:
         return ""
 
-    for entry in repos:
-        owner = entry.get("owner", "")
-        name = entry.get("name", "")
-        if not owner or not name:
-            continue
-        repo_id = f"{owner}/{name}"
+    for repo_id, idx in _iter_loaded_repos(store, repos):
         if repo_id in repo_indices:
             continue
-        try:
-            idx = store.load_index(owner, name)
-            if idx and idx.source_files:
-                repo_indices[repo_id] = idx
-        except Exception:
-            continue
+        if idx.source_files:
+            repo_indices[repo_id] = idx
 
     if not repo_indices:
         return ""
@@ -743,19 +884,40 @@ def run_taskcomplete() -> int:
 
     Returns exit code (always 0 — errors are swallowed to avoid blocking).
     """
-    try:
-        _note_transcript_root(json.load(sys.stdin))  # Also validates stdin
-    except (json.JSONDecodeError, ValueError):
+    data = _read_hook_payload()
+    if data is None:
         return 0
+    _note_transcript_root(data)
 
+    # The hook runs in a SEPARATE process from the MCP server, so the
+    # in-process journal is empty here (#334 — the same defect run_precompact
+    # was fixed for; this handler shipped without the bridge and its
+    # diagnostics never fired in any real deployment). Read the persisted live
+    # journal first; fall back to the in-process journal for embedded
+    # invocations.
+    context: dict = {}
     try:
-        from ..tools.session_journal import get_journal
-        journal = get_journal()
-        context = journal.get_context(max_files=50, max_queries=0, max_edits=50)
+        from ..tools.session_state import load_live_journal
+        # Freshness bound: a stale _session_live.json from a dead prior
+        # session must not present days-old edits as this task's work.
+        live = load_live_journal(max_age_minutes=240)
+        if live and (edits := live.get("files_edited")):
+            context = {"files_edited": edits}
     except Exception:
-        return 0
+        logger.debug("live journal read failed", exc_info=True)
+    if not context:
+        try:
+            from ..tools.session_journal import get_journal
+            journal = get_journal()
+            context = journal.get_context(max_files=50, max_queries=0, max_edits=50)
+        except Exception:
+            logger.debug("in-process journal read failed", exc_info=True)
+            return 0
 
-    edited_files = [e["file"] for e in context.get("files_edited", [])]
+    edited_files = [
+        e["file"] for e in context.get("files_edited", [])
+        if isinstance(e, dict) and e.get("file")  # disk JSON — shape not trusted
+    ]
     if not edited_files:
         return 0  # Nothing modified — nothing to diagnose
 
@@ -769,23 +931,14 @@ def run_taskcomplete() -> int:
 
     diagnostics: list[dict] = []
 
-    for entry in repos:
-        owner = entry.get("owner", "")
-        name = entry.get("name", "")
-        if not owner or not name:
-            continue
-        repo_id = f"{owner}/{name}"
-
-        try:
-            idx = store.load_index(owner, name)
-        except Exception:
-            continue
-        if not idx or not idx.source_files:
+    for repo_id, idx in _iter_loaded_repos(store, repos):
+        if not idx.source_files:
             continue
 
         # Scope: only files in this repo that were edited
         repo_files = set(idx.source_files)
         session_files = [f for f in edited_files if f in repo_files]
+        session_file_set = set(session_files)
         if not session_files:
             continue
 
@@ -798,7 +951,7 @@ def run_taskcomplete() -> int:
             if dead_result and not dead_result.get("error"):
                 dead_in_session = [
                     s for s in dead_result.get("dead_symbols", [])
-                    if s.get("file") in set(session_files)
+                    if s.get("file") in session_file_set
                 ]
                 if dead_in_session:
                     diag["dead_symbols"] = dead_in_session[:10]
@@ -808,40 +961,39 @@ def run_taskcomplete() -> int:
         # 2. Untested symbols in edited files
         try:
             from ..tools.get_untested_symbols import get_untested_symbols
-            for sf in session_files[:5]:  # Limit to avoid slow scans
-                # Convert file path to a glob pattern
-                pattern = sf.replace("\\", "/")
-                untested = get_untested_symbols(repo_id, file_pattern=pattern, max_results=5)
-                if untested and not untested.get("error"):
-                    syms = untested.get("untested_symbols", [])
-                    if syms:
-                        diag.setdefault("untested_symbols", []).extend(syms[:5])
+            # One corpus-wide reachability build, filtered here — a per-file
+            # file_pattern would narrow only the REPORT, not the analysis.
+            untested = get_untested_symbols(repo_id, max_results=100)
+            if untested and not untested.get("error"):
+                in_session = [
+                    u for u in untested.get("untested_symbols", [])
+                    if u.get("file") in session_file_set
+                ]
+                if in_session:
+                    diag["untested_symbols"] = in_session[:25]
         except Exception:
             pass
 
         # 3. Dangling references — check symbols that were in edited files
         try:
             from ..tools.check_references import check_references
-            edited_syms = [
-                sym["name"] for sym in idx.symbols
-                if sym.get("file") in set(session_files)
-            ][:10]
+            edited_syms = list(itertools.islice(
+                (sym["name"] for sym in idx.symbols
+                 if sym.get("file") in session_file_set),
+                10,
+            ))
             if edited_syms:
-                for sym_name in edited_syms:
-                    ref_result = check_references(repo_id, identifier=sym_name, max_content_results=3)
-                    if ref_result and not ref_result.get("error"):
-                        # `total_references` is a key check_references has never
-                        # returned, in either singular or batch mode (#406,
-                        # @rknighton) — so `.get(..., 0) == 0` was ALWAYS true
-                        # and this diagnostic labelled every symbol it inspected
-                        # as unreferenced, then rendered the first five into the
-                        # agent-facing message. Same defect class as #338: a
-                        # caller reading a shape the callee does not produce.
-                        # That sweep (7d0e996) moved check_edit_safe /
-                        # check_delete_safe onto the batch form and did not
-                        # reach this file.
-                        if not ref_result.get("is_referenced"):
-                            diag.setdefault("unreferenced_symbols", []).append(sym_name)
+                # Batch mode: one resolve/load for all symbols instead of
+                # one per symbol (the #406 sweep's form; see 7d0e996).
+                ref_result = check_references(
+                    repo_id, identifiers=edited_syms, max_content_results=3
+                )
+                if ref_result and not ref_result.get("error"):
+                    for ref in ref_result.get("results", []):
+                        if not ref.get("is_referenced"):
+                            diag.setdefault("unreferenced_symbols", []).append(
+                                ref.get("identifier")
+                            )
         except Exception:
             pass
 
@@ -888,10 +1040,10 @@ def run_subagentstart() -> int:
 
     Returns exit code (always 0).
     """
-    try:
-        _note_transcript_root(json.load(sys.stdin))
-    except (json.JSONDecodeError, ValueError):
+    data = _read_hook_payload()
+    if data is None:
         return 0
+    _note_transcript_root(data)
 
     try:
         from ..storage import IndexStore
@@ -903,22 +1055,27 @@ def run_subagentstart() -> int:
     if not repos:
         return 0
 
+    # Scope to the repo(s) containing the subagent's cwd when it names one:
+    # hydrating + PageRanking EVERY indexed repo per spawn is minutes-scale on
+    # big multi-repo boxes, and a briefing about unrelated repos is noise.
+    # No cwd (or no overlap) keeps the brief-everything fallback.
+    cwd = data.get("cwd", "")
+    if isinstance(cwd, str) and cwd:
+        try:
+            norm_cwd = _norm_path(cwd)
+            scoped = [
+                e for e in repos
+                if (sr := (e.get("source_root") or "").strip())
+                and _path_overlaps(norm_cwd, [_norm_path(sr)])
+            ]
+            if scoped:
+                repos = scoped
+        except Exception:
+            logger.debug("cwd scoping failed", exc_info=True)
+
     parts = ["## jCodemunch Repo Briefing"]
 
-    for entry in repos:
-        owner = entry.get("owner", "")
-        name = entry.get("name", "")
-        if not owner or not name:
-            continue
-        repo_id = f"{owner}/{name}"
-
-        try:
-            idx = store.load_index(owner, name)
-        except Exception:
-            continue
-        if not idx:
-            continue
-
+    for repo_id, idx in _iter_loaded_repos(store, repos):
         # Stats
         n_files = len(idx.source_files)
         n_symbols = len(idx.symbols)
@@ -956,23 +1113,65 @@ def run_subagentstart() -> int:
             except Exception:
                 pass
 
-    # Tool catalog (compact)
-    parts.append("\n### Available jCodemunch Tools")
-    parts.append(
-        "search_symbols, get_symbol_source, get_context_bundle, get_file_content, "
-        "search_text, get_ranked_context, find_importers, find_references, "
-        "check_references, get_dependency_graph, get_class_hierarchy, "
-        "get_call_hierarchy, get_blast_radius, get_impact_preview, "
-        "get_changed_symbols, find_dead_code, get_untested_symbols, "
-        "get_symbol_complexity, get_churn_rate, get_hotspots, get_repo_health, "
-        "get_coupling_metrics, get_extraction_candidates, check_rename_safe, "
-        "plan_refactoring, "
-        "get_file_outline, get_file_tree, get_repo_outline, index_folder, "
-        "index_repo, embed_repo, plan_turn, suggest_queries, "
-        "get_session_context, get_session_snapshot, get_session_stats, "
-        "get_cross_repo_map, get_layer_violations, audit_agent_config, "
-        "get_dead_code_v2, search_columns"
-    )
-    parts.append("\nUse `plan_turn` to get recommended approach for your task.")
+    # Tool catalog (compact). Must match the surface the subagent's MCP client
+    # actually advertises: under the counter front door the raw catalog names
+    # are NOT callable, and briefing them trains the model to distrust jcm.
+    if _tool_surface() == "counter":
+        parts.append("\n### Available jCodemunch Tools (Counter front door)")
+        parts.append(
+            "This server exposes three entry points: `menu` (search the tool "
+            "catalog for the right action), `order` (execute a catalog action "
+            "by name), and `route` (classify a task to a recommended action). "
+            "Start with `menu` or `route`, then `order` the action it names."
+        )
+    else:
+        parts.append("\n### Available jCodemunch Tools")
+        parts.append(
+            "search_symbols, get_symbol_source, get_context_bundle, get_file_content, "
+            "search_text, get_ranked_context, find_importers, find_references, "
+            "check_references, get_dependency_graph, get_class_hierarchy, "
+            "get_call_hierarchy, get_blast_radius, get_impact_preview, "
+            "get_changed_symbols, find_dead_code, get_untested_symbols, "
+            "get_symbol_complexity, get_churn_rate, get_hotspots, get_repo_health, "
+            "get_coupling_metrics, get_extraction_candidates, check_rename_safe, "
+            "plan_refactoring, "
+            "get_file_outline, get_file_tree, get_repo_outline, index_folder, "
+            "index_repo, embed_repo, plan_turn, suggest_queries, "
+            "get_session_context, get_session_snapshot, get_session_stats, "
+            "get_cross_repo_map, get_layer_violations, audit_agent_config, "
+            "get_dead_code_v2, search_columns"
+        )
+        parts.append("\nUse `plan_turn` to get recommended approach for your task.")
 
     return _emit_additional_context("SubagentStart", "\n".join(parts))
+
+
+def _tool_surface() -> str:
+    """Effective ``tool_surface`` as the MCP server would resolve it (env wins,
+    then config). Best-effort: any failure reads as ``full``.
+
+    Duplicates the resolution order of ``server._effective_surface()`` on
+    purpose: importing the server module here would put its full import cost
+    in front of every subagent spawn, and this hook only needs the one key.
+
+    Reads via ``config.get`` — NOT ``load_config()``, which returns None (its
+    job is populating the module global) and, worse, defaults to
+    ``create_missing=True``: a config READ from a hook process must never
+    WRITE a config file into the user's storage dir (Maintenance Practice 8).
+    ``config.get``'s lazy load passes ``create_missing=False`` for exactly
+    that reason, and its env-var fallback layer already honors
+    ``JCODEMUNCH_TOOL_SURFACE``.
+    """
+    # The env pre-check is load-bearing for PRECEDENCE, not just import cost:
+    # config.get's env layer is a FALLBACK (a config-file value would win),
+    # while the server resolves env-wins. Checking env first keeps the two in
+    # agreement — and skips the config import when the env var decides.
+    val = (os.environ.get("JCODEMUNCH_TOOL_SURFACE") or "").strip().lower()
+    if val:
+        return val
+    try:
+        from ..config import get as _config_get
+        return str(_config_get("tool_surface") or "full").strip().lower()
+    except Exception:
+        logger.debug("tool_surface config read failed", exc_info=True)
+        return "full"

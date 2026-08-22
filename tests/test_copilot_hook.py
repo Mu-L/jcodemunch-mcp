@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import sys
 from unittest.mock import patch
 
@@ -37,7 +36,10 @@ class TestCopilotHookExtraction:
             assert run_copilot_posttooluse() == 0
             popen.assert_called_once()
             args = popen.call_args[0][0]
-            assert args == ["jcodemunch-mcp", "index-file", "/tmp/test.py"]
+            # Spawn via _self_invocation, never a bare PATH lookup (the agent
+            # hook shell's minimal PATH is exactly where the bare name died).
+            from jcodemunch_mcp.cli.hooks import _self_invocation
+            assert args == _self_invocation() + ["index-file", "/tmp/test.py"]
 
     def test_extracts_from_dict_toolargs_too(self, stdin_with):
         """toolArgs delivered as a dict directly (defensive)."""

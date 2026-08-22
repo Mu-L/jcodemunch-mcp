@@ -242,9 +242,9 @@ def get_session_state() -> SessionState:
 # ---------------------------------------------------------------------------
 # Live journal bridge (#334)
 #
-# The PreCompact hook runs as a separate process (`jcodemunch-mcp
-# hook-precompact`) from the MCP server, so it reads a fresh, empty in-process
-# SessionJournal and emits a zero-state snapshot. To give the hook the real
+# The hooks (`jcodemunch-mcp hook-sessionstart` / `hook-taskcomplete`) run as
+# separate processes from the MCP server, so they read a fresh, empty in-process
+# SessionJournal and would emit a zero-state snapshot. To give the hook the real
 # session state, the live server process persists a compact journal snapshot to
 # a small, atomically written file the hook can read back. This is independent
 # of `session_resume` (which only fires at clean shutdown) and is keyed by the

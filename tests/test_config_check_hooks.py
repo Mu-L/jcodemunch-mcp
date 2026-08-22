@@ -47,9 +47,13 @@ def _run_config_check(home, env_extra=None):
     ).stdout
 
 
-def _write_settings(home, invocation: str) -> None:
-    """Install every enforcement hook, rewritten to use ``invocation`` as the exe."""
-    hooks = _enforcement_hooks()
+def _write_settings(home, invocation: str, hooks: dict | None = None) -> None:
+    """Install every enforcement hook, rewritten to use ``invocation`` as the exe.
+
+    ``hooks`` lets a test install a pre-mutated hooks dict (e.g. a stale
+    matcher) through the same writer instead of hand-rolling the file.
+    """
+    hooks = hooks if hooks is not None else _enforcement_hooks()
     for rules in hooks.values():
         for rule in rules:
             for h in rule.get("hooks", []):
@@ -121,9 +125,25 @@ def test_matcher_labels_match_the_installer(tmp_path):
     """A displayed matcher that differs from the installed one misleads.
 
     The hand-written map said PreToolUse fired on ``Read``; the installer has
-    written ``Read|Grep`` since the Grep nudge landed.
+    written a wider matcher since the Grep nudge landed. ``_write_settings``
+    installs the current matchers, so the check must echo them back.
     """
     _write_settings(tmp_path, "jcodemunch-mcp")
     out = _run_config_check(tmp_path)
-    assert "PreToolUse(Read|Grep)" in out
+    assert "PreToolUse(Read|Grep|Glob|Bash)" in out
     assert "SessionStart(compact|resume|fork)" in out
+
+
+def test_stale_installed_matcher_is_reported_not_masked(tmp_path):
+    """The check must print the matcher actually INSTALLED and warn on drift.
+
+    It used to print the EXPECTED matcher for any present hook, so a
+    pre-upgrade settings.json carrying matcher "Read" read as healthy while
+    the Grep steering never fired — the diagnostic masked the defect.
+    """
+    hooks = _enforcement_hooks()
+    hooks["PreToolUse"][0]["matcher"] = "Read"  # stale pre-1.108.47 install
+    _write_settings(tmp_path, "jcodemunch-mcp", hooks=hooks)
+    out = _run_config_check(tmp_path)
+    assert "PreToolUse(Read)" in out          # the truth, not the wish
+    assert "matcher is stale" in out          # and an actionable warning

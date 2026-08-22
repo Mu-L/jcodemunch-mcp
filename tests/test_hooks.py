@@ -4,15 +4,13 @@ import io
 import json
 import os
 import sys
-import tempfile
-from pathlib import Path
 from unittest import mock
 
 import pytest
 
 from jcodemunch_mcp.cli.hooks import (
     _CODE_EXTENSIONS,
-    _MIN_SIZE_BYTES,
+    _norm_path,
     run_pretooluse,
     run_posttooluse,
     run_precompact,
@@ -79,6 +77,15 @@ def _additional_context(stdout: str, event: str = "PreToolUse") -> str:
 class TestPreToolUse:
     """Tests for run_pretooluse()."""
 
+    @pytest.fixture
+    def indexed_tmp(self, tmp_path, monkeypatch):
+        """Pretend tmp_path is an indexed repo root."""
+        monkeypatch.setattr(
+            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            lambda: [_norm_path(str(tmp_path))],
+        )
+        return tmp_path
+
     def test_allows_non_code_file(self, tmp_path):
         """Non-code extensions (e.g. .txt, .md) are always allowed."""
         f = tmp_path / "readme.md"
@@ -97,9 +104,9 @@ class TestPreToolUse:
         assert out == ""
         assert err == ""
 
-    def test_warns_large_code_file(self, tmp_path):
-        """Large code files are allowed, with the nudge delivered to the model."""
-        f = tmp_path / "big.py"
+    def test_warns_large_code_file(self, indexed_tmp):
+        """Large code files inside an indexed repo get the nudge, to the model."""
+        f = indexed_tmp / "big.py"
         f.write_text("x = 1\n" * 2000)  # well above 4KB
         rc, out, err = _run_with_stdin(run_pretooluse, _make_hook_input("Read", str(f)))
         assert rc == 0
@@ -107,6 +114,18 @@ class TestPreToolUse:
         assert "get_file_outline" in ctx
         assert "get_symbol_source" in ctx
         assert err == ""  # stderr would never reach the model — must stay unused
+
+    def test_read_nudge_silent_outside_indexed_repos(self, tmp_path, monkeypatch):
+        """No nudge for files jcm cannot serve: recommending get_file_outline
+        on an unindexed file yields an error and teaches the model to distrust
+        the hints."""
+        monkeypatch.setattr(
+            "jcodemunch_mcp.cli.hooks._indexed_source_roots", lambda: []
+        )
+        f = tmp_path / "big.py"
+        f.write_text("x = 1\n" * 2000)
+        rc, out, err = _run_with_stdin(run_pretooluse, _make_hook_input("Read", str(f)))
+        assert (rc, out, err) == (0, "", "")
 
     def test_allows_large_code_file_with_offset(self, tmp_path):
         """Targeted reads (offset set) are allowed silently — likely pre-edit."""
@@ -156,9 +175,9 @@ class TestPreToolUse:
         assert rc == 0
         assert out == ""
 
-    def test_respects_env_override(self, tmp_path):
+    def test_respects_env_override(self, indexed_tmp):
         """JCODEMUNCH_HOOK_MIN_SIZE overrides the threshold."""
-        f = tmp_path / "medium.ts"
+        f = indexed_tmp / "medium.ts"
         f.write_text("const x = 1;\n" * 500)  # ~6.5KB
         size = f.stat().st_size
 
@@ -182,9 +201,9 @@ class TestPreToolUse:
         """Spot-check that major code extensions are in the set."""
         assert ext in _CODE_EXTENSIONS
 
-    def test_warning_includes_file_size(self, tmp_path):
+    def test_warning_includes_file_size(self, indexed_tmp):
         """The nudge includes the file size for context."""
-        f = tmp_path / "large.go"
+        f = indexed_tmp / "large.go"
         content = "package main\n" * 1000
         f.write_text(content)
         size = f.stat().st_size
@@ -442,7 +461,12 @@ class TestPostToolUse:
         assert rc == 0
         mock_popen.assert_called_once()
         call_args = mock_popen.call_args[0][0]
-        assert call_args == ["jcodemunch-mcp", "index-file", str(f)]
+        # The spawn must reuse THIS install's invocation (_self_invocation), not
+        # a bare PATH lookup — the hook shell's minimal PATH is the reason
+        # init writes absolute paths, and a bare name died silently there.
+        from jcodemunch_mcp.cli.hooks import _self_invocation
+        assert call_args == _self_invocation() + ["index-file", str(f)]
+        assert call_args != ["jcodemunch-mcp", "index-file", str(f)]
 
     def test_skips_non_code_file(self, tmp_path):
         """Non-code files don't trigger indexing."""
@@ -529,35 +553,29 @@ class TestPreCompact:
         assert rc == 0
         assert out == ""
     
-    def test_precompact_with_session_data(self, monkeypatch):
-        """Populate journal, run hook, verify JSON output has systemMessage."""
-        from jcodemunch_mcp.tools.session_journal import get_journal
-
-        # Record some session data
-        journal = get_journal()
-        journal.record_read("src/server.py", "get_file_outline")
-        journal.record_search("test_query", 2)
-        journal.record_edit("src/test.py")
-
-        # Mock the get_session_snapshot function to return predictable data
-        def mock_get_session_snapshot(max_files=10, max_searches=5, max_edits=10, include_negative_evidence=True, storage_path=None):
-            return {
-                "snapshot": "## Session Snapshot (jCodemunch)\n**Duration:** 2m | **Files explored:** 1 | **Searches:** 1\n\n### Focus files (most accessed)\n- src/server.py (1 reads, last: get_file_outline)\n\n### Key searches\n- \"test_query\" → 2 results",
-                "structured": {"files_accessed": [], "key_searches": [], "dead_ends": []},
-                "_meta": {"timing_ms": 1.0}
-            }
-
-        monkeypatch.setattr(
-            "jcodemunch_mcp.tools.get_session_snapshot.get_session_snapshot",
-            mock_get_session_snapshot
+    def test_precompact_emits_nothing(self):
+        """PreCompact has NO exit-0 output channel: Claude Code discards its
+        ``systemMessage`` (documented), and there is no additionalContext for
+        this event. The hook used to emit the snapshot into that discarded
+        field; the model-facing restore happens in SessionStart(compact)."""
+        rc, out, err = _run_with_stdin(
+            run_precompact, '{"hook_event_name": "PreCompact"}'
         )
+        assert (rc, out, err) == (0, "", "")
 
-        rc, out, _ = _run_with_stdin(run_precompact, '{"hook_event_name": "PreCompact"}')
-        assert rc == 0
-        assert out != ""
-        result = json.loads(out)
-        assert "systemMessage" in result
-        assert "Session Snapshot" in result["systemMessage"]
+    def test_precompact_still_registers_transcript_root(self, monkeypatch):
+        """The one job PreCompact keeps: learning the transcript root (#421)."""
+        seen: list = []
+        monkeypatch.setattr(
+            "jcodemunch_mcp.cli.hooks._note_transcript_root", seen.append
+        )
+        _run_with_stdin(run_precompact, json.dumps({
+            "hook_event_name": "PreCompact",
+            "transcript_path": "/tmp/p/projects/repo/abc.jsonl",
+        }))
+        assert [d["transcript_path"] for d in seen] == [
+            "/tmp/p/projects/repo/abc.jsonl"
+        ]
 
     def test_precompact_landmark_enrichment_graceful_on_no_repos(self, monkeypatch):
         """Landmark enrichment should not crash if no indexed repos exist."""
@@ -592,7 +610,7 @@ class TestEnforcementHooksInstall:
 
     def test_installs_enforcement_hooks(self, tmp_path):
         """Enforcement hooks are added to a clean settings file."""
-        from jcodemunch_mcp.cli.init import install_enforcement_hooks, _settings_json_path
+        from jcodemunch_mcp.cli.init import install_enforcement_hooks
 
         settings = tmp_path / "settings.json"
         settings.write_text("{}", encoding="utf-8")
@@ -610,7 +628,7 @@ class TestEnforcementHooksInstall:
         pre_matcher = hooks["PreToolUse"][0]["matcher"]
         post_matcher = hooks["PostToolUse"][0]["matcher"]
         precompact_matcher = hooks["PreCompact"][0]["matcher"]
-        assert pre_matcher == "Read|Grep"
+        assert pre_matcher == "Read|Grep|Glob|Bash"
         assert post_matcher == "Edit|Write"
         assert precompact_matcher == ""  # PreCompact hook has empty matcher
 
@@ -766,7 +784,10 @@ class TestSubagentStart:
 
         MockStore = type("MockStore", (), {
             "__init__": lambda self, **kw: None,
-            "list_repos": lambda self: [{"owner": "test", "name": "repo"}],
+            # Real list_repos() shape: entries keyed "repo", NO owner/name keys.
+            # The old mock's {"owner","name"} shape masked months of every repo
+            # being skipped (the real store never produces those keys).
+            "list_repos": lambda self: [{"repo": "test/repo", "source_root": "/tmp/x"}],
             "load_index": lambda self, owner, name: mock_index,
         })
         monkeypatch.setattr("jcodemunch_mcp.storage.IndexStore", MockStore)
