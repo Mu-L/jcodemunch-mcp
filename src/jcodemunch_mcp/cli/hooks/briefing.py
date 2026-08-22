@@ -6,6 +6,7 @@ import os
 from ._common import (
     _emit_additional_context,
     _iter_loaded_repos,
+    _top_symbols_by_pagerank,
     _norm_path,
     _note_transcript_root,
     _path_overlaps,
@@ -75,28 +76,14 @@ def run_subagentstart() -> int:
         parts.append(f"- **Files:** {n_files} | **Symbols:** {n_symbols} | **Languages:** {lang_str}")
 
         # Top central symbols via PageRank
-        if idx.imports and idx.source_files:
-            try:
-                from ...tools.pagerank import compute_pagerank
-                pr_scores, _ = compute_pagerank(
-                    idx.imports, idx.source_files,
-                    alias_map=getattr(idx, "alias_map", None),
-                    psr4_map=getattr(idx, "psr4_map", None),
-                )
-                if pr_scores:
-                    top_files = sorted(pr_scores.items(), key=lambda x: x[1], reverse=True)[:30]
-                    top_file_set = {f for f, _ in top_files}
-                    sym_pr = sorted(
-                        [(sym, pr_scores.get(sym.get("file", ""), 0.0)) for sym in idx.symbols if sym.get("file", "") in top_file_set],
-                        key=lambda x: x[1],
-                        reverse=True,
-                    )[:15]
-                    if sym_pr:
-                        parts.append("- **Key symbols:**")
-                        for sym, _ in sym_pr:
-                            parts.append(f"  - `{sym.get('name', '?')}` ({sym.get('kind', '')}, {sym.get('file', '')}:{sym.get('line', 0)})")
-            except Exception:
-                pass
+        try:
+            sym_pr = _top_symbols_by_pagerank(idx, n_files=30, n_syms=15)
+            if sym_pr:
+                parts.append("- **Key symbols:**")
+                for sym, _ in sym_pr:
+                    parts.append(f"  - `{sym.get('name', '?')}` ({sym.get('kind', '')}, {sym.get('file', '')}:{sym.get('line', 0)})")
+        except Exception:
+            logger.debug("PageRank failed for %s", repo_id, exc_info=True)
 
     # Tool catalog (compact). Must match the surface the subagent's MCP client
     # actually advertises: under the counter front door the raw catalog names

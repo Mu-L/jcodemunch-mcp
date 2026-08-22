@@ -5,15 +5,13 @@ points (server.py dispatch) and the helpers tests exercise directly.
 """
 
 from ._common import (  # noqa: F401
-    _iter_loaded_repos,
+    _CODE_EXTENSIONS,
+    _emit_additional_context,
     _norm_path,
     _note_transcript_root,
-    _read_hook_payload,
     _repo_owner_name,
-    _emit_additional_context,
 )
 from .steering import (  # noqa: F401
-    _CODE_EXTENSIONS,
     _MIN_SIZE_BYTES,
     run_pretooluse,
 )

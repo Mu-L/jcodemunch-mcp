@@ -1,24 +1,15 @@
-"""Claude Code hook handlers for jCodemunch enforcement.
+"""PreToolUse steering toward jCodemunch before a native file tool runs.
 
-PreToolUse  — steering toward jCodemunch before a native file tool runs, all
-              gated on the target being inside an INDEXED repo (jcm can serve
-              it there; elsewhere the hints would just error):
-              Read on a large code file → get_file_outline / get_symbol_source;
-              Grep → search_text / search_symbols / find_references;
-              Glob → get_file_tree / search_symbols / get_repo_outline;
-              Bash command lines that OPEN with a search command
-              (grep/rg/find/...) → the same jcm routes.
-PostToolUse — auto-reindex after Edit/Write to keep the index fresh.
+All interception is gated on the target being inside an INDEXED repo (jcm
+can serve it there; elsewhere the hints would just error):
+    Read on a large code file → get_file_outline / get_symbol_source;
+    Grep → search_text / search_symbols / find_references;
+    Glob → get_file_tree / search_symbols / get_repo_outline;
+    Bash command lines that OPEN with a search command (grep/rg/find/...)
+    → the same jcm routes.
 
-Both read JSON from stdin and write JSON to stdout per the Claude Code
-hooks specification.
-
-Output channels — the one rule this module turns on: a hook that exits 0 reaches
-the model ONLY via ``hookSpecificOutput.additionalContext``. Both stderr and
-top-level ``systemMessage`` surface to the user instead (on events that honor
-them — PreCompact discards ``systemMessage`` outright), so steering text written
-to either is silently inert. Exit 2 does feed stderr to the model, but it also
-blocks the call, which is not what an advisory nudge wants.
+The output-channel rule (exit-0 reaches the model only via
+``additionalContext``) lives on ``_common._emit_additional_context``.
 """
 
 import json
@@ -27,6 +18,7 @@ import os
 import re
 
 from ._common import (
+    _CODE_EXTENSIONS,
     _emit_additional_context,
     _norm_path,
     _note_transcript_root,
@@ -37,44 +29,6 @@ from ._common import (
 logger = logging.getLogger(__name__)
 
 
-_CODE_EXTENSIONS: set[str] = {
-    ".py", ".pyi",
-    ".js", ".jsx", ".mjs", ".cjs",
-    ".ts", ".tsx", ".mts", ".cts",
-    ".go",
-    ".rs",
-    ".java",
-    ".php",
-    ".rb",
-    ".cs", ".cshtml", ".razor",
-    ".cpp", ".c", ".h", ".hpp", ".cc", ".cxx", ".ino", ".pde",
-    ".vhd", ".vhdl", ".vho", ".vhs",
-    ".v", ".vh", ".sv", ".svh",
-    ".swift",
-    ".kt", ".kts",
-    ".scala",
-    ".dart",
-    ".lua", ".luau",
-    ".ex", ".exs",
-    ".erl", ".hrl",
-    ".vue", ".astro", ".svelte",
-    ".sql",
-    ".gd",       # GDScript
-    ".al",       # AL (Business Central)
-    ".gleam",
-    ".nix",
-    ".hcl", ".tf",
-    ".proto",
-    ".graphql", ".gql",
-    ".verse",
-    ".jl",       # Julia
-    ".r", ".R",
-    ".hs",       # Haskell
-    ".f90", ".f95", ".f03", ".f08",  # Fortran
-    ".groovy",
-    ".pl", ".pm",  # Perl
-    ".bash", ".sh", ".zsh",
-}
 
 # Minimum file size to trigger jCodemunch suggestion.
 # Override with JCODEMUNCH_HOOK_MIN_SIZE env var.

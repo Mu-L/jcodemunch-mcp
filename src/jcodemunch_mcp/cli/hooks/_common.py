@@ -1,14 +1,56 @@
 """Shared plumbing for the Claude Code hook handlers.
 
-Helpers used by more than one hook family; each family lives in its own
-module (steering / reindex / snapshot / landmarks / taskcomplete /
-briefing) and the package ``__init__`` re-exports the ``run_*`` entry
-points, so ``server.py`` dispatch is unchanged.
+Helpers used by more than one hook family live here; the package
+``__init__`` owns the family map.
 """
 
 import json
 import os
 import sys
+
+
+# Extensions that benefit from jCodemunch structural navigation.
+# Kept intentionally broad — mirrors languages.py LANGUAGE_REGISTRY;
+# deliberate POLICY, not a drifting copy (differs from the registry
+# on both sides). Shared by the steering and reindex families.
+_CODE_EXTENSIONS: set[str] = {
+    ".py", ".pyi",
+    ".js", ".jsx", ".mjs", ".cjs",
+    ".ts", ".tsx", ".mts", ".cts",
+    ".go",
+    ".rs",
+    ".java",
+    ".php",
+    ".rb",
+    ".cs", ".cshtml", ".razor",
+    ".cpp", ".c", ".h", ".hpp", ".cc", ".cxx", ".ino", ".pde",
+    ".vhd", ".vhdl", ".vho", ".vhs",
+    ".v", ".vh", ".sv", ".svh",
+    ".swift",
+    ".kt", ".kts",
+    ".scala",
+    ".dart",
+    ".lua", ".luau",
+    ".ex", ".exs",
+    ".erl", ".hrl",
+    ".vue", ".astro", ".svelte",
+    ".sql",
+    ".gd",       # GDScript
+    ".al",       # AL (Business Central)
+    ".gleam",
+    ".nix",
+    ".hcl", ".tf",
+    ".proto",
+    ".graphql", ".gql",
+    ".verse",
+    ".jl",       # Julia
+    ".r", ".R",
+    ".hs",       # Haskell
+    ".f90", ".f95", ".f03", ".f08",  # Fortran
+    ".groovy",
+    ".pl", ".pm",  # Perl
+    ".bash", ".sh", ".zsh",
+}
 
 
 def _note_transcript_root(data) -> None:
@@ -43,6 +85,13 @@ def _read_hook_payload() -> "dict | None":
 
 def _emit_additional_context(event_name: str, text: str) -> int:
     """Emit model-facing additionalContext for an exit-0 hook.
+
+    The one rule the hooks turn on: a hook that exits 0 reaches the model
+    ONLY via this channel. Both stderr and top-level ``systemMessage``
+    surface to the user instead (on events that honor them — PreCompact
+    discards ``systemMessage`` outright), so steering text written to either
+    is silently inert. Exit 2 does feed stderr to the model, but it also
+    blocks the call, which is not what an advisory nudge wants.
 
     Not available on every event — PreCompact and TaskCompleted have no such
     channel.
@@ -120,3 +169,31 @@ def _iter_loaded_repos(store, repos):
         if not idx:
             continue
         yield f"{owner}/{name}", idx
+
+
+def _top_symbols_by_pagerank(idx, *, n_files: int, n_syms: int):
+    """``[(symbol, score), ...]`` for the symbols in the top-PageRank files.
+
+    One owner for the compute_pagerank incantation and the file->symbol
+    ranking; formatting stays with each caller. Returns [] when the index
+    has no import graph or PageRank yields nothing.
+    """
+    if not idx.imports or not idx.source_files:
+        return []
+    from ...tools.pagerank import compute_pagerank
+    pr_scores, _ = compute_pagerank(
+        idx.imports, idx.source_files,
+        alias_map=getattr(idx, "alias_map", None),
+        psr4_map=getattr(idx, "psr4_map", None),
+    )
+    if not pr_scores:
+        return []
+    top_files = sorted(pr_scores.items(), key=lambda x: x[1], reverse=True)[:n_files]
+    top_file_set = {f for f, _ in top_files}
+    symbol_pr = [
+        (sym, pr_scores.get(sym.get("file", ""), 0.0))
+        for sym in idx.symbols
+        if sym.get("file", "") in top_file_set
+    ]
+    symbol_pr.sort(key=lambda x: x[1], reverse=True)
+    return symbol_pr[:n_syms]

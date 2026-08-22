@@ -23,7 +23,7 @@ def _build_session_snapshot() -> str:
     snapshot_text = ""
     live_context = None
     try:
-        from jcodemunch_mcp.tools.get_session_snapshot import snapshot_from_live
+        from ...tools.get_session_snapshot import snapshot_from_live
         live = snapshot_from_live()
         if live:
             snapshot_text = live.get("snapshot", "")
@@ -33,7 +33,7 @@ def _build_session_snapshot() -> str:
 
     if not snapshot_text:
         try:
-            from jcodemunch_mcp.tools.get_session_snapshot import get_session_snapshot
+            from ...tools.get_session_snapshot import get_session_snapshot
             snap = get_session_snapshot()
             structured = snap.get("structured", {})
             if structured.get("total_files_explored") or structured.get("total_searches"):
@@ -42,9 +42,7 @@ def _build_session_snapshot() -> str:
             snapshot_text = ""
 
     if not snapshot_text:
-        # No journal → nothing worth injecting. (The old user-facing fallback
-        # text died with PreCompact's discarded output channel.)
-        return ""
+        return ""  # No journal → nothing worth injecting.
 
     # Enrich with structural landmarks (PageRank top-N) and recently-changed
     # symbols. Seed from the live journal context when we have one so landmarks
@@ -71,9 +69,7 @@ def run_precompact() -> int:
 
     Returns exit code (always 0 — errors are swallowed to avoid blocking).
     """
-    data = _read_hook_payload()
-    if data is not None:
-        _note_transcript_root(data)
+    _note_transcript_root(_read_hook_payload())  # no-ops on None by contract
     return 0
 
 

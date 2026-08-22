@@ -5,8 +5,7 @@ import os
 import subprocess
 import sys
 
-from ._common import _note_transcript_root, _read_hook_payload
-from .steering import _CODE_EXTENSIONS
+from ._common import _CODE_EXTENSIONS, _note_transcript_root, _read_hook_payload
 
 
 def _self_invocation() -> list[str]:
