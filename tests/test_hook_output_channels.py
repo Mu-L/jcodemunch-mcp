@@ -86,7 +86,7 @@ class TestReadNudgeReachesModel:
         # the recommended tools would error and erode trust in the hints.
         from jcodemunch_mcp.cli.hooks import _norm_path
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [_norm_path(str(tmp_path))],
         )
 
@@ -113,7 +113,7 @@ class TestGrepNudgeReachesModel:
     @pytest.fixture(autouse=True)
     def _indexed(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
         )
 
@@ -128,7 +128,7 @@ class TestGrepNudgeReachesModel:
     def test_silent_paths_stay_fully_silent(self, tmp_path, monkeypatch):
         """Gating is unchanged: outside an indexed repo, no channel is used."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots", lambda: []
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots", lambda: []
         )
         rc, out, err = _run(run_pretooluse, _grep_input("foo", str(tmp_path)))
         assert (rc, out, err) == (0, "", "")
@@ -140,7 +140,7 @@ class TestStrictModeUnaffected:
     def test_strict_read_still_denies(self, big_py, monkeypatch, tmp_path):
         monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
         )
         rc, out, _ = _run(run_pretooluse, _read_input(str(big_py)))
@@ -196,7 +196,7 @@ class TestSessionStartRestoresSnapshot:
     @pytest.fixture
     def _snapshot(self, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot",
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot",
             lambda: "## Session Snapshot (jCodemunch)\n- src/auth.py (9 reads)",
         )
 
@@ -228,13 +228,13 @@ class TestSessionStartRestoresSnapshot:
     def test_silent_when_no_journal(self, monkeypatch):
         """No journal renders as an empty snapshot — nothing to inject."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot", lambda: ""
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot", lambda: ""
         )
         assert self._start("compact") == (0, "", "")
 
     def test_silent_on_blank_snapshot(self, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot",
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot",
             lambda: "   \n  ",
         )
         assert self._start("compact") == (0, "", "")
@@ -244,7 +244,7 @@ class TestSessionStartRestoresSnapshot:
         def boom():
             raise RuntimeError("journal unreadable")
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot", boom
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot", boom
         )
         assert self._start("compact") == (0, "", "")
 
@@ -259,7 +259,7 @@ class TestSessionStartRestoresSnapshot:
 
         body = "## Session Snapshot (jCodemunch)\n- a.py"
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot", lambda: body
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot", lambda: body
         )
         assert _run(run_precompact, '{"hook_event_name": "PreCompact"}') == (0, "", "")
         _, ss_out, _ = _run(run_sessionstart, json.dumps(
@@ -276,7 +276,7 @@ class TestSessionStartRegistersTranscriptRoot:
     def _seen(self, monkeypatch):
         seen: list = []
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._note_transcript_root", seen.append
+            "jcodemunch_mcp.cli.hooks.snapshot._note_transcript_root", seen.append
         )
         return seen
 

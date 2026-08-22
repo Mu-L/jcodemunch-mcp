@@ -32,7 +32,7 @@ class TestCopilotHookExtraction:
             "toolName": "edit",
             "toolArgs": json.dumps({"file_path": "/tmp/test.py"}),
         })
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_called_once()
             args = popen.call_args[0][0]
@@ -48,7 +48,7 @@ class TestCopilotHookExtraction:
             "toolName": "write",
             "toolArgs": {"path": "/tmp/x.ts"},
         })
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_called_once()
 
@@ -57,19 +57,19 @@ class TestCopilotHookExtraction:
             "toolName": "edit",
             "toolArgs": json.dumps({"file_path": "/tmp/notes.md"}),
         })
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_not_called()
 
     def test_handles_invalid_json_stdin(self, monkeypatch):
         monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_not_called()
 
     def test_handles_empty_toolargs(self, stdin_with):
         stdin_with({"toolName": "edit", "toolArgs": ""})
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_not_called()
 
@@ -80,6 +80,6 @@ class TestCopilotHookExtraction:
                 "toolName": "create_file",
                 "toolArgs": json.dumps({key: "/tmp/probe.go"}),
             })
-            with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+            with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
                 run_copilot_posttooluse()
                 popen.assert_called_once()

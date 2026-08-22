@@ -45,7 +45,7 @@ def _norm(p) -> str:
 def indexed_tmp(tmp_path, monkeypatch):
     """Pretend tmp_path is an indexed repo root."""
     monkeypatch.setattr(
-        "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+        "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
         lambda: [_norm(tmp_path)],
     )
     return tmp_path
@@ -114,7 +114,7 @@ class TestBashSearchInterception:
 
     def test_outside_indexed_repo_passes_silently(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots", lambda: []
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots", lambda: []
         )
         rc, out, _ = _run(run_pretooluse, _pretool(
             "Bash", {"command": "grep -rn TODO ."}, cwd=str(tmp_path)))
@@ -191,7 +191,7 @@ class TestSymlinkedRootsStillOverlap:
         alias = tmp_path / "alias"
         os.symlink(real, alias)
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [_norm(real)],  # stored resolved, as index_folder does
         )
         rc, out, _ = _run(run_pretooluse, _pretool(

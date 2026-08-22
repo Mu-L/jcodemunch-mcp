@@ -81,7 +81,7 @@ class TestPreToolUse:
     def indexed_tmp(self, tmp_path, monkeypatch):
         """Pretend tmp_path is an indexed repo root."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [_norm_path(str(tmp_path))],
         )
         return tmp_path
@@ -120,7 +120,7 @@ class TestPreToolUse:
         on an unindexed file yields an error and teaches the model to distrust
         the hints."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots", lambda: []
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots", lambda: []
         )
         f = tmp_path / "big.py"
         f.write_text("x = 1\n" * 2000)
@@ -182,7 +182,7 @@ class TestPreToolUse:
         size = f.stat().st_size
 
         # With a very high threshold, it should be allowed silently
-        with mock.patch("jcodemunch_mcp.cli.hooks._MIN_SIZE_BYTES", size + 1):
+        with mock.patch("jcodemunch_mcp.cli.hooks.steering._MIN_SIZE_BYTES", size + 1):
             rc, out, err = _run_with_stdin(
                 run_pretooluse, _make_hook_input("Read", str(f))
             )
@@ -190,7 +190,7 @@ class TestPreToolUse:
             assert err == ""
 
         # With a low threshold, it should nudge the model
-        with mock.patch("jcodemunch_mcp.cli.hooks._MIN_SIZE_BYTES", 100):
+        with mock.patch("jcodemunch_mcp.cli.hooks.steering._MIN_SIZE_BYTES", 100):
             rc, out, err = _run_with_stdin(
                 run_pretooluse, _make_hook_input("Read", str(f))
             )
@@ -236,7 +236,7 @@ class TestGrepNudge:
     def test_nudges_grep_inside_indexed_repo(self, tmp_path, monkeypatch):
         """A Grep whose cwd is an indexed source root gets the jcm nudge."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
         )
         rc, out, err = _run_with_stdin(
@@ -253,7 +253,7 @@ class TestGrepNudge:
     def test_nudges_grep_with_subpath_inside_repo(self, tmp_path, monkeypatch):
         """A relative `path` resolved under the indexed cwd still nudges."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
         )
         rc, out, err = _run_with_stdin(
@@ -267,7 +267,7 @@ class TestGrepNudge:
         other = tmp_path / "indexed"
         elsewhere = tmp_path / "elsewhere"
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(other)))],
         )
         rc, out, err = _run_with_stdin(
@@ -279,7 +279,7 @@ class TestGrepNudge:
 
     def test_silent_when_nothing_indexed(self, monkeypatch):
         """No indexed repos → jcm can't help → no nudge."""
-        monkeypatch.setattr("jcodemunch_mcp.cli.hooks._indexed_source_roots", lambda: [])
+        monkeypatch.setattr("jcodemunch_mcp.cli.hooks.steering._indexed_source_roots", lambda: [])
         rc, out, err = _run_with_stdin(run_pretooluse, _make_grep_input("foo", cwd="/tmp"))
         assert rc == 0
         assert err == ""
@@ -288,7 +288,7 @@ class TestGrepNudge:
         """JCODEMUNCH_HOOK_GREP_NUDGE=0 silences the nudge even inside a repo."""
         monkeypatch.setenv("JCODEMUNCH_HOOK_GREP_NUDGE", "0")
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
         )
         rc, out, err = _run_with_stdin(
@@ -302,14 +302,14 @@ class TestGrepNudge:
         def boom():
             raise RuntimeError("store unavailable")
         # _indexed_source_roots swallows internally, but guard the contract too.
-        monkeypatch.setattr("jcodemunch_mcp.cli.hooks._indexed_source_roots", boom)
+        monkeypatch.setattr("jcodemunch_mcp.cli.hooks.steering._indexed_source_roots", boom)
         rc, out, err = _run_with_stdin(run_pretooluse, _make_grep_input("foo", cwd="/x"))
         assert rc == 0  # never crashes the agent's Grep
 
     def test_grep_never_blocks(self, tmp_path, monkeypatch):
         """The nudge informs without denying: context, but no permissionDecision."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
         )
         rc, out, err = _run_with_stdin(
@@ -338,7 +338,7 @@ class TestStrictEnforce:
 
     def _index(self, monkeypatch, *roots):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [os.path.normcase(os.path.abspath(str(r))) for r in roots],
         )
 
@@ -455,7 +455,7 @@ class TestPostToolUse:
             "tool_input": {"file_path": str(f)},
             "tool_response": {"success": True},
         })
-        with mock.patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as mock_popen:
+        with mock.patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as mock_popen:
             rc, out, _ = _run_with_stdin(run_posttooluse, inp)
 
         assert rc == 0
@@ -478,7 +478,7 @@ class TestPostToolUse:
             "tool_input": {"file_path": str(f)},
             "tool_response": {"success": True},
         })
-        with mock.patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as mock_popen:
+        with mock.patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as mock_popen:
             rc, out, _ = _run_with_stdin(run_posttooluse, inp)
 
         assert rc == 0
@@ -487,14 +487,14 @@ class TestPostToolUse:
     def test_handles_missing_file_path(self):
         """Missing file_path in input is handled gracefully."""
         inp = json.dumps({"tool_input": {}})
-        with mock.patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as mock_popen:
+        with mock.patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as mock_popen:
             rc, out, _ = _run_with_stdin(run_posttooluse, inp)
         assert rc == 0
         mock_popen.assert_not_called()
 
     def test_handles_invalid_json(self):
         """Invalid JSON stdin is handled gracefully."""
-        with mock.patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as mock_popen:
+        with mock.patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as mock_popen:
             rc, out, _ = _run_with_stdin(run_posttooluse, "broken json")
         assert rc == 0
         mock_popen.assert_not_called()
@@ -510,7 +510,7 @@ class TestPostToolUse:
             "tool_response": {"success": True},
         })
         with mock.patch(
-            "jcodemunch_mcp.cli.hooks.subprocess.Popen",
+            "jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen",
             side_effect=FileNotFoundError("jcodemunch-mcp not found"),
         ):
             rc, out, _ = _run_with_stdin(run_posttooluse, inp)
@@ -528,7 +528,7 @@ class TestPostToolUse:
             "tool_input": {"file_path": str(f)},
             "tool_response": {"success": True},
         })
-        with mock.patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as mock_popen:
+        with mock.patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as mock_popen:
             rc, _, _ = _run_with_stdin(run_posttooluse, inp)
         kwargs = mock_popen.call_args[1]
         assert kwargs.get("creationflags") == sp.CREATE_NO_WINDOW
@@ -567,7 +567,7 @@ class TestPreCompact:
         """The one job PreCompact keeps: learning the transcript root (#421)."""
         seen: list = []
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._note_transcript_root", seen.append
+            "jcodemunch_mcp.cli.hooks.snapshot._note_transcript_root", seen.append
         )
         _run_with_stdin(run_precompact, json.dumps({
             "hook_event_name": "PreCompact",
