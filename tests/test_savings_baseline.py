@@ -157,7 +157,11 @@ class TestSavingsBaselineRatchet:
 class TestBasisGenerationDisclosed:
     """A lifetime total spanning a basis change is not one measurement."""
 
-    def _state(self):
+    def _fresh_state(self):
+        # ⚠ NOT named `_state`: the replay fixture pins `_State` as a query, and a
+        # private test helper by that name outranked the real class in
+        # token_tracker.py (mrr 1.0 -> 0.5). A test that degrades the corpus it is
+        # measured against is the test's problem, not the baseline's.
         from jcodemunch_mcp.storage import token_tracker as tt
 
         return type(tt._state)()
@@ -166,14 +170,14 @@ class TestBasisGenerationDisclosed:
         (tmp_path / "_savings.json").write_text(
             json.dumps({"total_tokens_saved": 5_000_000}), encoding="utf-8"
         )
-        state = self._state()
+        state = self._fresh_state()
         state._ensure_loaded(str(tmp_path))
         assert state._basis_first == 1, "pre-stamp history must not claim the corrected basis"
 
     def test_fresh_ledger_is_not_mixed(self, tmp_path):
         from jcodemunch_mcp.storage import token_tracker as tt
 
-        state = self._state()
+        state = self._fresh_state()
         state._ensure_loaded(str(tmp_path))
         assert state._basis_first == tt.SAVINGS_BASIS_GENERATION
         basis = state.session_stats(str(tmp_path))["total_tokens_saved_basis"]
@@ -185,7 +189,7 @@ class TestBasisGenerationDisclosed:
         (tmp_path / "_savings.json").write_text(
             json.dumps({"total_tokens_saved": 5_000_000}), encoding="utf-8"
         )
-        state = self._state()
+        state = self._fresh_state()
         state._ensure_loaded(str(tmp_path))
         basis = state.session_stats(str(tmp_path))["total_tokens_saved_basis"]
         assert basis["mixed_basis"] is True
@@ -199,6 +203,6 @@ class TestBasisGenerationDisclosed:
         (tmp_path / "_savings.json").write_text(
             json.dumps({"anon_id": "abc", "total_tokens_saved": 0}), encoding="utf-8"
         )
-        state = self._state()
+        state = self._fresh_state()
         state._ensure_loaded(str(tmp_path))
         assert state._basis_first == tt.SAVINGS_BASIS_GENERATION
