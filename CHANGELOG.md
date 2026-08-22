@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Changed — 71.4% of the routing decision does not need making
+
+The emitted harness now emits `pair_availability`, and it reframes the figure the
+whole moratorium argument has been resting on.
+
+On **25 of the 35** pair-gold cases (**71.4%**) `route` returns **both**
+`search_text` and `search_symbols`. Those are the same 25 where the gold action
+appears in the recommendation list at all. The caller has both candidates in
+hand, and choosing between two returned options costs nothing.
+
+⚠⚠ **So the 52.2% within-family figure is not "route gets a coin flip wrong". It
+is "route declines to break a tie it has already surfaced, and `@1` scores that
+as failure"** — which is precisely the suspicion the moratorium block opened
+with: `@1` penalises a router for being honest about ambiguity.
+
+⚠⚠ **The residual is a different and larger failure.** In the other 10 cases
+neither search action was offered at all — the wrong neighbourhood rather than
+the wrong order:
+
+    gold=search_text     offered=[check_delete_safe, check_edit_safe, check_rename_safe]
+    gold=search_symbols  offered=[get_context_bundle, get_session_context, get_ranked_context]
+
+**28.6% wrong neighbourhood against 71.4% right-pair-wrong-order.** A single
+fused "52.2%" hides which half is worth work, and no tie-break can fix the 28.6%.
+
+⚠ Availability is computed over the **three actions the response carries**, not
+the untruncated internal ranking. Crediting route with options the caller never
+saw would measure the wrong thing.
+
+⚠ **Consequence for H4**, the retrieval-outcome probe and the family's only
+survivor: its prize is re-ranking a pair the caller can already see, on 71.4% of
+the cases it targets — much smaller than 52.2% suggests, and invisible from that
+number alone. The whole motivating gap is 52.2 against 51.4 **on 23 cases**. The
+recommendation is to weigh a fresh corpus against that rather than build one; the
+previous corpus project was cancelled for less.
+
+⚠ Computed by the harness rather than derived by hand, so it is covered by
+`tests/test_route_recall_artifacts_are_fresh.py` and cannot drift the way
+`results.json` did.
+
+⚠ Benchmarks and docs only — no source change, no version bump, and the
+moratorium does not move.
+
 ### Added — the grounded route pilot, and H3 is refuted
 
 `benchmarks/route_binary_pilot/` runs the third hypothesis about the

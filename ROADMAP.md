@@ -691,6 +691,41 @@ takes 21 of 35 rank-1 picks because agent tasks open with "find".
 51.4 chance line.** Anyone proposing to optimise route should say which of those
 two numbers they intend to move.
 
+⚠⚠ **AND MOST OF THAT DECISION DOES NOT NEED MAKING. Measured 2026-08-22, now
+emitted by the harness as `pair_availability`: on 25 of the 35 pair-gold cases
+(71.4%) route returns BOTH `search_text` and `search_symbols`.** Those are the
+same 25 where the gold action appears in the recommendation list at all. The
+caller therefore has both candidates in hand, and choosing between two returned
+options costs nothing.
+
+**That reframes 52.2%.** It is not "route gets a coin flip wrong". It is "route
+declines to break a tie it has already surfaced, and `@1` scores that as
+failure" — which is exactly the suspicion this block opened with: **`@1`
+penalises a router for being honest about ambiguity.**
+
+⚠⚠ **The residual is a DIFFERENT and LARGER failure.** In the other 10 cases
+neither search action was offered at all — route went to the wrong
+neighbourhood, not the wrong order:
+
+    gold=search_text     offered=[check_delete_safe, check_edit_safe, check_rename_safe]
+    gold=search_symbols  offered=[get_context_bundle, get_session_context, get_ranked_context]
+    gold=search_symbols  offered=[tune_weights, announce_model, find_implementations]
+
+**28.6% wrong neighbourhood versus 71.4% right-pair-wrong-order.** A single
+"within-family 52.2%" fuses the two and hides which one is worth work; no
+tie-break can fix the 28.6%.
+
+⚠ **Availability is computed over the SAME 3 actions the response carries**, not
+the untruncated internal ranking — crediting route with options the caller never
+saw would be measuring the wrong thing.
+
+**Consequence for H4** (the retrieval-outcome probe, the family's only survivor):
+its prize is re-ranking a pair the caller can already see, on 71.4% of the cases
+it targets. That is much smaller than the 52.2% figure suggests, and it was
+invisible from that figure alone. **The whole motivating gap is 52.2 vs 51.4 on
+23 cases.** Weigh a fresh corpus against that before building one; the last one
+was cancelled for less.
+
 ⚠ **This also reframes why H1 and H2 died.** Both failed on COVERAGE — predicates
 firing on 5-15% of queries. But the decision that needs making is not spread
 across 91 actions; it is ONE binary that must be answered every time. **A

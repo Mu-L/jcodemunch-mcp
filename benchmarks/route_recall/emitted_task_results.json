@@ -95,6 +95,15 @@
    },
    "note": "A curated rule returns ONE action, so @3 cannot recover from a wrong @1 on those cases -- which is why @3 barely moves. The single dominant rule is /find|locate|where is|look up|search for|definition of/ -> search_symbols, and agent-emitted task strings almost all open with 'find'. Human wording varies far more, so this collapse is specific to the emitted distribution and invisible in the human-phrased corpora."
   },
+  "pair_availability": {
+   "pair_gold_cases": 35,
+   "both_offered": 25,
+   "both_offered_pct": 71.4,
+   "gold_offered_anywhere": 25,
+   "gold_offered_anywhere_pct": 71.4,
+   "neither_offered": 10,
+   "note": "cases whose gold is search_text or search_symbols. `both_offered` is where the decision is already made for the caller; `neither_offered` is route recommending the wrong neighbourhood, which no tie-break can fix."
+  },
   "label_concentration": {
    "search_family_share_pct": 87.5,
    "distinct_primary_actions": 6
