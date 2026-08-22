@@ -417,6 +417,8 @@ def _bash_targets_outside_roots(command: str, roots: "list[str]") -> bool:
     """True when the command names an absolute/home path outside every indexed
     root — a search jcm cannot serve, so a strict deny would block real work
     while falsely claiming the search targets an indexed repo."""
+    if re.search(r"(?:^|[\s='\"])\.\./", command):
+        return True  # ../ escapes cwd; where it lands is not worth resolving.
     for tok in _BASH_PATH_TOKEN_RE.findall(command):
         if not _path_overlaps(_norm_path(os.path.expanduser(tok)), roots):
             return True
@@ -443,6 +445,8 @@ def _handle_bash(tool_input: dict, cwd: str, mode: str) -> int:
         return 0
     cmd_word = m.group(1)
     deny = mode == "strict" and _BASH_SEARCH_COMMANDS[cmd_word]
+    if deny and re.search(r"[|&;]", command):
+        deny = False  # Pipeline/compound: the non-search half is real work.
     if not deny and not _search_nudge_enabled():
         return 0  # Guaranteed silent — skip the store load below.
     roots = _indexed_source_roots()
@@ -961,16 +965,18 @@ def run_taskcomplete() -> int:
         # 2. Untested symbols in edited files
         try:
             from ..tools.get_untested_symbols import get_untested_symbols
-            # One corpus-wide reachability build, filtered here — a per-file
-            # file_pattern would narrow only the REPORT, not the analysis.
-            untested = get_untested_symbols(repo_id, max_results=100)
-            if untested and not untested.get("error"):
-                in_session = [
-                    u for u in untested.get("untested_symbols", [])
-                    if u.get("file") in session_file_set
-                ]
-                if in_session:
-                    diag["untested_symbols"] = in_session[:25]
+            # Per-file on purpose: a corpus-wide call must CAP its result, and
+            # a cap applied before the session filter silently drops this
+            # session's symbols in exactly the worst-tested repos. Paying the
+            # reachability build per file is the price of a lossless report.
+            for sf in session_files[:5]:
+                untested = get_untested_symbols(
+                    repo_id, file_pattern=sf.replace("\\", "/"), max_results=5
+                )
+                if untested and not untested.get("error"):
+                    syms = untested.get("untested_symbols", [])
+                    if syms:
+                        diag.setdefault("untested_symbols", []).extend(syms[:5])
         except Exception:
             pass
 

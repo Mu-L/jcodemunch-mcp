@@ -130,6 +130,28 @@ class TestBashSearchInterception:
             "Bash", {"command": "grep -n root /etc/hosts"}, cwd=str(indexed_tmp)))
         assert (rc, out) == (0, "")
 
+    def test_pipeline_grep_is_nudged_not_denied(self, indexed_tmp, monkeypatch):
+        """A deny is only coherent for a PURE search: `rg | xargs sed -i` or
+        `grep -q x && make` do work the jcm routes cannot replace."""
+        monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
+        for cmd in ("rg -l foo | xargs sed -i 's/a/b/'",
+                    "grep -q foo src/x.py && make build"):
+            rc, out, _ = _run(run_pretooluse, _pretool(
+                "Bash", {"command": cmd}, cwd=str(indexed_tmp)))
+            assert rc == 0
+            hso = json.loads(out)["hookSpecificOutput"]
+            assert "permissionDecision" not in hso, cmd
+            assert "search_text" in hso["additionalContext"], cmd
+
+    def test_dotdot_target_passes_even_strict(self, indexed_tmp, monkeypatch):
+        """`grep foo ../sibling/` escapes cwd — the one relative shape that
+        provably leaves the repo; silence, never a false deny."""
+        monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Bash", {"command": "grep -rn foo ../sibling/"},
+            cwd=str(indexed_tmp)))
+        assert (rc, out) == (0, "")
+
     def test_find_is_never_strict_denied(self, indexed_tmp, monkeypatch):
         """`find ... -delete` opens with the same word as a search — a deny
         steering to search routes cannot do the deletion, so find only nudges."""
@@ -387,11 +409,35 @@ class TestMatcherUpgrade:
         added, updated = _merge_hooks(
             data, _enforcement_hooks(), "jcodemunch-mcp hook-p"
         )
-        assert data["hooks"]["PreToolUse"][0]["matcher"] == "Read|Grep|Glob|Bash"
+        shipped = _enforcement_hooks()["PreToolUse"][0]["matcher"]
+        assert data["hooks"]["PreToolUse"][0]["matcher"] == shipped
         assert "PreToolUse" in updated
         assert "PreToolUse" not in added
         # Still no duplicate rule for the same subcommand.
         assert len(data["hooks"]["PreToolUse"]) == 1
+
+    def test_mixed_rule_matcher_is_not_converged(self):
+        """A user who hand-merged their own hook into our rule keeps their
+        trigger: the rule-level matcher is only converged when every hook in
+        the rule is ours (their command string was already never touched)."""
+        from jcodemunch_mcp.cli.init import _enforcement_hooks, _merge_hooks
+
+        data = {"hooks": {"PreToolUse": [{
+            "matcher": "Read",
+            "hooks": [
+                {"type": "command", "command": "jcodemunch-mcp hook-pretooluse"},
+                {"type": "command", "command": "/home/u/my-guard.sh"},
+            ],
+        }]}}
+        _merge_hooks(data, _enforcement_hooks(), "jcodemunch-mcp hook-p")
+        rule = data["hooks"]["PreToolUse"][0]
+        assert rule["matcher"] == "Read"  # user's trigger untouched
+        # Our command inside the mixed rule still converges to absolute form.
+        from jcodemunch_mcp.cli.init import _extract_jcm_subcommand
+        jcm_cmds = [h["command"] for h in rule["hooks"]
+                    if _extract_jcm_subcommand(h["command"])]
+        assert jcm_cmds and all("hook-pretooluse" in c for c in jcm_cmds)
+        assert rule["hooks"][1]["command"] == "/home/u/my-guard.sh"
 
     def test_current_matcher_untouched_and_idempotent(self):
         from jcodemunch_mcp.cli.init import _enforcement_hooks, _merge_hooks

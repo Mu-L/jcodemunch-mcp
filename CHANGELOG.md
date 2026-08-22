@@ -71,6 +71,15 @@ Every fix below was reproduced against the unfixed tree first.
   a ~0.4s (warm) hook process in front of every Bash call; a fast hook entry
   path that skips the server import is the follow-on if that bites.
 
+  Strict-mode Bash denies apply only to PURE search commands: a pipeline or
+  compound command (`rg | xargs sed -i`, `grep -q x && make`) is nudged, never
+  blocked, and a `../` target is treated as outside the repo (silence). The
+  realpath fix covers symlinked checkout paths — a `git worktree` checkout is
+  a genuinely different directory and stays outside indexed roots. Known
+  limit: the TaskCompleted live-journal read is one file per store, so two
+  concurrent sessions against the same CODE_INDEX_PATH can attribute each
+  other's edits in the advisory diagnostics (inherent to the #334 bridge).
+
   The SubagentStart briefing now scopes to the repo(s) containing the
   subagent's `cwd` when it names one (brief-everything stays the fallback):
   reviving the repo loop exposed that it hydrates and PageRanks EVERY indexed

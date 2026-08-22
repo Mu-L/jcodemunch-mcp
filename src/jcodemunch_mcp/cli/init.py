@@ -1074,7 +1074,14 @@ def _converge_rule(existing_rules: list, shipped_rule: dict) -> bool:
     for old_rule in existing_rules:
         if not (_rule_subs(old_rule) & shipped_cmds.keys()):
             continue
-        if old_rule.get("matcher", "") != shipped_rule.get("matcher", ""):
+        # The matcher is a RULE-level field: converge it only when every hook
+        # in the rule is ours. A user who hand-merged their own hook into our
+        # rule must not have THEIR trigger silently widened.
+        all_ours = all(
+            _extract_jcm_subcommand(h.get("command", "") or "")
+            for h in old_rule.get("hooks", [])
+        )
+        if all_ours and old_rule.get("matcher", "") != shipped_rule.get("matcher", ""):
             old_rule["matcher"] = shipped_rule.get("matcher", "")
             changed = True
         for h in old_rule.get("hooks", []):
