@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+### Added — the one string that survives tool deferral
+
+The MCP `initialize` response now carries an `instructions` string. It did not
+before: all three transports called `server.create_initialization_options()`
+bare, so the field went out empty and nothing anywhere said so.
+
+⚠⚠ **The cost is invisible in a normal session and concentrated in a deferred
+one.** A host over its schema budget sends tool NAMES and withholds the
+JSONSchemas until a `ToolSearch`-style lookup fetches them. On the default
+surface that is 91 bare strings. Every description we budget and smell-test
+(`test_description_smells.py`, the 4,000-token `core_compact` ceiling) is
+absent at exactly the moment the agent has the least to go on. The spec
+delivers `instructions` on a separate track from the tool list, so it arrives
+whole either way — it is the entire steering budget a plain MCP client gives us.
+
+The string does two things, in this order: it says to load the working set in
+ONE lookup (a round trip for the session instead of two calls per use), and it
+gives a decision rule per tool rather than a feature summary. It is
+surface-aware — `counter` names `route`/`menu`/`order` and nothing else,
+because on that surface the other 91 names are not reachable and pointing an
+agent at one strands it.
+
+⚠ Budget of 1,000 characters, currently 931 on `full` and 599 on `counter`.
+Nothing proves a longer string survives un-truncated.
+
+⚠⚠ **The prose is bound to the catalog, because prose is what rots.**
+`tests/test_mcp_instructions.py` fails when the string names a tool the server
+does not dispatch on that surface, when the `select:` query and the bullet list
+disagree about which tools to load, and — parsing the dispatcher's own AST —
+when any of the three `server.run()` sites goes back to a bare
+`create_initialization_options()`. **A handshake that sends nothing raises no
+error and serves every request normally**, so the only witness is a test.
+Verified by reintroducing both defects and watching them fail, not only by
+watching them pass.
+
+### Fixed — `serverInfo` named the SDK's version, not ours
+
+`Server("jcodemunch-mcp")` was constructed with no `version=`, so the SDK filled
+the field with its own package version. Every host that displays a server
+version displayed `1.26.0` while we shipped 1.108.x.
+
+⚠ Found by smoke-testing the handshake the change above touches, not by a
+report. Nothing errors, nothing logs, and the field is wrong on every single
+initialize — the same shape as the empty `instructions` beside it, which is why
+one probe found both.
+
+⚠⚠ **Green tests do not prove the wire carries a real number.** `__version__`
+falls back to `"unknown"` when distribution metadata is absent, which is every
+`PYTHONPATH=src` run. That fallback is deliberate and older than this fix:
+`"unknown"` is an honest could-not-establish, where `1.26.0` was a confident
+answer about a different package.
+
+⚠ An SDK predating the field is handled: we allow `mcp>=1.10.0`, so the field
+is checked before it is set. Nothing to say, and nowhere to say it.
+
 ## [1.108.291] - 2026-08-22 - Counting each byte of source once
 
 ### Added — the savings meter can say which tool earned it
