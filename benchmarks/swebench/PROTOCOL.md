@@ -94,16 +94,52 @@ the arm numbers are still not quoted anywhere.
 ## Known blocker: storage
 
 The harness documents **120 GB free storage, 16 GB RAM, 8 CPU cores** for
-x86_64.
+x86_64. Three candidate hosts were measured 2026-08-23:
 
-Measured on the dev box 2026-08-23: **24 cores, 34.1 GB RAM — both fine. Disk is
-not: C: has 45 GB free of 952 (96% used), G: has 42 GB of 100.** Neither volume
-fits the requirement, and no combination of them does.
+| host | arch | cores | RAM | free disk |
+|---|---|---|---|---|
+| megaboxen3000 (dev box) | x86_64 | 24 | 34 GB | **45 GB** of 952 (96% used) |
+| gravelles-mac-mini | arm64 | 10 | 32 GB | **27 GB** of 228 |
+| prog-16 | x86_64 | ? | ? | not measured |
 
-⚠ The 120 GB figure covers the full 500-instance set. A 50-instance pilot pulls
-a subset, so the pilot is likely to fit — that is a guess, and item 4 above is
-what replaces it with a number.
+**Compute is fine everywhere. No host has the disk.**
 
-⚠⚠ **The 200-to-300 instance run cannot happen on this machine.** Whatever the
-pilot says about effect size, the real run needs a host with room. Deciding that
-is cheaper before the pilot than after.
+⚠⚠ **The Mac was checked as the presumed rescue and is the WORST of the three
+on the only axis that was blocking** — 27 GB against the dev box's 45. It also
+carries an architecture caveat the dev box does not (below). Checking it cost
+one command; assuming it would help would have cost the pilot.
+
+### Cache level trades disk for time
+
+| `--cache_level` | storage | speed |
+|---|---|---|
+| `none` / `base` | ~120 GB during run | slowest |
+| `env` (default) | ~100 GB | moderate |
+| `instance` | **~2,000 GB** | fastest |
+
+⚠ Those are FULL-500 figures. A 50-instance pilot at `base` needs a fraction,
+and no per-instance number is published anywhere — which is why peak disk is
+one of the four things this pilot measures, and now the one that decides where
+the real run is hosted.
+
+### Where the pilot runs
+
+**Grading: the dev box, x86_64 NATIVE, `--cache_level=base`.** Native x86 means
+the official images with no architecture question, and it has both the most free
+disk and the most cores.
+
+⚠ **The agent runs need no Docker at all.** Docker is only the grader, so the
+expensive half — the API spend — is host-agnostic and architecture never touches
+the measurement we care about.
+
+⚠ arm64 is documented as experimental and the known breakages (Java toolchain,
+Chrome/JS dependencies) do not apply to SWE-bench **Verified**, which is
+Python-only across twelve repos. One published comparison found 11 of 11
+instances identical between native arm64 and emulated x86_64, with a single
+sphinx discrepancy traced to a package version rather than the harness. **That
+is n=11 and it is not a licence to grade on arm** — it is the reason arm is a
+fallback rather than a refusal.
+
+⚠⚠ **The 200-to-300 instance run cannot happen on any machine we own.** Whatever
+the pilot says about effect size, the real run needs a rented host. Deciding
+that is cheaper before the pilot than after.
