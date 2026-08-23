@@ -2459,6 +2459,33 @@ class SQLiteIndexStore:
         repos.sort(key=lambda repo: repo["repo"])
         return repos
 
+    def list_source_roots(self) -> list[str]:
+        """Source roots of every indexed repo — one meta read per .db.
+
+        For callers that need ONLY the roots (the hook steering gate, per
+        tool call): `list_repos()` pays `SELECT COUNT(*)` over symbols and
+        files per repo, a full b-tree scan the roots never needed.
+        """
+        from .generation import connect_readonly
+        _pairs = parse_path_map()
+        roots: list[str] = []
+        for db_file in self.base_path.glob("*.db"):
+            if db_file.name in _NON_REPO_DB_FILES:
+                continue
+            try:
+                conn = connect_readonly(db_file)
+                conn.row_factory = sqlite3.Row  # _read_meta indexes by name
+                try:
+                    meta = self._read_meta(conn)
+                finally:
+                    conn.close()
+                sr = remap(meta.get("source_root", "") or "", _pairs)
+                if sr:
+                    roots.append(sr)
+            except Exception:
+                logger.debug("skipping %s for source roots", db_file, exc_info=True)
+        return roots
+
     def _list_repo_from_db(self, db_path: Path, _pairs: Optional[list] = None) -> Optional[dict]:
         """Read repo metadata from a .db file for list_repos."""
         if _pairs is None:

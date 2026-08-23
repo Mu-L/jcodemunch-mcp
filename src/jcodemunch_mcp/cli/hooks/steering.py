@@ -96,12 +96,11 @@ def _indexed_source_roots() -> list[str]:
     """
     try:
         from ...storage import IndexStore
-        roots: list[str] = []
-        for entry in IndexStore().list_repos():
-            sr = (entry.get("source_root") or "").strip()
-            if sr:
-                roots.append(_norm_path(sr))
-        return roots
+        return [
+            _norm_path(sr)
+            for sr in IndexStore().list_source_roots()
+            if sr.strip()
+        ]
     except Exception:
         return []
 
@@ -173,7 +172,9 @@ _BASH_SEARCH_COMMANDS = {
     "find": False,
 }
 _BASH_SEARCH_RE = re.compile(
-    r"^\s*(?:command\s+)?(" + "|".join(_BASH_SEARCH_COMMANDS) + r")\b"
+    r"^\s*\(?\s*"                                        # optional subshell paren
+    r"(?:[A-Za-z_]\w*=(?:\"[^\"]*\"|'[^']*'|\S*)\s+)*"  # leading FOO=bar assignments
+    r"(?:command\s+)?(" + "|".join(_BASH_SEARCH_COMMANDS) + r")\b"
 )
 
 # Absolute or ~-anchored path tokens inside a command line.

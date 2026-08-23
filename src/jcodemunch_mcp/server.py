@@ -247,10 +247,10 @@ _COUNTER_FRONT_DOOR: frozenset[str] = _counter.FRONT_DOOR
 _RAW_CATALOG: "Optional[list]" = None
 
 
-# The only two tool surfaces that exist. Anything else has always BEHAVED as
-# "full" (only "counter" is ever special-cased); v1.108.260 makes the reported
-# value agree with that instead of echoing whatever was typed.
-VALID_TOOL_SURFACES = ("counter", "full")
+# One authority for surface resolution: counter.resolve_tool_surface (pure,
+# also readable from the out-of-process hooks without paying this module's
+# import). v1.108.260 made the reported value agree with what is served.
+VALID_TOOL_SURFACES = _counter.VALID_TOOL_SURFACES
 _UNRECOGNIZED_SURFACES_LOGGED: set = set()
 
 
@@ -270,14 +270,12 @@ def _surface_resolution() -> tuple:
     the receipt can say the setting was REJECTED, not merely that something else
     is active.
     """
-    env = os.environ.get("JCODEMUNCH_TOOL_SURFACE")
-    if env:
-        requested = env.strip().lower()
-    else:
-        requested = (config_module.get("tool_surface", "full") or "full").strip().lower()
-
-    if requested in VALID_TOOL_SURFACES:
-        return requested, requested, True
+    effective, requested, recognized = _counter.resolve_tool_surface(
+        os.environ.get("JCODEMUNCH_TOOL_SURFACE"),
+        config_module.get("tool_surface", "full"),
+    )
+    if recognized:
+        return effective, requested, recognized
 
     if requested not in _UNRECOGNIZED_SURFACES_LOGGED:
         _UNRECOGNIZED_SURFACES_LOGGED.add(requested)

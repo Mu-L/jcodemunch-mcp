@@ -83,12 +83,16 @@ Every fix below was reproduced against the unfixed tree first.
   The SubagentStart briefing now scopes to the repo(s) containing the
   subagent's `cwd` when it names one (brief-everything stays the fallback):
   reviving the repo loop exposed that it hydrates and PageRanks EVERY indexed
-  repo per spawn, which is minutes-scale on big multi-repo boxes. Remaining
-  perf follow-ups in the same revived-loop class, deliberately not taken here:
-  `_indexed_source_roots` pays `list_repos()`'s full per-repo `COUNT(*)`
-  harvest for one column, TaskCompleted/landmark loops hydrate before testing
-  file membership, and transcript-root registration re-resolves the whole
-  registry per hook event.
+  repo per spawn, which is minutes-scale on big multi-repo boxes. The rest of
+  the revived-loop bill is paid too: the steering gate reads roots via a new
+  `IndexStore.list_source_roots()` (one meta row per .db, no per-repo
+  `COUNT(*)` scans), the TaskCompleted/landmark loops probe file membership
+  read-only before hydrating an index (any doubt hydrates), transcript-root
+  registration takes an exact-string fast path in the steady state, leading
+  env assignments (`FOO=1 grep …`) and a subshell paren no longer slip the
+  Bash search regex, and tool-surface resolution has ONE authority —
+  `counter.resolve_tool_surface` — shared by the server and the hooks
+  (whitespace-only env now falls through to config on both sides).
 
 ### Fixed — the route benchmark compared three guesses against a baseline allowed one
 

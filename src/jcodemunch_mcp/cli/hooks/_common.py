@@ -5,8 +5,11 @@ Helpers used by more than one hook family live here; the package
 """
 
 import json
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 # Extensions that benefit from jCodemunch structural navigation.
@@ -152,15 +155,50 @@ def _repo_owner_name(entry: dict) -> "tuple[str, str]":
     return "", ""
 
 
-def _iter_loaded_repos(store, repos):
+def _repo_contains_any(store, owner: str, name: str, files: list) -> bool:
+    """Cheap read-only probe: does this repo's index know any of *files*?
+
+    Full hydration of an unrelated index is minutes-scale on big repos; one
+    ``SELECT 1 ... LIMIT 1`` answers the membership question first. Returns
+    True on ANY doubt (missing db, probe error) so the caller hydrates —
+    a wrong False silently kills the caller's whole feature, a wrong True
+    only costs the load this probe usually saves.
+    """
+    try:
+        db = store._sqlite._db_path(owner, name)
+        if not db.exists():
+            return True
+        from ...storage.generation import connect_readonly
+        wanted = [f for f in files if isinstance(f, str)][:500]
+        if not wanted:
+            return True
+        conn = connect_readonly(db)
+        try:
+            placeholders = ",".join("?" * len(wanted))
+            hit = conn.execute(
+                f"SELECT 1 FROM files WHERE path IN ({placeholders}) LIMIT 1",
+                wanted,
+            ).fetchone()
+        finally:
+            conn.close()
+        return hit is not None
+    except Exception:
+        logger.debug("membership probe failed", exc_info=True)
+        return True
+
+
+def _iter_loaded_repos(store, repos, wanted_files=None):
     """Yield ``(repo_id, idx)`` for each loadable entry of ``list_repos()``.
 
     Membership and scoping guards stay with each caller — the landmark,
-    taskcomplete and subagent loops genuinely differ there.
+    taskcomplete and subagent loops genuinely differ there. ``wanted_files``
+    skips hydrating repos whose index provably contains none of them.
     """
     for entry in repos:
         owner, name = _repo_owner_name(entry)
         if not owner or not name:
+            continue
+        if wanted_files and not _repo_contains_any(store, owner, name, wanted_files):
             continue
         try:
             idx = store.load_index(owner, name)

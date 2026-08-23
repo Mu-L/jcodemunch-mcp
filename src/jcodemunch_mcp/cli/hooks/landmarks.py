@@ -45,7 +45,9 @@ def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> s
     parts: list[str] = []
     seen: set[str] = set()
 
-    for repo_id, index in _iter_loaded_repos(store, repos):
+    for repo_id, index in _iter_loaded_repos(
+        store, repos, wanted_files=edited_files + accessed_files
+    ):
         if repo_id in seen or not index.imports or not index.source_files:
             continue
         seen.add(repo_id)

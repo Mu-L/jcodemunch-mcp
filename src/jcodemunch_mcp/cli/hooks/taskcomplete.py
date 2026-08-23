@@ -72,7 +72,7 @@ def run_taskcomplete() -> int:
 
     diagnostics: list[dict] = []
 
-    for repo_id, idx in _iter_loaded_repos(store, repos):
+    for repo_id, idx in _iter_loaded_repos(store, repos, wanted_files=edited_files):
         if not idx.source_files:
             continue
 

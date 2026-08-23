@@ -134,16 +134,18 @@ def _tool_surface() -> str:
     that reason, and its env-var fallback layer already honors
     ``JCODEMUNCH_TOOL_SURFACE``.
     """
-    # The env pre-check is load-bearing for PRECEDENCE, not just import cost:
-    # config.get's env layer is a FALLBACK (a config-file value would win),
-    # while the server resolves env-wins. Checking env first keeps the two in
-    # agreement — and skips the config import when the env var decides.
-    val = (os.environ.get("JCODEMUNCH_TOOL_SURFACE") or "").strip().lower()
-    if val:
-        return val
+    # counter.resolve_tool_surface is the one authority for precedence and
+    # validation (env wins; unrecognized serves "full"). The env pre-check
+    # also skips the config import entirely when the env var decides —
+    # config.get's own env layer is only a FALLBACK, so it cannot be used
+    # for the precedence half.
+    env = os.environ.get("JCODEMUNCH_TOOL_SURFACE")
     try:
+        from ...counter import resolve_tool_surface
+        if (env or "").strip():
+            return resolve_tool_surface(env, None)[0]
         from ...config import get as _config_get
-        return str(_config_get("tool_surface") or "full").strip().lower()
+        return resolve_tool_surface(None, _config_get("tool_surface"))[0]
     except Exception:
-        logger.debug("tool_surface config read failed", exc_info=True)
+        logger.debug("tool_surface resolution failed", exc_info=True)
         return "full"

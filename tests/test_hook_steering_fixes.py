@@ -143,6 +143,22 @@ class TestBashSearchInterception:
             assert "permissionDecision" not in hso, cmd
             assert "search_text" in hso["additionalContext"], cmd
 
+    @pytest.mark.parametrize("cmd", [
+        "FOO=1 grep -rn TODO src/",
+        'LC_ALL="C" rg foo',
+        "(grep -rn TODO src/)",
+        "( FOO=bar grep -q x )",
+    ])
+    def test_env_assignment_and_subshell_prefixes_intercepted(
+        self, indexed_tmp, cmd
+    ):
+        """`FOO=1 grep …` and `(grep …)` were the two shapes that slipped the
+        leading-command regex — the escape hatches a denied grep funnels into."""
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Bash", {"command": cmd}, cwd=str(indexed_tmp)))
+        assert rc == 0
+        assert "search_text" in json.loads(out)["hookSpecificOutput"]["additionalContext"], cmd
+
     def test_dotdot_target_passes_even_strict(self, indexed_tmp, monkeypatch):
         """`grep foo ../sibling/` escapes cwd — the one relative shape that
         provably leaves the repo; silence, never a false deny."""
@@ -350,6 +366,58 @@ class TestSubagentCatalogMatchesSurface:
         from jcodemunch_mcp.cli.hooks import _tool_surface
         _tool_surface()
         assert not (store / "config.jsonc").exists()
+
+
+class TestStoreBackedGates:
+    """Integration against a REAL index: the light source-roots listing and
+    the membership probe that spares unrelated repos a full hydration."""
+
+    @pytest.fixture
+    def real_store(self, tmp_path, monkeypatch):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / "mod.py").write_text("def alpha():\n    return 1\n")
+        store_dir = tmp_path / "store"
+        monkeypatch.setenv("CODE_INDEX_PATH", str(store_dir))
+        monkeypatch.setenv("JCODEMUNCH_TRUSTED_FOLDERS", str(tmp_path))
+        from jcodemunch_mcp.tools.index_folder import index_folder
+        result = index_folder(str(proj))
+        assert result.get("success"), result
+        from jcodemunch_mcp.storage import IndexStore
+        return IndexStore()
+
+    def test_list_source_roots_matches_list_repos(self, real_store):
+        light = sorted(real_store.list_source_roots())
+        heavy = sorted(
+            e["source_root"] for e in real_store.list_repos()
+            if e.get("source_root")
+        )
+        assert light == heavy and light
+
+    def test_probe_spares_unrelated_repo_from_hydration(self, real_store):
+        from jcodemunch_mcp.cli.hooks._common import _iter_loaded_repos
+        repos = real_store.list_repos()
+        loaded = list(_iter_loaded_repos(
+            real_store, repos, wanted_files=["not/in/this/repo.py"]
+        ))
+        assert loaded == []  # probe said no — never hydrated
+        loaded = list(_iter_loaded_repos(
+            real_store, repos, wanted_files=["mod.py"]
+        ))
+        assert len(loaded) == 1  # the indexed file is repo-relative
+
+    def test_probe_fails_open_without_sqlite_backend(self, monkeypatch):
+        """A store fake without _sqlite must hydrate, never silently skip."""
+        idx = mock.MagicMock()
+        idx.source_files = ["src/a.py"]
+        idx.symbols = []
+        loaded: list = []
+        _mock_store(monkeypatch, [{"repo": "t/r"}], loaded=loaded, idx=idx)
+        from jcodemunch_mcp.storage import IndexStore
+        from jcodemunch_mcp.cli.hooks._common import _iter_loaded_repos
+        out = list(_iter_loaded_repos(IndexStore(), [{"repo": "t/r"}],
+                                      wanted_files=["src/a.py"]))
+        assert len(out) == 1 and loaded == ["r"]
 
 
 class TestHostileStdin:
