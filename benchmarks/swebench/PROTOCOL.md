@@ -1,5 +1,22 @@
 # SWE-bench Verified — protocol, registered before any instance is run
 
+## STATUS: PARKED 2026-08-23, BEFORE ANY INSTANCE WAS RUN
+
+**Nothing here was executed. There is no result, hidden or otherwise.**
+
+⚠⚠ Stated at the top because a registered protocol with no result file is the
+exact shape of a buried negative, and the honest reason is not a finding: the
+setup cost was judged too high for the value. No host we own has the 120 GB the
+harness wants (see the table below), the real run needs a rented box, and the
+agent runs cost real money on a personal card.
+
+⚠ **Nothing about the design was found wanting** — it is registered, the power
+table is computed, the hosts are measured. If a lower-friction path to running
+SWE-bench appears, this resumes from here unchanged; that is what a registered
+protocol is for. The only thing missing is a reason to spend the money now.
+
+---
+
 ## The question
 
 Does an agent with jCodeMunch fix more real GitHub issues than the same agent
