@@ -565,11 +565,59 @@ override is what lets jjg land a merge pushed to a contributor's fork; `strict`
 would force every PR to be up-to-date with `main` before merging, i.e. a rebase
 after every release — the exact churn that kept #443 dark for five days.
 ⚠ Enabling protection also turned OFF force-push and deletion on `main`.
-⚠⚠ **This composes with the status-erasure hazard and now FAILS CLOSED.** Our
-push to a fork wipes `license/cla` from the new head (legacy statuses do not
-follow a SHA); with the check required that reads as `BLOCKED` until the bot
-re-posts, usually under a minute. Correct, and it will look like a new problem
-the first time.
+⚠⚠ **This composes with the missing-status hazard and now FAILS CLOSED.** ANY
+new head — our push to a fork, or the contributor's own merge of `main` —
+arrives with `license/cla` absent, and with the check required that reads as
+`BLOCKED` until the bot posts on that SHA. Correct, and it will look like a new
+problem the first time.
+⚠⚠ **NOTHING IS ERASED AND THE WORD MATTERS — corrected 2026-08-24 on #535.**
+This entry said a push "wipes" the status, which frames a per-SHA reporting
+model as an act of destruction and sends you chasing the bot or the
+contributor's signature. **Measured:** `license/cla` is a **legacy commit
+status**, not a check run — every other check on the PR is a `check-run` from
+the `github-actions` app, which GitHub re-runs per head automatically; a legacy
+status is a record posted to ONE SHA by an external service, and a new commit
+starts life with zero of them. On #535 the old head `0db4478` still read
+`license/cla success` while the new head `ea12029` read `count=0`. **The old
+status was untouched, and the signature — stored per ACCOUNT at
+cla-assistant.io — was never in question.**
+⚠ **The consequence is the useful part: the gate cannot tell "not signed" from
+"not reported", so it fails closed to the same `BLOCKED` for both.** Absent
+still means DO NOT MERGE. But the remedy is to get a status posted on the
+current head, never to re-verify an agreement that did not change.
+⚠ **"Usually under a minute" was optimistic.** On #535 the bot had not posted
+30+ minutes after the new head, and it has never commented on that PR at all —
+it posted the status directly, which is what it does when the author signed on
+an earlier PR.
+
+⚠⚠ **THE RE-TRIGGER, AND IT IS OURS — no contributor action, ~25 seconds**
+(established 2026-08-24, #535). `license/cla` comes from a REPO WEBHOOK to
+`https://cla-assistant.io/github/webhook/<repo>` on `pull_request`, not from
+any in-repo workflow. **The event is not lost and the bot is not down** — the
+deliveries list showed his `synchronize` arriving and answering `200 OK`, with
+no status posted. **Redelivering that same event makes it post.**
+
+```bash
+HID=$(GITHUB_TOKEN="" gh api repos/jgravelle/<repo>/hooks --jq '.[0].id')
+# ⚠ jq mangles delivery ids (past float precision) — read them with python.
+GITHUB_TOKEN="" gh api "repos/jgravelle/<repo>/hooks/$HID/deliveries?per_page=15" > dv.json
+python -c "import json;[print(x['delivered_at'][5:16],x['event']+'/'+str(x.get('action')),x['status_code'],x['id']) for x in json.load(open('dv.json'))[:8]]"
+GITHUB_TOKEN="" gh api --method POST "repos/jgravelle/<repo>/hooks/$HID/deliveries/<exact-id>/attempts"
+```
+
+⚠ **Diagnose before reaching for it.** Both #535 deliveries were `synchronize`
+on a `draft: true` PR and only the later one stayed silent, so **draft is NOT
+the discriminator** — the distinguishing feature was a MERGE COMMIT pulling in
+commits authored by us. Check the deliveries list first; a delivery that never
+arrived is a different problem from one that arrived and did nothing.
+
+⚠⚠ **NEVER POST THE STATUS OURSELVES.** We hold admin and the Status API would
+clear the gate in one call. `license/cla` is a legal assertion about an
+agreement, and a maintainer-authored `success` is a forged one — it would also
+be indistinguishable from the genuine article afterwards. **Redelivering makes
+CLA Assistant reach its OWN verdict, which is the whole difference.** If a
+redeliver does not produce a status, the answer is a `recheck` comment or a
+contributor push, never a hand-written status.
 ⚠⚠ **It does NOT solve vendor time-wasting and must not be sold as if it does.**
 Signing costs a campaign nothing — #485's author has 748 merged PRs across
 GitHub, so they clear CLAs routinely. The only contributor this gate blocked in
