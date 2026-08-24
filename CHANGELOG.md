@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+### Fixed - three seconds of startup spent proving nothing
+
+`verify_package_integrity()` runs on every CLI invocation and answers one
+question: which distribution owns the running `jcodemunch_mcp`. It answered it
+with `importlib.metadata.packages_distributions()`, which builds a
+top-level-name to distribution map for **every** distribution on `sys.path`.
+
+⚠⚠ **Measured on a Windows dev box carrying 894 top-level names: 3.35 s,
+uncached, on every invocation — and it then returned nothing**, because the
+code was running from source and no distribution described it. The targeted
+lookup that settles the same question for an ordinary install is **5 ms**. The
+checks are now ordered cheapest-first: a source or editable tree returns
+immediately, an official install that owns the running code returns after the
+5 ms lookup, and the full map is reached only when the official distribution is
+absent or did not provide the code that is actually running.
+
+⚠⚠ **The expensive map is still reached and must stay reachable.** It is the
+only thing that can NAME the offending distribution, which is the entire
+content of the warning. A guard that merely banned the call would be satisfied
+by deleting the security check.
+
+⚠⚠ **Installed-and-correctly-named is not sufficient on its own, so the fast
+path does not stop there.** The official distribution can sit on a box while
+the imported code came from somewhere else — the arrangement the warning exists
+to catch. The fast path clears only when the official distribution is the one
+that provided the running module.
+
+⚠ **This was invisible for as long as the CLI was something a human typed
+once.** It stops being invisible the moment hooks spawn it per tool call, where
+it is essentially the whole cost of the hook. End-to-end on the same box, one
+`hook-pretooluse` spawn goes **4.0 s to 0.94 s**; the ~0.74 s that remains is
+the server import, which is a separate change.
+
+⚠ Found while reviewing #535, which reported the hook cost at ~0.4 s on Linux
+and prompted measuring it here. The first attribution was wrong — the suspect
+was the 45-subparser argparse tree, which is **7 ms**. `tests/test_integrity_check_cost.py`
+asserts the cost as a property (the common paths settle without the full map)
+rather than pinning the call order, and separately asserts that a renamed fork
+is still named.
+
 ## [1.108.293] - 2026-08-23 - Ten skipped modules that hid 209 tests
 
 ### Fixed - ten skipped modules that hid 209 tests between them

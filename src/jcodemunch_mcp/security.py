@@ -9,6 +9,25 @@ from . import config as _config
 
 # --- Package Integrity Check ---
 
+# Directories a real installation lands in. Running from anywhere else means no
+# distribution describes this code, so there is nothing to compare it against.
+_INSTALL_DIRS = {"site-packages", "dist-packages"}
+
+
+def _official_dist_owns_running_code(dist) -> bool:
+    """True when *dist* is the distribution the running package came from.
+
+    Installed-and-correctly-named is not sufficient on its own: the official
+    distribution can be present while the imported code came from somewhere
+    else, which is the case the warning exists for.
+    """
+    try:
+        claimed = Path(str(dist.locate_file("jcodemunch_mcp"))).resolve()
+    except Exception:
+        return False
+    return claimed == Path(__file__).resolve().parent
+
+
 def verify_package_integrity() -> None:
     """Warn at startup if this code is running from an unofficial distribution.
 
@@ -16,6 +35,23 @@ def verify_package_integrity() -> None:
     different name (e.g. jcodemunch-mcp-fork instead of jcodemunch-mcp).
     Uses packages_distributions() to find which distribution actually owns
     the running code — catches renamed forks that install under a different name.
+
+    ⚠⚠ **The checks are ordered cheapest-first and the ORDER is the fix.**
+    ``packages_distributions()`` builds a top-level-name -> distribution map for
+    EVERY distribution on ``sys.path`` in order to answer a question about ONE
+    of them. Measured on a Windows dev box carrying 894 top-level names:
+    **3.35 s, uncached, on every CLI invocation** — and on that box it then
+    returned nothing, because the code was running from source. The targeted
+    lookup that settles the common case is 5 ms.
+
+    ⚠ It was invisible while the CLI was something a human typed once. It stops
+    being invisible the moment hooks spawn it per tool call, where it is
+    essentially the whole cost of the hook.
+
+    ⚠⚠ **The expensive map is still reached and must stay reachable** — it is
+    the only thing that can NAME the other distribution, which is the entire
+    content of the warning. It now runs only after the cheap checks have found
+    something genuinely unusual, which is when that answer is worth 3 s.
     """
     import sys
 
@@ -23,11 +59,34 @@ def verify_package_integrity() -> None:
     canonical_url = "https://github.com/jgravelle/jcodemunch-mcp"
 
     try:
+        # 1. Source checkout, editable tree, zipapp: no installed distribution
+        #    provides this code. The old path reached the same verdict, having
+        #    first enumerated every distribution on the box to be told the
+        #    package it was asking about was not among them.
+        if Path(__file__).resolve().parent.parent.name not in _INSTALL_DIRS:
+            return
+
+        from importlib.metadata import distribution
+
+        try:
+            official = distribution(expected_dist)
+        except Exception:
+            # PackageNotFoundError is the expected miss; anything else here is
+            # a metadata problem, and both mean "cannot settle it cheaply".
+            official = None
+
+        # 2. The official distribution is installed AND owns the code actually
+        #    running. Nothing to warn about, and no map needed to say so.
+        if official is not None and _official_dist_owns_running_code(official):
+            return
+
+        # 3. Unusual: the official distribution is absent, or present and did
+        #    not provide the running code. Only now is the full map worth it.
         from importlib.metadata import packages_distributions
 
         distributions = packages_distributions().get("jcodemunch_mcp", [])
         if not distributions:
-            # Running from source / editable install without dist metadata — skip.
+            # Installed layout carrying no dist metadata — nothing to compare.
             return
 
         actual_dist = distributions[0]
