@@ -283,6 +283,27 @@ _SKIP_DIRECTORY_NAMES: list[str] = [
     # counted in `discovery_skip_counts`, so a surprised user can see which
     # rule dropped what rather than guessing.
     "backup", "old", "archive",
+    # v1.108.295: the UNDERSCORE spelling of a build tree. `build` and
+    # `.build` were both listed and `_build` was not, which is the spelling
+    # Elixir/Mix, Sphinx and Dune all use — and we index Elixir.
+    #
+    # ⚠⚠ This is the SAME defect as the three entries above, not a new one.
+    # `mix` copies dependency SOURCES into `_build`, so an Elixir project
+    # indexed here got every dependency symbol twice, with the copies
+    # competing against the originals in ranking. A build tree is derived
+    # data by definition; the only reason it survived is that nobody wrote
+    # down the third spelling.
+    #
+    # ⚠ Bounded, and listed anyway: `_build/` is in the standard Elixir
+    # .gitignore and gitignore is honoured, so this bites a project without
+    # one or indexed outside git. `build/` is in that same .gitignore and has
+    # been listed since the beginning — the argument for one is the argument
+    # for the other.
+    #
+    # ⚠ Found by reading Graft's fix titles against our tree
+    # (`fix(ingest): skip _build, the underscore spelling of a build tree`),
+    # which is the third time that probe has paid.
+    "_build",
 ]
 
 # Glob-style patterns — matched by regex in index_folder, by suffix in index_repo.
