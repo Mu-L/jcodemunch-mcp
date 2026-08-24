@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Fixed - `_build`, the third spelling of a build tree
+
+`build` and `.build` were both excluded from indexing. `_build` was not — and
+that is the spelling **Elixir/Mix, Sphinx and Dune** use. We index Elixir.
+
+⚠⚠ **This is the same defect as `backup`/`old`/`archive` (v1.108.234), not a new
+one.** `mix` copies dependency **sources** into `_build`, so an Elixir project
+indexed here got every dependency symbol twice and the copies then competed
+with the originals in ranking — the exact outcome the .234 entry describes. The
+only reason it survived is that nobody wrote down the third spelling.
+
+⚠ **Bounded, and listed anyway.** `_build/` is in the standard Elixir
+`.gitignore` and gitignore is honoured, so this bites a project without one or
+indexed outside git. `build/` is in that same `.gitignore` and has been
+excluded since the beginning; the argument for one is the argument for the
+other.
+
+⚠ Reaches both derived exports — `SKIP_DIRECTORIES` (the local walk) and
+`SKIP_PATTERNS` (the GitHub indexer) — because it was added to the canonical
+list rather than to either export. Still overridable per-project via
+`exclude_skip_directories`, which matters because these are ordinary words that
+can name a real package.
+
+⚠ Found by reading Graft's fix titles against our tree
+(`fix(ingest): skip _build, the underscore spelling of a build tree`). Third
+time that probe has paid, after the Gini double-count and the byte-mass basis.
+`tests/test_build_tree_spellings.py` asserts the property across every spelling
+rather than pinning the list; verified by removing `_build` again and watching
+only its three assertions fail.
+
 ### Fixed - a cache hit-rate that counted key-presence as validity
 
 `analyze_perf` published `hit_rate` bare. A "hit" is key-presence in the
