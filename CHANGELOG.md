@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Docs - correcting an argument from absence, made the same day it shipped
+
+1.108.295 recorded the vendor's 30–50 tool degradation threshold beside the
+catalog moratorium, guarded with the claim that **"their accuracy claim carries
+no number."** That was **wrong**. It was true of the tool search docs page and
+false of the [Advanced tool
+use](https://www.anthropic.com/engineering/advanced-tool-use) post that page
+links, which reports tool-selection accuracy **49% → 74% on Opus 4** and
+**79.5% → 88.1% on Opus 4.5** with tool search enabled, on "MCP evaluations".
+
+⚠⚠ **The lesson is the shape of the error, not the number: never argue from an
+absence of evidence you did not go looking for.** One page said "stays high"
+and I read that as nothing published, without following the link it sat next to.
+
+⚠⚠ **The verdict on the moratorium is UNCHANGED and its reason is now
+stronger.** It is not that they published no number — it is that **their number
+measures a different quantity**. Theirs is the MODEL's selection accuracy with
+a retrieval layer available versus all tools loaded, which prices the Counter's
+premise and prices it favourably. Ours is `route`'s own rank-1 accuracy on
+agent-emitted wording, measured directly, sitting at chance (52.2% against a
+51.4% majority baseline). A vendor result showing retrieval helps in general
+cannot stand in for our own measurement showing that *our* router does not, and
+their corpus is unpublished, so it is not an instrument we can run.
+
+⚠ Read it as raising the value of the Counter, not as clearing `route`. Those
+are separate claims and only the second is what the exit conditions gate.
+
+⚠ The 1.108.295 CHANGELOG entry is struck through in place rather than
+rewritten, so the history shows both what shipped and that it was corrected.
+
 ## [1.108.295] - 2026-08-24 - What the guard could not see
 
 ### Fixed - `_build`, the third spelling of a build tree
@@ -154,7 +184,9 @@ measure. Every prior argument has been about whether `route` is good enough;
 this says the catalog is already past where the *model's* selection degrades,
 independent of `route`. ⚠⚠ **It moves conditions 1–3 in neither direction and
 must not be cited as progress**: the "over 85 percent" headline is a TOKEN
-figure over a five-server setup, their accuracy claim carries no number, and
+figure over a five-server setup, ~~their accuracy claim carries no number~~
+[**corrected 2026-08-24 — see the Unreleased entry; it does, in the linked
+Advanced tool use post: 49% → 74% on Opus 4, 79.5% → 88.1% on Opus 4.5**], and
 our wall is `route` at 52.2% against a 51.4% majority baseline. ⚠ Their 85% and
 our 95.9% have the same epistemic status — one configuration each, neither a
 benchmark. ⚠ The 91 applies to carried-forward installs; `init` writes
