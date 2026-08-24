@@ -255,10 +255,27 @@ def analyze_perf(
             {"tool": name, **stats} for name, stats in slowest
         ],
         "cache": {
+            # ⚠⚠ `hit_rate` is RAW: a hit is key-presence in the session LRU,
+            # not a hit that still describes the current index. The cache is
+            # invalidated only by index-mutating tools IN THIS PROCESS, so an
+            # out-of-process reindex (the PostToolUse `index-file` spawn, the
+            # watcher, a second server instance) leaves entries serving.
+            # arXiv:2608.20280 measured raw rates of 51-60% falling to 1.1-2.2%
+            # once validity was checked, so the raw number is published only
+            # WITH the revalidated view beside it and a basis label on it.
+            # ⚠ `hits_unvalidated` is UNKNOWN, never folded into either bucket:
+            # of the three result-cache consumers only `search_symbols`
+            # revalidates, so it is a reported number, not an edge case.
             "totals": {
                 "hits": cache_stats.get("total_hits", 0),
                 "misses": cache_stats.get("total_misses", 0),
                 "hit_rate": cache_stats.get("hit_rate", 0.0),
+                "hit_rate_basis": cache_stats.get("hit_rate_basis", "raw_key_presence"),
+                "hit_rate_revalidated": cache_stats.get("hit_rate_revalidated"),
+                "hits_validated_fresh": cache_stats.get("hits_validated_fresh", 0),
+                "hits_validated_stale": cache_stats.get("hits_validated_stale", 0),
+                "hits_unvalidated": cache_stats.get("hits_unvalidated", 0),
+                "validated_share": cache_stats.get("validated_share"),
                 "cached_entries": cache_stats.get("cached_entries", 0),
             },
             "coldest_by_tool": [

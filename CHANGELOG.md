@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Fixed - a cache hit-rate that counted key-presence as validity
+
+`analyze_perf` published `hit_rate` bare. A "hit" is key-presence in the
+256-entry session LRU, which measures how often the cache **answered** and says
+nothing about whether the answer still described the index.
+
+⚠⚠ **arXiv:2608.20280 measured this exact gap on semantic caches: raw hit rates
+of 51-60% fell to quality-adjusted rates of 1.1-2.2% once validity was
+checked.** Publishing the raw number as a performance result is the defect that
+paper names, and we were publishing it with no basis label at all.
+
+⚠⚠ **The system already knew the difference; the metric did not.** `#377 item 3`
+revalidates a cached ABSENCE against `subject_state` before it stays citable,
+and `#404` re-annotates row freshness when the subject moved. So one hit can be
+known-fresh, another known-stale-but-still-served, and both were reported as one
+undifferentiated number.
+
+⚠ **The raw rate is KEPT and now carries `hit_rate_basis: "raw_key_presence"`.**
+It answers a real question; replacing it would trade one misleading number for
+another. What changes is that it cannot be read alone. Beside it:
+`hits_validated_fresh`, `hits_validated_stale`, `hits_unvalidated`,
+`hit_rate_revalidated`, `validated_share`, per-tool and in total.
+
+⚠⚠ **Three buckets, not two, and `hit_rate_revalidated` is `None` rather than
+`0.0` when nothing was validated** — a could-not-establish must not render as a
+measurement. Of the three result-cache consumers only `search_symbols`
+revalidates; `find_references` and `get_blast_radius` serve cached entries with
+no check, so `hits_unvalidated` is non-empty by construction. Folding it into
+either real bucket would be inventing data, the same rule `ledger_trust`
+applies to unseparable ledger rows.
+
+⚠ **Invalidation is process-local and that is why this matters here.** The five
+invalidation sites fire only for index-mutating tools in *this* process, so the
+PostToolUse `index-file` spawn, the watcher, `refresh`, and a second server
+instance all move the index without the cache hearing about it. Reporting is
+best-effort and wrapped: a telemetry failure can never affect an answer.
+
+⚠ Found in the 2026-08-24 token-cost radar. `tests/test_cache_hit_rate_basis.py`
+asserts the outcome at the surface that reports to a user, verified by
+reintroducing both defects — folding unknown into fresh, and republishing the
+raw rate bare — and watching exactly their own guards fail.
+
 ## [1.108.294] - 2026-08-24 - The hook layer, and the three seconds behind it
 
 ### Fixed — the Claude Code hooks: ten confirmed defects in the steering layer

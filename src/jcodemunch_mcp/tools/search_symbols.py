@@ -847,6 +847,15 @@ def search_symbols(
                 _is_negative = isinstance(_cv, dict) and _cv.get("state") == "absent"
                 _now_state = _subject.capture(index, include_tree=_is_negative)
                 _why = _subject.changed(_cached_state, _now_state)
+                # This branch is the only place in the tree that learns whether
+                # a SERVED hit still describes the index, so it is the only
+                # place that can keep `hit_rate` honest. Reporting is
+                # best-effort: a telemetry failure must never affect the answer.
+                try:
+                    from ..storage import result_cache_hit_validated
+                    result_cache_hit_validated("search_symbols", stale=bool(_why))
+                except Exception:
+                    logger.debug("cache-hit validation telemetry failed", exc_info=True)
                 if _why:
                     _subject.revalidate_verdict(_cv, _why)
                     # The verdict now discloses that the subject moved — but the

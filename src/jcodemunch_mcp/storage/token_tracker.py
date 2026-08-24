@@ -143,6 +143,12 @@ class _State:
         self._result_cache: OrderedDict = OrderedDict()  # (tool, repo, key) -> result
         self._cache_hits: dict = {}    # tool_name -> hit count
         self._cache_misses: dict = {}  # tool_name -> miss count
+        # A hit is key-presence, which is NOT the same as a hit that still
+        # describes the current index. Only the consumers that revalidate
+        # against subject_state can tell, so they report back here; a hit
+        # nobody validated stays UNKNOWN and is never counted as fresh.
+        self._cache_hits_fresh: dict = {}  # tool_name -> validated, unchanged
+        self._cache_hits_stale: dict = {}  # tool_name -> validated, subject moved
         # Per-tool latency ring (process-lifetime; cap _LATENCY_RING_DEFAULT entries)
         self._tool_latencies: dict[str, deque] = {}
         self._tool_errors: dict[str, int] = {}
@@ -294,12 +300,67 @@ class _State:
                 del self._result_cache[k]
             return len(to_delete)
 
+    def cache_hit_validated(self, tool_name: str, stale: bool) -> None:
+        """Record that an already-counted hit was checked against the index.
+
+        Called by a consumer that revalidates a cached entry against
+        ``subject_state.changed``. Never counts a hit — ``cache_get`` already
+        did — so this cannot inflate ``hit_rate``.
+
+        ⚠ Exactly ONE of the three result-cache consumers does this today:
+        ``search_symbols``. ``find_references`` and ``get_blast_radius`` serve
+        cached entries with no check at all, which is why `hits_unvalidated`
+        is a reported number rather than an edge case.
+        """
+        with self._lock:
+            bucket = self._cache_hits_stale if stale else self._cache_hits_fresh
+            bucket[tool_name] = bucket.get(tool_name, 0) + 1
+
+    @staticmethod
+    def _revalidated_block(h: int, fresh: int, stale: int) -> dict:
+        """The three-bucket view of `h` hits. Unvalidated is UNKNOWN, not fresh."""
+        validated = fresh + stale
+        return {
+            "hits_validated_fresh": fresh,
+            "hits_validated_stale": stale,
+            # ⚠ Never folded into either. Nobody checked these.
+            "hits_unvalidated": max(0, h - validated),
+            # None, NOT 0.0 and NOT the raw rate: with nothing validated this
+            # is a could-not-establish, and a number here would be read as a
+            # measurement.
+            "hit_rate_revalidated": (
+                round(fresh / validated, 3) if validated else None
+            ),
+            "validated_share": round(validated / h, 3) if h else None,
+        }
+
     def cache_stats(self) -> dict:
-        """Return cache hit/miss stats. Thread-safe."""
+        """Return cache hit/miss stats. Thread-safe.
+
+        ⚠⚠ ``hit_rate`` is the RAW rate: a hit is key-presence in the LRU, which
+        is not the same as a hit that still describes the current index. The
+        cache is invalidated only by index-mutating tools **in this process**,
+        so an out-of-process reindex (the PostToolUse ``index-file`` spawn, the
+        watcher, a second server instance) leaves entries serving happily.
+        arXiv:2608.20280 measured raw rates of 51-60% falling to 1.1-2.2% once
+        validity was checked; quoting a raw rate as a performance result is the
+        defect it names.
+
+        ⚠ So the raw rate is kept (it is the right measure of how often the LRU
+        answered) and the revalidated view is reported BESIDE it, never instead:
+        ``hits_validated_fresh`` / ``hits_validated_stale`` / ``hits_unvalidated``.
+        ⚠⚠ **Three buckets, not two.** Of the three result-cache consumers only
+        ``search_symbols`` revalidates; ``find_references`` and
+        ``get_blast_radius`` serve cached hits with no check at all. The
+        unvalidated bucket is therefore non-empty by construction, and folding
+        it into either real bucket would be inventing a measurement.
+        """
         with self._lock:
             total_hits = sum(self._cache_hits.values())
             total_misses = sum(self._cache_misses.values())
             total_lookups = total_hits + total_misses
+            total_fresh = sum(self._cache_hits_fresh.values())
+            total_stale = sum(self._cache_hits_stale.values())
             by_tool = {}
             all_tools = set(self._cache_hits) | set(self._cache_misses)
             for tool in all_tools:
@@ -310,12 +371,19 @@ class _State:
                     "hits": h,
                     "misses": m,
                     "hit_rate": round(h / t, 3) if t else 0.0,
+                    **self._revalidated_block(
+                        h,
+                        self._cache_hits_fresh.get(tool, 0),
+                        self._cache_hits_stale.get(tool, 0),
+                    ),
                 }
             return {
                 "total_hits": total_hits,
                 "total_misses": total_misses,
                 "hit_rate": round(total_hits / total_lookups, 3) if total_lookups else 0.0,
+                "hit_rate_basis": "raw_key_presence",
                 "cached_entries": len(self._result_cache),
+                **self._revalidated_block(total_hits, total_fresh, total_stale),
                 "by_tool": by_tool,
             }
 
@@ -1477,8 +1545,22 @@ def result_cache_invalidate(repo: Optional[str] = None) -> int:
     return _state.cache_invalidate(repo)
 
 
+def result_cache_hit_validated(tool_name: str, stale: bool) -> None:
+    """Report that a served cache hit was checked against the current index.
+
+    ``stale=True`` means the subject moved since the entry was filled — the
+    entry may still be served (the v1.108.178 cached-positive policy), but it
+    must not be counted as a fresh hit.
+    """
+    _state.cache_hit_validated(tool_name, stale)
+
+
 def result_cache_stats() -> dict:
-    """Return cache hit/miss stats for the current session."""
+    """Return cache hit/miss stats for the current session.
+
+    ``hit_rate`` is RAW (key-presence). Read it beside `hit_rate_revalidated`
+    and `hits_unvalidated` — see ``_TokenState.cache_stats``.
+    """
     return _state.cache_stats()
 
 
