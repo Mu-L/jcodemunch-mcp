@@ -183,6 +183,43 @@ It helps most on targeted edits (one function, one method, one class), which is 
 
 <a id="background-behavior-fully-disclosed"></a>
 
+## Deferring the tool schemas (Anthropic tool search)
+
+If you reach jCodeMunch through the [MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) on a model that supports [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool), you can keep our schemas out of your context prefix entirely and let Claude load only the two or three tools a request needs. **You do not set `defer_loading` per tool** — set it once for the whole server:
+
+```json
+{
+  "mcp_servers": [
+    { "type": "url", "url": "https://your-host/mcp", "name": "jcodemunch" }
+  ],
+  "tools": [
+    { "type": "tool_search_tool_bm25_20251119", "name": "tool_search_tool_bm25" },
+    {
+      "type": "mcp_toolset",
+      "mcp_server_name": "jcodemunch",
+      "default_config": { "defer_loading": true },
+      "configs": {
+        "resolve_repo":       { "defer_loading": false },
+        "search_symbols":     { "defer_loading": false },
+        "get_ranked_context": { "defer_loading": false }
+      }
+    }
+  ]
+}
+```
+
+Send it with the beta header `mcp-client-2025-11-20`. **Both halves are required** — `mcp_servers` alone is a validation error, and so is `mcp_toolset` without the matching `mcp_server_name`.
+
+⚠ **The MCP connector takes a URL, so this applies to jCodeMunch served over `sse` or `streamable-http`** (`jcodemunch-mcp serve --transport streamable-http`), not to the default local stdio setup. On stdio, whether schemas are deferred is up to your client, and `tool_surface: "counter"` below is the lever you control.
+
+The `configs` block above follows Anthropic's own advice — keep your 3–5 most-used tools resident so common requests skip the search round trip — and per-tool `configs` overrides `default_config`.
+
+Deferred definitions are excluded from the system-prompt prefix and appended inline as `tool_reference` blocks when Claude discovers them, **so prompt caching is preserved** — this is not the cache-invalidating kind of dynamic tool list. At least one tool in the request must stay non-deferred, or the API returns a 400.
+
+⚠ **This is a different mechanism from our own `tool_surface: "counter"`**, and you do not need both. Tool search is host-side and works across every MCP server you have connected; the Counter is server-side, works on any host including ones with no tool-search support, and is what `init` configures on a first-ever install. Pick whichever your host supports — see [CONFIGURATION.md](CONFIGURATION.md#the-counter--collapse-to-a-3-tool-front-door-tool_surface) for the Counter and `jcodemunch-mcp surface` for what your install actually advertises.
+
+---
+
 ## Security, privacy, and background behavior
 
 Local-first by design: indexes live at `~/.code-index/`, and the base package's only default network behavior is an anonymous savings counter (random ID plus aggregate token counts, no code, no paths, no PII; opt out with `share_savings: false`). Everything the server does beyond answering a tool call (file watching, the opt-in login service, license validation, model downloads, org reporting) is opt-in or opt-out, visible, and reversible, and every item is enumerated in **[SECURITY.md](SECURITY.md#background-behavior-fully-disclosed)** alongside the path-traversal, symlink, and secret-redaction controls.
