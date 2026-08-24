@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Docs - deferring our schemas via Anthropic tool search, and a catalog-size number from the vendor
+
+README gains a section on keeping jCodeMunch's tool schemas out of the context
+prefix using [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool).
+⚠ For an MCP server you do **not** set `defer_loading` per tool — it goes once
+on the `mcp_toolset` entry's `default_config`, with per-tool `configs`
+overriding it. The snippet keeps `resolve_repo` / `search_symbols` /
+`get_ranked_context` resident, which is Anthropic's own 3–5-resident-tools
+advice. ⚠ Both halves of the connector are required and the beta header is
+named, because the `tools`-only form is a validation error; and the connector
+is URL-based, so this is for `sse` / `streamable-http`, not default stdio.
+⚠ Deferred definitions are excluded from the prefix and appended as
+`tool_reference` blocks, so **prompt caching is preserved** — worth stating,
+since a dynamic tool list normally invalidates it.
+
+ROADMAP records a number beside the catalog moratorium:
+
+> "Claude's ability to pick the right tool degrades once you exceed **30–50
+> available tools**."
+
+⚠⚠ **We serve 91 on `full` and that is 2–3x past it** — the first EXTERNAL
+evidence for the freeze, and it is on an axis the exit conditions do not
+measure. Every prior argument has been about whether `route` is good enough;
+this says the catalog is already past where the *model's* selection degrades,
+independent of `route`. ⚠⚠ **It moves conditions 1–3 in neither direction and
+must not be cited as progress**: the "over 85 percent" headline is a TOKEN
+figure over a five-server setup, their accuracy claim carries no number, and
+our wall is `route` at 52.2% against a 51.4% majority baseline. ⚠ Their 85% and
+our 95.9% have the same epistemic status — one configuration each, neither a
+benchmark. ⚠ The 91 applies to carried-forward installs; `init` writes
+`counter` (3 tools) on a first-ever install.
+
 ### Fixed - `_build`, the third spelling of a build tree
 
 `build` and `.build` were both excluded from indexing. `_build` was not — and

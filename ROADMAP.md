@@ -575,6 +575,45 @@ functionally absent while still costing a schema, a 1.x compatibility promise,
 an output contract and a test matrix. #397 is the sharp end: generated
 `CLAUDE.md` named 25 tools against a server exposing 6.
 
+⚠⚠ **THE MODEL VENDOR NOW PUTS A NUMBER ON THE CATALOG-SIZE COST, AND WE ARE
+2-3x PAST IT** (recorded 2026-08-24 from Anthropic's [tool search
+docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)):
+
+> "Claude's ability to pick the right tool degrades once you exceed **30-50
+> available tools**."
+
+`jcodemunch-mcp surface` on `full` reports **91 visible of 94**; the canonical
+`benchmarks/schema_baseline.json` puts that payload at **22,741 tokens**
+(`full_full`) against **939** for `counter`. Their "when to use tool search"
+list — 10+ tools, definitions over 10k tokens, a library that grows — describes
+this server exactly.
+
+⚠⚠ **THIS IS EVIDENCE FOR THE FREEZE, NOT AGAINST IT, AND IT IS THE FIRST
+EXTERNAL NUMBER WE HAVE.** Every argument to exit has so far been about whether
+`route` is good enough. This says the catalog is already past the size at which
+the MODEL's own selection degrades, independent of `route`. **A 92nd action
+makes the number worse on an axis the exit conditions do not measure at all.**
+
+⚠⚠ **AND IT DOES NOT TOUCH THE EXIT CONDITIONS — do not cite it as progress.**
+The headline "over 85 percent" reduction is a TOKEN figure over a five-server
+MCP setup; their accuracy claim ("selection accuracy stays high") carries **no
+number**. Our wall is that `route` scores **52.2% vs a 51.4% majority baseline**
+on agent wording, i.e. chance. **Nothing in that document measures routing
+accuracy, so nothing in it moves conditions 1-3 in either direction.** Anyone
+quoting the 85% at this block is answering an accuracy question with a token
+number — the same category error as quoting 71.2% at the emitted distribution.
+
+⚠ **Their 85% and our 95.9% have the SAME epistemic status**: each characterises
+one configuration, neither is a benchmark. Do not present theirs as validating
+ours, and do not let ours be read as competing with theirs.
+
+⚠ **The surface default is split and the distinction matters when quoting 91.**
+`init` writes `tool_surface: "counter"` on a genuinely first-ever install (3
+tools). The config template and the env fallback both resolve to `full`, so an
+upgraded install, or one with no config, serves all 91. **The 30-50 finding
+therefore applies to the carried-forward population, not to new installs** —
+which is an argument about the default, tracked separately from this freeze.
+
 **Exit conditions, named before the work** (same discipline as Arc 4's
 thresholds — neither side picks the bar after seeing results):
 
