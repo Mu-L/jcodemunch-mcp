@@ -596,12 +596,31 @@ makes the number worse on an axis the exit conditions do not measure at all.**
 
 ⚠⚠ **AND IT DOES NOT TOUCH THE EXIT CONDITIONS — do not cite it as progress.**
 The headline "over 85 percent" reduction is a TOKEN figure over a five-server
-MCP setup; their accuracy claim ("selection accuracy stays high") carries **no
-number**. Our wall is that `route` scores **52.2% vs a 51.4% majority baseline**
-on agent wording, i.e. chance. **Nothing in that document measures routing
-accuracy, so nothing in it moves conditions 1-3 in either direction.** Anyone
-quoting the 85% at this block is answering an accuracy question with a token
-number — the same category error as quoting 71.2% at the emitted distribution.
+MCP setup. Our wall is that `route` scores **52.2% vs a 51.4% majority
+baseline** on agent wording, i.e. chance. Anyone quoting the 85% at this block
+is answering an accuracy question with a token number — the same category
+error as quoting 71.2% at the emitted distribution.
+
+⚠⚠ **CORRECTION, 2026-08-24, SAME DAY AS THE ENTRY ABOVE: this block first said
+their accuracy claim "carries no number". THAT WAS WRONG** — true of the tool
+search DOCS page, false of the [Advanced tool
+use](https://www.anthropic.com/engineering/advanced-tool-use) post it links,
+which reports tool-selection accuracy **49% -> 74% on Opus 4** and **79.5% ->
+88.1% on Opus 4.5** with tool search enabled, on "MCP evaluations". **Never
+argue from an absence of evidence you did not go looking for.**
+
+⚠⚠ **The verdict is unchanged and the REASON is now better.** It is not that
+they published no number; it is that **their number measures a different
+quantity**. Theirs is the MODEL's selection accuracy with a retrieval layer
+available versus all tools loaded — i.e. it prices the Counter's premise, and
+prices it favourably. Ours is `route`'s OWN rank-1 accuracy on agent-emitted
+wording, measured directly, and it sits at chance. **A vendor number showing
+that retrieval helps in general cannot substitute for our own measurement
+showing that OUR router does not.** Their corpus is unpublished, so it is not
+an instrument we can run either.
+
+⚠ **Read it as raising the value of the Counter, not as clearing `route`.**
+Those are separate claims and only the second is what conditions 1-3 gate.
 
 ⚠ **Their 85% and our 95.9% have the SAME epistemic status**: each characterises
 one configuration, neither is a benchmark. Do not present theirs as validating
