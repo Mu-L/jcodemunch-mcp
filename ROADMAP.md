@@ -1560,6 +1560,74 @@ points here, so the promise that this is tracked resolves to a real entry.
 
 ---
 
+## `input_examples` — INVESTIGATED AND DECLINED, 2026-08-24 (NEGATIVE result)
+
+⚠⚠ **Not an accepted entry.** The Conventions below say a rejected proposal
+gets a closed issue, not a roadmap line. This is here anyway because the thing
+worth preserving is a **measurement plus a blocker**, and a closed issue is not
+where anyone looks before asking "why don't we ship tool-use examples?" — the
+same reason the `codex_surface` negative lives in `CLAUDE.md`. It is filed as a
+finding, and it carries the condition that would reopen it.
+
+**The prompt.** Anthropic's [Advanced tool
+use](https://www.anthropic.com/engineering/advanced-tool-use) reports
+`input_examples` improving accuracy **72% -> 90%** on complex tasks. We already
+curate 32 example argument objects in `counter.EXAMPLES`, consumed today only
+by `menu` rows and `route`'s `args_template`. The raw material exists.
+
+**What was measured** (bytes/4, the estimator `jcodemunch-mcp surface` uses):
+
+| | |
+|---|---:|
+| catalog tools | 94 |
+| with a curated example | **32 (34%)** |
+| schema tokens, no examples | 27,474 |
+| schema tokens, + examples | 28,029 |
+| delta | **+555 (2.0%)** |
+| per covered tool | +17.3 |
+| resident set of 5, under deferral | **+62** |
+
+⚠ **The token objection is dead** and should not be raised again. 2.0% overall,
+and consistent with the vendor's own "~20-50 tokens for simple examples".
+
+⚠⚠ **THE BLOCKER IS THAT THE FIELD DOES NOT EXIST FOR US.** `input_examples` is
+an Anthropic **API** field on user-defined tool definitions. The MCP `Tool`
+type has no such field — `name`, `title`, `description`, `inputSchema`,
+`outputSchema`, `icons`, `annotations`, `meta`, `execution`, and nothing else.
+The connector builds tool definitions from our `tools/list`, and no
+documentation maps a non-standard field through.
+
+⚠⚠ **MCP's model allows extras, so we COULD attach it, and that is the trap.**
+The docs state: *"Each example must be valid according to the tool's
+`input_schema`. Invalid examples return a 400 error."* So the downside of
+betting on undocumented behaviour is not "no benefit" — it is **a 400 that
+breaks the user's session**. Unverifiable upside against a session-breaking
+downside is the wrong trade.
+
+⚠ **There IS an available route, and it is NOT this feature.** The tool-use
+system prompt embeds `{{ TOOL DEFINITIONS IN JSON SCHEMA }}` and our
+`inputSchema` passes through verbatim, so the standard JSON Schema `examples`
+keyword reaches the model on every host with no connector support. **Do not
+claim the 72% -> 90% figure for it** — different mechanism, same category error
+as quoting a token figure at an accuracy question. It also collides with the
+hard **4,000-token `core_compact` ceiling**, which currently has about ten
+tokens of slack.
+
+⚠ **Order of levers, from the vendor's own page**: *"Provide extremely detailed
+descriptions. This is by far the most important factor... Prioritize
+descriptions, but consider `input_examples` for complex tools."* Descriptions
+are first-order and we already gate them (`tests/test_description_smells.py`).
+
+### What would reopen this
+
+A **wire test**, and nothing short of it: attach examples, serve over
+`streamable-http`, run a real request through the MCP connector, and read back
+whether the constructed tool definitions carry them. That needs a deployed HTTP
+endpoint and API credits. **Until someone has run that, "the connector might
+pass it through" is a guess, and this entry stays closed.**
+
+---
+
 ## Conventions
 
 - Entries here are **accepted**, not speculative. A rejected proposal gets a
