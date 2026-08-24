@@ -6,18 +6,13 @@ perfect nudge and still be inert if it writes to stderr or systemMessage.
 
 import io
 import json
-import os
 import sys
 from unittest import mock
 
 import pytest
 
-from jcodemunch_mcp.cli.hooks import (
-    _emit_additional_context,
-    run_pretooluse,
-    run_sessionstart,
-    run_subagentstart,
-)
+from jcodemunch_mcp.cli.hooks import run_pretooluse, run_sessionstart, run_subagentstart
+from jcodemunch_mcp.cli.hooks._common import _emit_additional_context, _norm_path
 
 
 def _run(func, stdin_text: str) -> tuple[int, str, str]:
@@ -80,6 +75,16 @@ class TestEmitAdditionalContext:
 
 
 class TestReadNudgeReachesModel:
+    @pytest.fixture(autouse=True)
+    def _indexed(self, tmp_path, monkeypatch):
+        # The nudge only fires for files inside an indexed repo — outside,
+        # the recommended tools would error and erode trust in the hints.
+        from jcodemunch_mcp.cli.hooks._common import _norm_path
+        monkeypatch.setattr(
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
+            lambda: [_norm_path(str(tmp_path))],
+        )
+
     def test_read_nudge_uses_additional_context(self, big_py):
         rc, out, err = _run(run_pretooluse, _read_input(str(big_py)))
         assert rc == 0
@@ -103,8 +108,8 @@ class TestGrepNudgeReachesModel:
     @pytest.fixture(autouse=True)
     def _indexed(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
-            lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
+            lambda: [_norm_path(str(tmp_path))],
         )
 
     def test_grep_nudge_uses_additional_context(self, tmp_path):
@@ -118,7 +123,7 @@ class TestGrepNudgeReachesModel:
     def test_silent_paths_stay_fully_silent(self, tmp_path, monkeypatch):
         """Gating is unchanged: outside an indexed repo, no channel is used."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots", lambda: []
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots", lambda: []
         )
         rc, out, err = _run(run_pretooluse, _grep_input("foo", str(tmp_path)))
         assert (rc, out, err) == (0, "", "")
@@ -130,8 +135,8 @@ class TestStrictModeUnaffected:
     def test_strict_read_still_denies(self, big_py, monkeypatch, tmp_path):
         monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._indexed_source_roots",
-            lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
+            "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
+            lambda: [_norm_path(str(tmp_path))],
         )
         rc, out, _ = _run(run_pretooluse, _read_input(str(big_py)))
         assert rc == 0
@@ -155,7 +160,10 @@ class TestSubagentBriefingReachesSubagent:
         monkeypatch.setattr("jcodemunch_mcp.storage.IndexStore", type(
             "MockStore", (), {
                 "__init__": lambda self, **kw: None,
-                "list_repos": lambda self: [{"owner": "test", "name": "repo"}],
+                # Real list_repos() shape: entries keyed "repo", no owner/name.
+                "list_repos": lambda self: [
+                    {"repo": "test/repo", "source_root": "/tmp/x"}
+                ],
                 "load_index": lambda self, o, n: idx,
             },
         ))
@@ -183,8 +191,8 @@ class TestSessionStartRestoresSnapshot:
     @pytest.fixture
     def _snapshot(self, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot",
-            lambda: ("## Session Snapshot (jCodemunch)\n- src/auth.py (9 reads)", False),
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot",
+            lambda: "## Session Snapshot (jCodemunch)\n- src/auth.py (9 reads)",
         )
 
     def _start(self, source: str) -> tuple[int, str, str]:
@@ -213,18 +221,16 @@ class TestSessionStartRestoresSnapshot:
         assert self._start(source) == (0, "", "")
 
     def test_silent_when_no_journal(self, monkeypatch):
-        """The no-journal fallback is user-facing text; the model gains nothing
-        from being told no session data was found."""
+        """No journal renders as an empty snapshot — nothing to inject."""
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot",
-            lambda: ("No live session journal was found.", True),
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot", lambda: ""
         )
         assert self._start("compact") == (0, "", "")
 
     def test_silent_on_blank_snapshot(self, monkeypatch):
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot",
-            lambda: ("   \n  ", False),
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot",
+            lambda: "   \n  ",
         )
         assert self._start("compact") == (0, "", "")
 
@@ -233,35 +239,27 @@ class TestSessionStartRestoresSnapshot:
         def boom():
             raise RuntimeError("journal unreadable")
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot", boom
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot", boom
         )
         assert self._start("compact") == (0, "", "")
 
     def test_invalid_json_is_tolerated(self):
         assert _run(run_sessionstart, "not json") == (0, "", "")
 
-    def test_shares_snapshot_builder_with_precompact(self, monkeypatch):
-        """Both hooks must describe the same session identically — one builder."""
+    def test_precompact_is_silent_and_sessionstart_delivers(self, monkeypatch):
+        """PreCompact has no exit-0 output channel — Claude Code discards its
+        ``systemMessage`` (it used to emit the snapshot into that discarded
+        field). SessionStart(compact) is the delivery route for the snapshot."""
         from jcodemunch_mcp.cli.hooks import run_precompact
 
-        calls = []
-
-        def fake():
-            calls.append(1)
-            return ("## Session Snapshot (jCodemunch)\n- a.py", False)
-
+        body = "## Session Snapshot (jCodemunch)\n- a.py"
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._build_session_snapshot", fake
+            "jcodemunch_mcp.cli.hooks.snapshot._build_session_snapshot", lambda: body
         )
-        _, pre_out, _ = _run(run_precompact, '{"hook_event_name": "PreCompact"}')
+        assert _run(run_precompact, '{"hook_event_name": "PreCompact"}') == (0, "", "")
         _, ss_out, _ = _run(run_sessionstart, json.dumps(
             {"hook_event_name": "SessionStart", "source": "compact"}
         ))
-
-        assert len(calls) == 2
-        # PreCompact reports to the user; SessionStart steers the model. Same body.
-        body = "## Session Snapshot (jCodemunch)\n- a.py"
-        assert body in json.loads(pre_out)["systemMessage"]
         assert body in json.loads(ss_out)["hookSpecificOutput"]["additionalContext"]
 
 
@@ -273,7 +271,7 @@ class TestSessionStartRegistersTranscriptRoot:
     def _seen(self, monkeypatch):
         seen: list = []
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.hooks._note_transcript_root", seen.append
+            "jcodemunch_mcp.cli.hooks.snapshot._note_transcript_root", seen.append
         )
         return seen
 

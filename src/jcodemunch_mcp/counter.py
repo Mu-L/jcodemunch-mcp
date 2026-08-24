@@ -34,6 +34,30 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
+# The only two tool surfaces that exist. Anything else has always BEHAVED as
+# "full" (only "counter" is ever special-cased).
+VALID_TOOL_SURFACES = ("counter", "full")
+
+
+def resolve_tool_surface(
+    env_value: Optional[str], config_value: Optional[str]
+) -> "tuple[str, str, bool]":
+    """``(effective, requested, recognized)`` for a tool-surface setting.
+
+    Env wins; a whitespace-only env value is treated as unset; anything
+    unrecognized serves "full". One authority for the server and the
+    out-of-process hooks — the two resolvers used to agree on precedence
+    but only the server validated, so a typo'd value behaved identically
+    while reporting differently depending on who read it.
+    """
+    env_value = (env_value or "").strip()
+    raw = env_value if env_value else (config_value or "full")
+    requested = str(raw).strip().lower()
+    if requested in VALID_TOOL_SURFACES:
+        return requested, requested, True
+    return "full", requested, False
+
+
 # The front-door tool names. These are never themselves dispatchable via
 # ``order`` (no front-door recursion).
 FRONT_DOOR: frozenset[str] = frozenset({"order", "menu", "route"})

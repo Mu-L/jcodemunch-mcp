@@ -96,6 +96,8 @@ def register(root: Path | str, storage_path: Optional[str] = None) -> bool:
         if not path.name:
             return False
         existing = _read(storage_path)
+        if str(path) in existing:
+            return False  # exact-string hit: the steady state, no resolving
         seen = {_key(Path(r)) for r in existing}
         if _key(path) in seen:
             return False

@@ -394,3 +394,23 @@ def test_narrower_rules_still_outrank_the_content_rule():
     actions = [r["action"] for r in counter.classify_intent(
         "find every place we swallow an exception without logging", _NAMES)]
     assert actions[0] == "search_ast", actions
+
+
+class TestResolveToolSurface:
+    """One authority for surface resolution (server + out-of-process hooks)."""
+
+    def test_env_wins_over_config(self):
+        from jcodemunch_mcp.counter import resolve_tool_surface
+        assert resolve_tool_surface("counter", "full") == ("counter", "counter", True)
+
+    def test_whitespace_env_falls_through_to_config(self):
+        from jcodemunch_mcp.counter import resolve_tool_surface
+        assert resolve_tool_surface("   ", "counter") == ("counter", "counter", True)
+
+    def test_unrecognized_serves_full_and_says_so(self):
+        from jcodemunch_mcp.counter import resolve_tool_surface
+        assert resolve_tool_surface("countr", None) == ("full", "countr", False)
+
+    def test_absent_everything_is_full(self):
+        from jcodemunch_mcp.counter import resolve_tool_surface
+        assert resolve_tool_surface(None, None) == ("full", "full", True)

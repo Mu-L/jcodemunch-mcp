@@ -29,7 +29,7 @@ _SPAWNERS = {"run", "Popen", "call", "check_call", "check_output"}
 # so they are exempt BY NAME — a new server-path module cannot land in here by
 # accident, it has to be added deliberately.
 _NOT_SERVER_PATH = {
-    "cli/hooks.py",
+    "cli/hooks/reindex.py",
     "cli/init.py",
     "cli/upgrade.py",
     "service_installer.py",

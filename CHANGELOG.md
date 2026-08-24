@@ -42,6 +42,98 @@ asserts the cost as a property (the common paths settle without the full map)
 rather than pinning the call order, and separately asserts that a renamed fork
 is still named.
 
+### Fixed — the Claude Code hooks: ten confirmed defects in the steering layer
+
+An adversarially-verified audit of the "Claude forgets to call jCodeMunch"
+symptom found the enforcement hooks failing from several directions at once.
+Every fix below was reproduced against the unfixed tree first.
+
+- **Bash/Glob were unhooked** — the PreToolUse matcher was `Read|Grep`, so
+  `Bash(grep/rg/find ...)` and `Glob`, the dominant native search routes, never
+  fired the hook; strict mode actively funneled the model from a denied Grep
+  into unmonitored Bash. Matcher is now `Read|Grep|Glob|Bash`; the handler
+  intercepts Glob like Grep and Bash command lines that OPEN with a search
+  command (a grep after a pipe filters other output jcm can't serve, and stays
+  untouched).
+- **Symlinked paths disabled all steering** — `index_folder` stores
+  `source_root` resolved (`Path.resolve()`), the hook compared `abspath` only,
+  so any symlink component (macOS `/tmp` → `/private/tmp`, symlinked
+  worktrees) made nudge AND strict deny silently inert. All root comparisons
+  now go through `realpath`.
+- **Three hook features read `owner`/`name` keys `list_repos()` never returns**
+  (entries carry `repo`) — the SubagentStart repo briefing, the
+  PreCompact/SessionStart landmarks, and the TaskCompleted diagnostics skipped
+  every repo, always. The masking test mocks used the wrong entry shape.
+- **TaskCompleted diagnostics were dead by construction** — the handler read
+  the empty in-process journal (the exact #334 defect fixed for PreCompact);
+  it now reads the persisted live journal first.
+- **The PostToolUse reindex spawned a bare-name `jcodemunch-mcp`** — dead
+  under the hook shell's minimal PATH on exactly the installs (pipx,
+  pip --user) whose absolute-path resolution `init` exists for. Spawns now
+  reuse this process's own invocation, falling back to `python -m`; the
+  Copilot hooks.json command gets the absolute path too, `install`/`uninstall`/
+  `install-status` match it by subcommand rather than the bare-name prefix
+  (which could never match the new form), and a pre-existing bare-name Copilot
+  rule is upgraded in place on re-install.
+- **Re-running `init` never upgraded a stale matcher** — a pre-1.108.47
+  install kept `Read` forever while install reported success, and
+  `config --check` printed the EXPECTED matcher for present hooks, masking the
+  drift. Merge now upgrades matchers in place; the check prints the installed
+  matcher and warns on drift.
+- **PreCompact emitted its snapshot into a discarded field** — Claude Code
+  documents that a PreCompact hook's `systemMessage` is discarded, so the
+  user-facing snapshot report reached nobody, ever. The emission is removed;
+  SessionStart(compact) remains the delivery route.
+- **The advisory Read nudge fired outside every indexed repo** — recommending
+  `get_file_outline` on files jcm cannot serve, teaching the model the hints
+  are unreliable. It is now gated on indexed-root overlap like strict mode
+  always was.
+- **The SubagentStart catalog was surface-blind** — under the default
+  `tool_surface="counter"` it briefed 41 raw tool names the subagent's client
+  does not advertise and never mentioned `order`/`menu`/`route`. The briefing
+  now matches the effective surface.
+- **Robustness** — a garbage `JCODEMUNCH_HOOK_MIN_SIZE` no longer crashes
+  every hook at import (parses to the default), and hostile payload shapes
+  (non-dict payloads, null `tool_input`, non-string `source`, list-shaped
+  Copilot `toolArgs`, NUL-byte paths, malformed live-journal entries) no
+  longer raise.
+
+  Boundaries set by the adversarial review of the fixes themselves: strict
+  mode denies only pure-search Bash commands (`grep`/`rg`/…, never `find` —
+  `find … -delete` opens with the same word and a deny steering to search
+  routes cannot delete) and stays silent when the command names an absolute
+  path outside every indexed root, since jcm cannot serve that search. The
+  TaskCompleted live-journal read carries a 240-minute freshness bound so an
+  abandoned journal cannot present a dead session's edits as this task's.
+  The re-spawn path refuses a relative `argv[0]` (the hook's cwd is the
+  checked-out repo — a file named `jcodemunch-mcp` there must never be what
+  gets executed). Known cost: matching `Bash` in the PreToolUse matcher puts
+  a ~0.4s (warm) hook process in front of every Bash call; a fast hook entry
+  path that skips the server import is the follow-on if that bites.
+
+  Strict-mode Bash denies apply only to PURE search commands: a pipeline or
+  compound command (`rg | xargs sed -i`, `grep -q x && make`) is nudged, never
+  blocked, and a `../` target is treated as outside the repo (silence). The
+  realpath fix covers symlinked checkout paths — a `git worktree` checkout is
+  a genuinely different directory and stays outside indexed roots. Known
+  limit: the TaskCompleted live-journal read is one file per store, so two
+  concurrent sessions against the same CODE_INDEX_PATH can attribute each
+  other's edits in the advisory diagnostics (inherent to the #334 bridge).
+
+  The SubagentStart briefing now scopes to the repo(s) containing the
+  subagent's `cwd` when it names one (brief-everything stays the fallback):
+  reviving the repo loop exposed that it hydrates and PageRanks EVERY indexed
+  repo per spawn, which is minutes-scale on big multi-repo boxes. The rest of
+  the revived-loop bill is paid too: the steering gate reads roots via a new
+  `IndexStore.list_source_roots()` (one meta row per .db, no per-repo
+  `COUNT(*)` scans), the TaskCompleted/landmark loops probe file membership
+  read-only before hydrating an index (any doubt hydrates), transcript-root
+  registration takes an exact-string fast path in the steady state, leading
+  env assignments (`FOO=1 grep …`) and a subshell paren no longer slip the
+  Bash search regex, and tool-surface resolution has ONE authority —
+  `counter.resolve_tool_surface` — shared by the server and the hooks
+  (whitespace-only env now falls through to config on both sides).
+
 ## [1.108.293] - 2026-08-23 - Ten skipped modules that hid 209 tests
 
 ### Fixed - ten skipped modules that hid 209 tests between them

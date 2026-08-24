@@ -243,7 +243,7 @@ class TestHookSideEffect:
     def test_hook_registration_writes_nothing_to_stdout(self, store, tmp_path, capsys):
         """Claude Code parses hook stdout as the hook's reply — a stray write
         there corrupts the protocol, so the registry side effect must be mute."""
-        from jcodemunch_mcp.cli.hooks import _note_transcript_root
+        from jcodemunch_mcp.cli.hooks._common import _note_transcript_root
 
         transcript = tmp_path / "prof" / "projects" / "slug" / "s.jsonl"
         transcript.parent.mkdir(parents=True)
@@ -255,7 +255,7 @@ class TestHookSideEffect:
         assert transcript.parent.parent in tr.known_roots()
 
     def test_malformed_payload_is_survivable(self, store):
-        from jcodemunch_mcp.cli.hooks import _note_transcript_root
+        from jcodemunch_mcp.cli.hooks._common import _note_transcript_root
 
         _note_transcript_root(None)
         _note_transcript_root("not a dict")

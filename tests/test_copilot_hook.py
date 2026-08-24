@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import sys
 from unittest.mock import patch
 
@@ -33,11 +32,15 @@ class TestCopilotHookExtraction:
             "toolName": "edit",
             "toolArgs": json.dumps({"file_path": "/tmp/test.py"}),
         })
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_called_once()
             args = popen.call_args[0][0]
-            assert args == ["jcodemunch-mcp", "index-file", "/tmp/test.py"]
+            # Spawn via _self_invocation, never a bare PATH lookup (the agent
+            # hook shell's minimal PATH is exactly where the bare name died).
+            # (TestSelfInvocation pins that the invocation is never bare.)
+            from jcodemunch_mcp.cli.hooks.reindex import _self_invocation
+            assert args == _self_invocation() + ["index-file", "/tmp/test.py"]
 
     def test_extracts_from_dict_toolargs_too(self, stdin_with):
         """toolArgs delivered as a dict directly (defensive)."""
@@ -45,7 +48,7 @@ class TestCopilotHookExtraction:
             "toolName": "write",
             "toolArgs": {"path": "/tmp/x.ts"},
         })
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_called_once()
 
@@ -54,19 +57,19 @@ class TestCopilotHookExtraction:
             "toolName": "edit",
             "toolArgs": json.dumps({"file_path": "/tmp/notes.md"}),
         })
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_not_called()
 
     def test_handles_invalid_json_stdin(self, monkeypatch):
         monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_not_called()
 
     def test_handles_empty_toolargs(self, stdin_with):
         stdin_with({"toolName": "edit", "toolArgs": ""})
-        with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+        with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
             assert run_copilot_posttooluse() == 0
             popen.assert_not_called()
 
@@ -77,6 +80,6 @@ class TestCopilotHookExtraction:
                 "toolName": "create_file",
                 "toolArgs": json.dumps({key: "/tmp/probe.go"}),
             })
-            with patch("jcodemunch_mcp.cli.hooks.subprocess.Popen") as popen:
+            with patch("jcodemunch_mcp.cli.hooks.reindex.subprocess.Popen") as popen:
                 run_copilot_posttooluse()
                 popen.assert_called_once()

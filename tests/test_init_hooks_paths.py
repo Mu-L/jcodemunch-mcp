@@ -106,7 +106,10 @@ def test_extract_subcommand_returns_none_for_non_jcm(cmd):
 def test_merge_hooks_does_not_duplicate_across_path_shapes():
     """The exact scenario that caused the recurring hook error: settings
     already contains the bare-name form, then a re-run resolves to an
-    absolute path. Both invoke the same jcm subcommand -> must dedupe."""
+    absolute path. Both invoke the same jcm subcommand -> must not duplicate.
+    The existing rule's stale command converges to the shipped one (reported
+    as an update, never as an addition) — leaving the bare name in place was
+    the minimal-PATH death this same fix batch diagnosed."""
     data = {
         "hooks": {
             "PreToolUse": [{
@@ -124,9 +127,12 @@ def test_merge_hooks_does_not_duplicate_across_path_shapes():
             }],
         }],
     }
-    added = _merge_hooks(data, new_def, "jcodemunch-mcp hook-p")
-    assert added == []
+    added, updated = _merge_hooks(data, new_def, "jcodemunch-mcp hook-p")
+    assert (added, updated) == ([], ["PreToolUse"])  # converged, not added
     assert len(data["hooks"]["PreToolUse"]) == 1
+    assert data["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == (
+        "C:/Python314/Scripts/jcodemunch-mcp.EXE hook-pretooluse"
+    )
 
 
 def test_merge_hooks_dedupes_backslash_path_against_bare_name():
@@ -148,8 +154,9 @@ def test_merge_hooks_dedupes_backslash_path_against_bare_name():
             }],
         }],
     }
-    added = _merge_hooks(data, new_def, "jcodemunch-mcp hook-p")
-    assert added == []
+    added, updated = _merge_hooks(data, new_def, "jcodemunch-mcp hook-p")
+    assert (added, updated) == ([], ["PreToolUse"])  # converged, not duplicated
+    assert len(data["hooks"]["PreToolUse"]) == 1
 
 
 def test_merge_hooks_preserves_unrelated_hooks():
@@ -168,7 +175,7 @@ def test_merge_hooks_preserves_unrelated_hooks():
             "hooks": [{"type": "command", "command": "jcodemunch-mcp hook-posttooluse"}],
         }],
     }
-    added = _merge_hooks(data, new_def, "jcodemunch-mcp hook-p")
+    added, _updated = _merge_hooks(data, new_def, "jcodemunch-mcp hook-p")
     assert added == ["PostToolUse"]
     rules = data["hooks"]["PostToolUse"]
     assert len(rules) == 2

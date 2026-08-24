@@ -22,7 +22,6 @@ import os
 import subprocess
 import sys
 
-import pytest
 
 from jcodemunch_mcp.tools.session_journal import SessionJournal
 from jcodemunch_mcp.tools.session_state import save_live_journal, load_live_journal
@@ -118,31 +117,44 @@ class TestInProcessSnapshotRegression:
 # the actual #334 bug: the hook is a separate process                          #
 # --------------------------------------------------------------------------- #
 
-class TestPrecompactHookAcrossProcesses:
-    def _run_hook(self, store: str):
+class TestSnapshotHooksAcrossProcesses:
+    def _run_hook(self, store: str, subcommand: str = "hook-sessionstart",
+                  stdin: str = '{"source": "compact"}'):
         env = dict(os.environ)
         env["CODE_INDEX_PATH"] = store
         return subprocess.run(
-            [sys.executable, "-m", "jcodemunch_mcp", "hook-precompact"],
-            input="{}", text=True, capture_output=True, env=env,
+            [sys.executable, "-m", "jcodemunch_mcp", subcommand],
+            input=stdin, text=True, capture_output=True, env=env,
         )
 
-    def test_hook_reads_live_journal_from_a_fresh_process(self, tmp_path):
+    # The observable moved: PreCompact turned out to have NO exit-0 output
+    # channel (Claude Code discards its systemMessage), so the cross-process
+    # live-journal read is asserted through SessionStart(compact), the route
+    # that actually delivers the snapshot.
+
+    def test_snapshot_reads_live_journal_from_a_fresh_process(self, tmp_path):
         store = str(tmp_path / "idx")
         # Seed + persist in THIS process; the hook runs in a brand-new one.
         assert save_live_journal(_seeded_journal(), base_path=store) is True
 
         proc = self._run_hook(store)
         assert proc.returncode == 0, proc.stderr
-        payload = json.loads(proc.stdout)
-        msg = payload["systemMessage"]
+        msg = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         assert "widget.py" in msg, msg
         assert "Files explored: 0" not in msg, msg
 
-    def test_hook_emits_explicit_fallback_when_no_journal(self, tmp_path):
+    def test_silent_when_no_journal(self, tmp_path):
+        """The no-journal fallback text is not model-steering — stay silent."""
         store = str(tmp_path / "empty_idx")  # nothing persisted here
         proc = self._run_hook(store)
         assert proc.returncode == 0, proc.stderr
-        payload = json.loads(proc.stdout)
-        msg = payload["systemMessage"]
-        assert "No live jCodeMunch session journal" in msg, msg
+        assert proc.stdout == ""
+
+    def test_precompact_emits_nothing_cross_process(self, tmp_path):
+        """PreCompact's stdout is a discarded channel; the handler no longer
+        writes to it even with a populated live journal."""
+        store = str(tmp_path / "idx2")
+        assert save_live_journal(_seeded_journal(), base_path=store) is True
+        proc = self._run_hook(store, subcommand="hook-precompact", stdin="{}")
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == ""

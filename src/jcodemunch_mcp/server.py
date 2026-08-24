@@ -247,10 +247,10 @@ _COUNTER_FRONT_DOOR: frozenset[str] = _counter.FRONT_DOOR
 _RAW_CATALOG: "Optional[list]" = None
 
 
-# The only two tool surfaces that exist. Anything else has always BEHAVED as
-# "full" (only "counter" is ever special-cased); v1.108.260 makes the reported
-# value agree with that instead of echoing whatever was typed.
-VALID_TOOL_SURFACES = ("counter", "full")
+# One authority for surface resolution: counter.resolve_tool_surface (pure,
+# also readable from the out-of-process hooks without paying this module's
+# import). v1.108.260 made the reported value agree with what is served.
+VALID_TOOL_SURFACES = _counter.VALID_TOOL_SURFACES
 _UNRECOGNIZED_SURFACES_LOGGED: set = set()
 
 
@@ -270,14 +270,12 @@ def _surface_resolution() -> tuple:
     the receipt can say the setting was REJECTED, not merely that something else
     is active.
     """
-    env = os.environ.get("JCODEMUNCH_TOOL_SURFACE")
-    if env:
-        requested = env.strip().lower()
-    else:
-        requested = (config_module.get("tool_surface", "full") or "full").strip().lower()
-
-    if requested in VALID_TOOL_SURFACES:
-        return requested, requested, True
+    effective, requested, recognized = _counter.resolve_tool_surface(
+        os.environ.get("JCODEMUNCH_TOOL_SURFACE"),
+        config_module.get("tool_surface", "full"),
+    )
+    if recognized:
+        return effective, requested, recognized
 
     if requested not in _UNRECOGNIZED_SURFACES_LOGGED:
         _UNRECOGNIZED_SURFACES_LOGGED.add(requested)
@@ -1076,7 +1074,7 @@ atexit.register(_save_session_state)
 # ---------------------------------------------------------------------------
 # Live journal persistence (#334) — feeds the out-of-process PreCompact hook.
 #
-# The hook (`jcodemunch-mcp hook-precompact`) runs in a separate process from
+# The hook (`jcodemunch-mcp hook-sessionstart`) runs in a separate process from
 # this server, so it sees a fresh, empty SessionJournal. We persist a compact
 # snapshot of the live journal to a small file the hook reads back. Writes are
 # throttled (not every tool call) and best-effort. Disable with
@@ -8655,14 +8653,26 @@ def _run_config(check: bool = False, init: bool = False, upgrade: bool = False) 
                 # `C:/.../jcodemunch-mcp.EXE hook-pretooluse` install and the
                 # check reported every hook missing on a correctly-installed box.
                 _present = False
+                _installed_matcher = ""
                 for _rule in _installed_hooks.get(_event, []):
                     for _h in _rule.get("hooks", []):
                         if _extract_jcm_subcommand(_h.get("command", "")) == _hook_cmd:
                             _present = True
+                            # Report the matcher actually INSTALLED, not the
+                            # shipped one — a pre-upgrade settings.json can
+                            # carry a stale matcher, and printing the expected
+                            # value here masked exactly that defect.
+                            _installed_matcher = _rule.get("matcher", "")
                             break
                 if _present:
-                    _label = f"{_event}({_matcher})" if _matcher else _event
+                    _label = f"{_event}({_installed_matcher})" if _installed_matcher else _event
                     print(f"  {green(CHECK)} {_hook_cmd} installed [{_label}]")
+                    if _installed_matcher != _matcher:
+                        print(
+                            f"  {yellow(WARN)} {_hook_cmd} matcher is stale: "
+                            f"installed '{_installed_matcher}', current is "
+                            f"'{_matcher}'. Re-run: jcodemunch-mcp init --hooks"
+                        )
                     _found_any = True
                 else:
                     print(f"  {dim(f'  {_hook_cmd} not installed')}")
@@ -9726,7 +9736,7 @@ def main(argv: Optional[list[str]] = None):
     # --- hook-precompact ---
     subparsers.add_parser(
         "hook-precompact",
-        help="PreCompact hook: generate session snapshot before context compaction (reads stdin)",
+        help="PreCompact hook: register the transcript root before compaction (reads stdin; the snapshot is delivered by hook-sessionstart)",
     )
 
     # --- hook-taskcomplete ---

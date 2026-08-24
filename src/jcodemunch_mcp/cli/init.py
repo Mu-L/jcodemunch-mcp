@@ -189,8 +189,11 @@ def _worktree_hooks() -> dict[str, Any]:
 def _enforcement_hooks() -> dict[str, Any]:
     exe = _hook_invocation()
     return {
+        # Bash and Glob are in the matcher because they are the dominant
+        # unhooked routes for local search (Bash grep/rg/find); the handler
+        # itself decides which Bash commands are search-shaped.
         "PreToolUse": [{
-            "matcher": "Read|Grep",
+            "matcher": "Read|Grep|Glob|Bash",
             "hooks": [{"type": "command", "command": f"{exe} hook-pretooluse"}],
         }],
         "PostToolUse": [{
@@ -1042,12 +1045,65 @@ def _extract_jcm_subcommand(cmd: str) -> Optional[str]:
     return m.group(1).strip().strip('"').strip("'") if m else None
 
 
+def _rule_subs(rule: dict) -> "set[str]":
+    """jcm subcommands invoked by one settings hook rule."""
+    return {
+        s for s in (
+            _extract_jcm_subcommand(h.get("command", "") or "")
+            for h in rule.get("hooks", [])
+        ) if s
+    }
+
+
+def _converge_rule(existing_rules: list, shipped_rule: dict) -> bool:
+    """Converge jcm-owned fields (matcher AND command) of any existing rule
+    that invokes one of ``shipped_rule``'s subcommands. Returns True when
+    anything changed.
+
+    Without the matcher half, a pre-1.108.47 install keeps matcher "Read"
+    forever; without the command half, a bare-name command from a
+    pre-absolute-path install keeps dying under the hook shell's minimal
+    PATH — and re-running init reports success either way.
+    """
+    shipped_cmds = {
+        sub: h.get("command", "")
+        for h in shipped_rule.get("hooks", [])
+        if (sub := _extract_jcm_subcommand(h.get("command", "") or ""))
+    }
+    changed = False
+    for old_rule in existing_rules:
+        if not (_rule_subs(old_rule) & shipped_cmds.keys()):
+            continue
+        # The matcher is a RULE-level field: converge it only when every hook
+        # in the rule is ours. A user who hand-merged their own hook into our
+        # rule must not have THEIR trigger silently widened.
+        all_ours = all(
+            _extract_jcm_subcommand(h.get("command", "") or "")
+            for h in old_rule.get("hooks", [])
+        )
+        if all_ours and old_rule.get("matcher", "") != shipped_rule.get("matcher", ""):
+            old_rule["matcher"] = shipped_rule.get("matcher", "")
+            changed = True
+        for h in old_rule.get("hooks", []):
+            sub = _extract_jcm_subcommand(h.get("command", "") or "")
+            shipped = shipped_cmds.get(sub)
+            if shipped and h.get("command") != shipped:
+                h["command"] = shipped
+                changed = True
+    return changed
+
+
 def _merge_hooks(
     data: dict[str, Any],
     hook_defs: dict[str, list],
     marker: str,
-) -> list[str]:
-    """Merge hook definitions into settings data, returning names of added events.
+) -> "tuple[list[str], list[str]]":
+    """Merge hook definitions into settings data.
+
+    Returns ``(added, updated)``: event names whose rules were added, and
+    event names whose existing rule had a stale matcher or command converged
+    to the shipped definition. Callers pick their own verbs — encoding status
+    into the event-name string forced "added X (updated)" phrasing on them.
 
     Duplicate detection is path-shape-agnostic: two commands that invoke
     the same jcm subcommand (e.g. ``hook-pretooluse``) are considered the
@@ -1061,27 +1117,28 @@ def _merge_hooks(
     """
     hooks = data.setdefault("hooks", {})
     added: list[str] = []
+    updated: list[str] = []
 
     for event_name, event_hooks in hook_defs.items():
         existing_cmds: list[str] = []
         existing_subcommands: set[str] = set()
         if event_name in hooks:
             for rule in hooks[event_name]:
-                for h in rule.get("hooks", []):
-                    cmd = h.get("command", "") or ""
-                    existing_cmds.append(cmd)
-                    sub = _extract_jcm_subcommand(cmd)
-                    if sub:
-                        existing_subcommands.add(sub)
+                existing_cmds.extend(
+                    h.get("command", "") or "" for h in rule.get("hooks", [])
+                )
+                existing_subcommands |= _rule_subs(rule)
 
         new_rules = []
+        rule_updated = False
         for rule in event_hooks:
             rule_cmds = [h.get("command", "") for h in rule.get("hooks", [])]
-            rule_subcommands = {
-                s for s in (_extract_jcm_subcommand(c) for c in rule_cmds) if s
-            }
+            rule_subcommands = _rule_subs(rule)
             # Primary check: any jcm subcommand already installed for this event?
             if rule_subcommands and rule_subcommands & existing_subcommands:
+                # Already installed — converge its jcm-owned fields instead.
+                # (The event key exists: existing_subcommands came from it.)
+                rule_updated |= _converge_rule(hooks[event_name], rule)
                 continue
             # Exact-match check (covers non-jcm hooks like sync_memory.py).
             if any(cmd in existing_cmds for cmd in rule_cmds if cmd):
@@ -1098,8 +1155,10 @@ def _merge_hooks(
             else:
                 hooks[event_name] = new_rules
             added.append(event_name)
+        elif rule_updated:
+            updated.append(event_name)
 
-    return added
+    return added, updated
 
 
 def install_hooks(*, dry_run: bool = False, backup: bool = True) -> str:
@@ -1109,15 +1168,22 @@ def install_hooks(*, dry_run: bool = False, backup: bool = True) -> str:
     """
     path = _settings_json_path()
     data = _read_json(path)
-    added = _merge_hooks(data, _worktree_hooks(), "jcodemunch-mcp hook-event")
+    added, updated = _merge_hooks(data, _worktree_hooks(), "jcodemunch-mcp hook-event")
 
-    if not added:
+    if not added and not updated:
         return f"  hooks already present in {path}"
+    would, done = [], []
+    if added:
+        would.append(f"add {', '.join(added)}")
+        done.append(f"added {', '.join(added)}")
+    if updated:
+        would.append(f"update {', '.join(updated)}")
+        done.append(f"updated {', '.join(updated)}")
     if dry_run:
-        return f"  would add {', '.join(added)} hooks to {path}"
+        return f"  would {', '.join(would)} hooks in {path}"
 
     _write_json(path, data, backup=backup)
-    return f"  added {', '.join(added)} hooks to {path}"
+    return f"  {', '.join(done)} hooks in {path}"
 
 
 def _install_version_path() -> Path:
@@ -1148,6 +1214,19 @@ def read_install_version() -> Optional[str]:
         return None
 
 
+def _is_copilot_rule(rule: dict) -> bool:
+    """Whether a Copilot hooks.json rule is OUR postToolUse rule.
+
+    Matched by SUBCOMMAND, never by a bare-name prefix — install writes an
+    absolute-path command, which a prefix check can never match (the exact
+    "check can never match" defect the subcommand form replaced, #447-shaped:
+    one definition, every site delegates).
+    """
+    return _extract_jcm_subcommand(
+        rule.get("bash", "") or ""
+    ) == "hook-copilot-posttooluse"
+
+
 def install_copilot_hooks(*, dry_run: bool = False, backup: bool = True) -> str:
     """Write a ``.github/hooks/hooks.json`` for GitHub Copilot CLI / cloud agent.
 
@@ -1164,34 +1243,48 @@ def install_copilot_hooks(*, dry_run: bool = False, backup: bool = True) -> str:
     hooks_dir = cwd / ".github" / "hooks"
     hooks_path = hooks_dir / "hooks.json"
 
+    # Absolute path for the same reason _hook_invocation resolves one for
+    # Claude Code hooks: the agent's hook shell PATH cannot be trusted to
+    # include pipx/user-install script dirs, and a bare name dies silently.
+    exe = _hook_invocation()
     rule = {
         "type": "command",
-        "bash": "jcodemunch-mcp hook-copilot-posttooluse",
-        "powershell": "jcodemunch-mcp hook-copilot-posttooluse",
+        "bash": f"{exe} hook-copilot-posttooluse",
+        "powershell": f"{exe} hook-copilot-posttooluse",
         "timeoutSec": 30,
         "comment": "jcodemunch-mcp: auto-reindex edited files",
     }
 
     if hooks_path.exists():
         try:
-            data = json.loads(hooks_path.read_text(encoding="utf-8"))
+            raw = hooks_path.read_text(encoding="utf-8")
+            data = json.loads(raw)
         except (json.JSONDecodeError, ValueError, OSError):
             return f"  failed to parse existing {hooks_path}; skipping"
         hooks = data.setdefault("hooks", {})
         existing = hooks.setdefault("postToolUse", [])
-        for r in existing:
-            if r.get("bash", "").startswith("jcodemunch-mcp hook-copilot"):
+        ours = next((r for r in existing if _is_copilot_rule(r)), None)
+        if ours is not None:
+            # Upgrade a stale command in place (pre-fix installs wrote the
+            # bare name, which dies under the agent hook shell's minimal
+            # PATH) — same reasoning as the Claude-hook matcher upgrade.
+            if ours.get("bash") == rule["bash"] and ours.get("powershell") == rule["powershell"]:
                 return f"  Copilot hooks already present in {hooks_path}"
-        if dry_run:
-            return f"  would append jcodemunch postToolUse hook to {hooks_path}"
-        existing.append(rule)
-        data.setdefault("version", 1)
+            if dry_run:
+                return f"  would update Copilot hook command in {hooks_path}"
+            ours["bash"] = rule["bash"]
+            ours["powershell"] = rule["powershell"]
+            msg = f"  updated Copilot hook command in {hooks_path}"
+        else:
+            if dry_run:
+                return f"  would append jcodemunch postToolUse hook to {hooks_path}"
+            existing.append(rule)
+            data.setdefault("version", 1)
+            msg = f"  appended Copilot postToolUse hook to {hooks_path}"
         if backup:
-            hooks_path.with_suffix(".json.bak").write_text(
-                hooks_path.read_text(encoding="utf-8"), encoding="utf-8"
-            )
+            hooks_path.with_suffix(".json.bak").write_text(raw, encoding="utf-8")
         hooks_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        return f"  appended Copilot postToolUse hook to {hooks_path}"
+        return msg
 
     if dry_run:
         return f"  would create {hooks_path} with jcodemunch postToolUse hook"
@@ -1206,8 +1299,9 @@ def install_enforcement_hooks(
 ) -> str:
     """Merge PreToolUse/PostToolUse enforcement hooks into ~/.claude/settings.json.
 
-    PreToolUse (Read|Grep) — steer Claude toward jCodemunch for code files and
-        searches inside an indexed repo.
+    PreToolUse (Read|Grep|Glob|Bash) — steer Claude toward jCodemunch for code
+        files and searches inside an indexed repo (Bash only when the command
+        line opens with a search command like grep/rg/find).
     PostToolUse (Edit|Write) — auto-reindex modified files.
 
     When ``strict`` is True, also persist ``env.JCODEMUNCH_ENFORCE = "strict"``
@@ -1224,7 +1318,7 @@ def install_enforcement_hooks(
     # per-subcommand via _extract_jcm_subcommand, so hooks outside the "hook-p"
     # prefix (hook-sessionstart, hook-taskcomplete, hook-subagent-start) merge
     # correctly and are added to an existing install on re-run.
-    added = _merge_hooks(data, _enforcement_hooks(), "jcodemunch-mcp hook-p")  # matches hook-pretooluse & hook-posttooluse & hook-precompact
+    added, updated = _merge_hooks(data, _enforcement_hooks(), "jcodemunch-mcp hook-p")  # matches hook-pretooluse & hook-posttooluse & hook-precompact
 
     # Persist (or revert) the strict-enforce env flag the hook reads at runtime.
     env_changed = False
@@ -1240,13 +1334,15 @@ def install_enforcement_hooks(
             env["JCODEMUNCH_ENFORCE"] = "advisory"  # revert a prior --strict
             env_changed, desired = True, "advisory"
 
-    if not added and not env_changed:
+    if not added and not updated and not env_changed:
         return f"  enforcement hooks already present in {path}"
 
     def _bits(verb_add: str, verb_env: str) -> str:
         parts = []
         if added:
             parts.append(f"{verb_add} {', '.join(added)} enforcement hooks")
+        if updated:
+            parts.append(f"converged {', '.join(updated)} to the shipped rule")
         if env_changed:
             tier = "strict deny" if desired == "strict" else "advisory warn"
             parts.append(f"{verb_env} JCODEMUNCH_ENFORCE={desired} ({tier})")
@@ -1968,7 +2064,7 @@ def uninstall_copilot_hooks(*, dry_run: bool = False, backup: bool = True) -> st
     pt = hooks.get("postToolUse", [])
     if not isinstance(pt, list):
         return f"  unexpected shape in {hooks_path}; skipped"
-    kept = [r for r in pt if not r.get("bash", "").startswith("jcodemunch-mcp hook-copilot")]
+    kept = [r for r in pt if not _is_copilot_rule(r)]
     if len(kept) == len(pt):
         return f"  no jcodemunch Copilot hook in {hooks_path}"
     if dry_run:
@@ -2191,7 +2287,7 @@ def install_status() -> dict[str, Any]:
         try:
             cdata = json.loads(copilot_path.read_text(encoding="utf-8"))
             for r in (cdata.get("hooks") or {}).get("postToolUse", []) or []:
-                if isinstance(r, dict) and r.get("bash", "").startswith("jcodemunch-mcp hook-copilot"):
+                if isinstance(r, dict) and _is_copilot_rule(r):
                     copilot_present = True
                     break
         except (json.JSONDecodeError, ValueError, OSError):
