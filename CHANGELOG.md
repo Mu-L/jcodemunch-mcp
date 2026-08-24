@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Docs - `input_examples` investigated and declined, recorded as a negative result
+
+Anthropic's [Advanced tool
+use](https://www.anthropic.com/engineering/advanced-tool-use) reports
+`input_examples` improving accuracy **72% → 90%**, and we already curate 32
+example argument objects in `counter.EXAMPLES` that only `menu` and `route`
+consume. Spiked; not shipping.
+
+⚠ **The token objection is dead** — measured at **+555 tokens, 2.0%** across
+the catalog, **+62** for the five-tool resident set under deferral, consistent
+with the vendor's "~20–50 tokens for simple examples". It should not be raised
+again.
+
+⚠⚠ **The blocker is that the field does not exist for us.** `input_examples` is
+an Anthropic **API** field on user-defined tool definitions; the MCP `Tool`
+type has no such field, and nothing documents the connector mapping a
+non-standard one through. MCP allows extras so we *could* attach it — and that
+is the trap, because an invalid example is documented to return **a 400**, so
+the downside of betting on undocumented behaviour is a broken session rather
+than merely no benefit.
+
+⚠ A route does exist and is **not** this feature: the standard JSON Schema
+`examples` keyword rides inside `inputSchema`, which passes through verbatim.
+Do not claim the 72% → 90% figure for it — different mechanism, and the same
+category error as quoting a token figure at an accuracy question. It also
+collides with the hard 4,000-token `core_compact` ceiling.
+
+Recorded in `ROADMAP.md` with the condition that would reopen it (a wire test
+through the MCP connector, which needs a deployed HTTP endpoint and credits),
+and explicitly marked as not an accepted entry, since the file's own
+conventions send rejected proposals to a closed issue.
+
 ### Docs - correcting an argument from absence, made the same day it shipped
 
 1.108.295 recorded the vendor's 30–50 tool degradation threshold beside the
