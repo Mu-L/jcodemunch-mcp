@@ -25,7 +25,11 @@ class TestInstallCopilotHooks:
         assert data["version"] == 1
         rules = data["hooks"]["postToolUse"]
         assert len(rules) == 1
-        assert "jcodemunch-mcp hook-copilot-posttooluse" in rules[0]["bash"]
+        # Outcome, not string shape: install writes an absolute command on
+        # every platform ("...\jcodemunch-mcp.EXE hook-..." on Windows), so a
+        # bare-name substring can never match there.
+        from jcodemunch_mcp.cli.init import _extract_jcm_subcommand
+        assert _extract_jcm_subcommand(rules[0]["bash"]) == "hook-copilot-posttooluse"
 
     def test_idempotent_when_already_present(self, in_tmp_cwd):
         install_copilot_hooks()
