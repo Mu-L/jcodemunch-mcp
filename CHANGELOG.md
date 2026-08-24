@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.296] - 2026-08-24 - Four ways a guard can be present without working
+
 ### Added - `investigate_reuse_before_write`, and four ways a guard can be present without working
 
 `src/jcodemunch_mcp/investigator/reuse_audit.py`, in the idiom of
