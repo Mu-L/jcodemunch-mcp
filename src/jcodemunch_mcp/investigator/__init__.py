@@ -33,6 +33,17 @@ from .deletion_safety import (  # noqa: F401
     UNSAFE,
     investigate_deletion_safety,
 )
+from .reuse_audit import (  # noqa: F401
+    ADAPT_CANDIDATE,
+    Candidate,
+    LEXICAL,
+    LEXICAL_ONLY,
+    REUSE_AVAILABLE,
+    SEMANTIC,
+    STRUCTURAL,
+    WRITE_JUSTIFIED,
+    investigate_reuse_before_write,
+)
 from .retrieval_counterfactual import (  # noqa: F401
     CATALOG_ABSENT,
     EMPTY_QUERY,
@@ -66,4 +77,13 @@ __all__ = [
     "RANKED_BELOW_CUTOFF",
     "explain_route",
     "explain_misses",
+    "Candidate",
+    "LEXICAL",
+    "SEMANTIC",
+    "STRUCTURAL",
+    "REUSE_AVAILABLE",
+    "ADAPT_CANDIDATE",
+    "WRITE_JUSTIFIED",
+    "LEXICAL_ONLY",
+    "investigate_reuse_before_write",
 ]
