@@ -112,6 +112,13 @@ WITHHELD = {
         "v1.108.217. A 92nd action whose job is explaining why the 91st is hard "
         "to reach would be self-refuting. Driven by the benchmark harness."
     ),
+    "investigate_reuse_before_write": (
+        "v1.108.296. Importable, exported, and covered by its own test module. "
+        "Measured at the time it was written, control route@1 was 40.0% against "
+        "an exit bar of 55.0% -- the moratorium's condition 1 was not met, and "
+        "an action the router would not propose is functionally absent however "
+        "good it is. Exposing it is a separate decision from writing it."
+    ),
 }
 
 
@@ -132,8 +139,8 @@ class TestCeiling:
             f"{CATALOG_CEILING}.\n\n"
             "This is not a bug in the test. Adding a top-level action is under "
             "moratorium until ALL of:\n"
-            f"  1. route@1 >= {EXIT_ROUTE_AT_1}% on the corrected corpus "
-            f"(baseline {EXIT_BASELINE_ROUTE_AT_1}%);\n"
+            f"  1. route@1 >= {EXIT_CONTROL_AT_1}% on the held-out CONTROL "
+            f"subset (baseline {EXIT_BASELINE_CONTROL_AT_1}%);\n"
             f"  2. mean name leakage <= {EXIT_MAX_NAME_LEAKAGE} at that "
             "measurement, so the bar was not met by paraphrasing descriptions;\n"
             "  3. generated guidance references only callable actions under the "
@@ -164,6 +171,7 @@ class TestWithheldActions:
         from jcodemunch_mcp.investigator import (  # noqa: F401
             explain_route,
             investigate_deletion_safety,
+            investigate_reuse_before_write,
         )
 
 

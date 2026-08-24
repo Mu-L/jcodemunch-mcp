@@ -2,6 +2,122 @@
 
 ## [Unreleased]
 
+### Added - `investigate_reuse_before_write`, and four ways a guard can be present without working
+
+`src/jcodemunch_mcp/investigator/reuse_audit.py`, in the idiom of
+`deletion_safety`: proof obligations, tri-state statuses, and one `_verdict`
+that is the only place a conclusion may be drawn. The claim under test is
+"Nothing in <repo> already implements <intent>, so writing it new is
+justified." Verdicts: `reuse_available` / `adapt_candidate` / `write_justified`
+/ `lexical_only` / `not_established`.
+
+The generation-time failure is the mirror of the deletion-time one. An agent
+about to write a date formatter has every tool it needs to find
+`formatIsoDate` and does not look, because nothing raised the obligation. The
+cost is not the tokens spent writing it, it is that the repository now has two.
+
+⚠⚠ **`lexical_only` is the reason this is not a search wrapper.** An intent of
+"modal" shares no token with an existing `Dialog`, so only the embedding
+channel can connect them. A checker that reports "nothing matches" identically
+whether or not it could see synonyms is wrong exactly when the writer most
+needs it to be right, so an unavailable semantic channel goes UNESTABLISHED and
+the verdict degrades instead of licensing a write. The two ways it goes dark
+get opposite advice: `pip install` is wrong for a repo that has an encoder and
+was never embedded, `embed_repo` is wrong for one embedded by a provider that
+is no longer installed.
+
+⚠ **A dead match is not a reuse candidate.** Pointing a writer at an
+unreferenced helper does not prevent duplication, it doubles the dead code, and
+it is the failure a keyword matcher cannot detect because the match looks
+identical either way. Liveness is established per candidate and is tri-state:
+`live is None` blocks rather than permits.
+
+**The module was written in one pass and never executed past import. Four
+defects fell out of running it, and three of them are the same shape -- a check
+that could not observe the thing it claimed to check.**
+
+**(1) Every candidate scored 0.0.** `search_symbols` emits `score` on a result
+row ONLY under `debug=True`; without it `_squash` returned 0.0 for every row,
+`strong` and `partial` were empty BY CONSTRUCTION, and `strong_match` /
+`adapt_floor` were parameters that graded nothing. ⚠⚠ **Every verdict rode on
+obligation status alone, and the payload published a `match_strength` field
+that was always zero.** Cost of the fix, measured on this repository's index:
+a debug sweep is ~25 ms against ~0.5 ms for a cache hit and ~1.7 s for the cold
+miss -- so the price is the result cache, not the `_bm25_breakdown` the debug
+path also computes. ⚠ Losing that cache is correct rather than incidental: of
+the three result-cache consumers only `search_symbols` revalidates, and an
+absence claim replayed from a cached row is the exact shape #377 item 3 exists
+to refuse.
+
+**(2) `write_justified` was unreachable.** `_absence_blockers` sampled the
+.db-rewritten probe AFTER the scan, and our own semantic channel MOVES the
+mtime that probe compares -- the embedding read opens a read-write connection,
+which runs PRAGMA and CREATE TABLE and touches the file. ⚠⚠ **So on every run
+in which the synonym channel was available, the module reported "the index was
+rewritten while this scan ran" about a rewrite it had performed itself, and
+downgraded the one verdict that requires that channel.** The probe is now
+sampled before any channel runs. That is not a relaxed guard: a file mtime
+stands in for "rows were rewritten", our own connection is a known false
+positive for it, and excluding a known false positive repairs the proxy rather
+than weakening it. What the earlier sample can and cannot see is stated in
+`_meta.rewrite_probe` rather than left to be inferred.
+
+**(3) UNKNOWN collapsed into SATISFIED in the one obligation that exists to
+prevent it.** `EmbeddingStore.has_any()` is tri-state and `None` means
+could-not-establish -- a locked file, a corrupt page, a permission error. The
+`None` case fell through to "used", ran a semantic search with nothing to
+search, and SATISFIED the obligation off an empty result indistinguishable from
+a clean sweep.
+
+**(4) A refutation backed only by dead code read as a reuse instruction.** A
+name twin that is itself unreferenced refuted `no_name_twin` and returned
+`reuse_available`, i.e. advice to depend on dead code. It now yields
+`adapt_candidate`, the symbols surface under `dead_matches`, and the
+recommendation names the revive-or-delete decision. ⚠ It is ordered ahead of
+the absence blockers deliberately: this is not an absence claim, we found the
+thing, and an index that cannot prove absence can still show a positive hit.
+
+⚠ **`_STRONG_MATCH = 0.80` and `_ADAPT_FLOOR = 0.55` remain seeded, not
+calibrated, and that is now a recorded decision rather than an unexamined
+default.** Acceptable because both buckets are returned with their evidence
+either way, so the thresholds pick presentation rather than deciding on the
+caller's behalf, and because they are parameters a repo can move without
+editing the file. ⚠⚠ **Nobody could have had grounded confidence in them before
+this release, because defect (1) meant they had never once been evaluated
+against a non-zero score.** Calibrating them needs a labelled corpus of
+intent-to-symbol pairs across real repositories at pinned commits -- corpus
+construction, the same wall the route work hit, not an afternoon.
+
+⚠ **NOT exposed as an MCP tool.** The catalog moratorium blocks a 92nd action
+until control-subset route@1 clears 55.0%; measured at 40.0% (n=20). An action
+the router would not propose is functionally absent however good it is, so
+exposing it is a separate decision from writing it -- the same call already
+recorded for `investigate_deletion_safety` and `explain_route`. Registered in
+`WITHHELD` in `tests/test_catalog_moratorium.py`, which asserts both that it is
+absent from the catalog and that it still imports: the moratorium withholds a
+SURFACE, never a capability.
+
+`tests/test_reuse_audit.py`, 50 tests. Each of the four fixes was run against
+the reintroduced defect, not only against the fixed tree. ⚠⚠ **One of those
+passes caught a vacuous test of my own**: the end-to-end version of the
+sample-point test used a semantic stand-in that returned rows without opening
+the database, so it never moved the mtime and passed against the defect --
+a mock broad enough to satisfy the assertion bypassing what the assertion was
+about. It is now an ordering assertion plus a sibling that moves the mtime for
+real.
+
+### Fixed - the moratorium guard raised `NameError` instead of explaining itself
+
+`tests/test_catalog_moratorium.py` interpolated `EXIT_ROUTE_AT_1` and
+`EXIT_BASELINE_ROUTE_AT_1` into the ceiling assert's message. Both were renamed
+to `EXIT_CONTROL_AT_1` / `EXIT_BASELINE_CONTROL_AT_1` when the gate moved to
+the control subset, so the message raised `NameError` while being built -- on
+the exact path a contributor hits when they add a 92nd action, replacing the
+policy explanation with a traceback. ⚠ Message text is only reached on failure,
+so a green suite proves nothing about it; verified by forcing the ceiling and
+reading the rendered line.
+
+
 ### Docs - `input_examples` investigated and declined, recorded as a negative result
 
 Anthropic's [Advanced tool
