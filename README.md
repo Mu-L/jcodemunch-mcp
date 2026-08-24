@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
-- **[v1.108.290](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.290)** (2026-08-21) — Charging ourselves for the calls before the one that worked
-- **[v1.108.289](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.289)** (2026-08-21) — A licence you can point at, and one you cannot churn
-- **[v1.108.288](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.288)** (2026-08-20) — The reported surface was never the only one
+- **[v1.108.293](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.293)** (2026-08-23) — Ten skipped modules that hid 209 tests
+- **[v1.108.292](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.292)** (2026-08-23) — The one string that survives tool deferral
+- **[v1.108.291](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.291)** (2026-08-22) — Counting each byte of source once
 <!-- WHATSNEW:END -->
 
 ---

@@ -19,6 +19,7 @@ import time
 from typing import Optional
 
 from ..storage import IndexStore, record_savings, estimate_savings, cost_avoided
+from ._utils import symbol_span_bytes
 from ._utils import index_status_to_tool_error, resolve_repo
 from .get_class_hierarchy import _build_class_maps
 from ._scip_consume import open_scip_reader, scip_meta_and_stale, scip_meta_block
@@ -578,7 +579,7 @@ def find_implementations(
         relationship_counts[r["relationship"]] = relationship_counts.get(r["relationship"], 0) + 1
 
     # Token-savings ledger
-    raw_bytes = sum(int(s.get("byte_length", 0) or 0) for s in index.symbols)
+    raw_bytes = symbol_span_bytes(index.symbols)
     response_bytes = total_tokens * 4
     tokens_saved = estimate_savings(raw_bytes, response_bytes)
     total_saved = record_savings(tokens_saved, tool_name="find_implementations")

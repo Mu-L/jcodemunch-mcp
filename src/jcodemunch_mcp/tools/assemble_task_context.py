@@ -25,6 +25,7 @@ import time
 from typing import Optional
 
 from ..storage import IndexStore, record_savings, estimate_savings, cost_avoided
+from ._utils import symbol_span_bytes
 from ._utils import index_status_to_tool_error, resolve_repo
 from .get_context_bundle import _count_tokens
 
@@ -687,7 +688,7 @@ def assemble_task_context(
             logger.debug("assemble_task_context: cross_repo skipped: %s", exc, exc_info=True)
 
     # Token-savings ledger
-    raw_bytes = sum(int(s.get("byte_length", 0) or 0) for s in index.symbols)
+    raw_bytes = symbol_span_bytes(index.symbols)
     response_bytes = total_tokens * 4
     tokens_saved = estimate_savings(raw_bytes, response_bytes)
     total_saved = record_savings(tokens_saved, tool_name="assemble_task_context")

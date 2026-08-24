@@ -691,6 +691,41 @@ takes 21 of 35 rank-1 picks because agent tasks open with "find".
 51.4 chance line.** Anyone proposing to optimise route should say which of those
 two numbers they intend to move.
 
+⚠⚠ **AND MOST OF THAT DECISION DOES NOT NEED MAKING. Measured 2026-08-22, now
+emitted by the harness as `pair_availability`: on 25 of the 35 pair-gold cases
+(71.4%) route returns BOTH `search_text` and `search_symbols`.** Those are the
+same 25 where the gold action appears in the recommendation list at all. The
+caller therefore has both candidates in hand, and choosing between two returned
+options costs nothing.
+
+**That reframes 52.2%.** It is not "route gets a coin flip wrong". It is "route
+declines to break a tie it has already surfaced, and `@1` scores that as
+failure" — which is exactly the suspicion this block opened with: **`@1`
+penalises a router for being honest about ambiguity.**
+
+⚠⚠ **The residual is a DIFFERENT and LARGER failure.** In the other 10 cases
+neither search action was offered at all — route went to the wrong
+neighbourhood, not the wrong order:
+
+    gold=search_text     offered=[check_delete_safe, check_edit_safe, check_rename_safe]
+    gold=search_symbols  offered=[get_context_bundle, get_session_context, get_ranked_context]
+    gold=search_symbols  offered=[tune_weights, announce_model, find_implementations]
+
+**28.6% wrong neighbourhood versus 71.4% right-pair-wrong-order.** A single
+"within-family 52.2%" fuses the two and hides which one is worth work; no
+tie-break can fix the 28.6%.
+
+⚠ **Availability is computed over the SAME 3 actions the response carries**, not
+the untruncated internal ranking — crediting route with options the caller never
+saw would be measuring the wrong thing.
+
+**Consequence for H4** (the retrieval-outcome probe, the family's only survivor):
+its prize is re-ranking a pair the caller can already see, on 71.4% of the cases
+it targets. That is much smaller than the 52.2% figure suggests, and it was
+invisible from that figure alone. **The whole motivating gap is 52.2 vs 51.4 on
+23 cases.** Weigh a fresh corpus against that before building one; the last one
+was cancelled for less.
+
 ⚠ **This also reframes why H1 and H2 died.** Both failed on COVERAGE — predicates
 firing on 5-15% of queries. But the decision that needs making is not spread
 across 91 actions; it is ONE binary that must be answered every time. **A
@@ -706,6 +741,49 @@ mode that killed H1 and H2. ⚠ It needs the 157 unused corpus rows sampled for
 PAIR BALANCE rather than uniformly (uniform sampling is what produced a corpus a
 constant list saturates), and the predicate declared before labels are read, same
 protocol as H1/H2.
+
+⚠⚠ **H3 WAS RUN AS A GROUNDED PILOT ON 2026-08-21 AND IS REFUTED.** 60 cases,
+balanced 30/30, three repos pinned at the SHAs in `benchmarks/tasks.json`,
+predicate registered before any case existed (`benchmarks/route_binary_pilot/`,
+and `git log` shows `predicate.py` preceding `cases.json`). Full vocabulary
+**53.3%** against a 50% floor, Wilson 95% **[40.9, 65.4]**, **p = 0.699**;
+ablating each target's own name parts returns **50.0%, p = 1.000**. Leakage
+existed (12 of 30 class-S tasks matched their own name) and bought nothing.
+
+⚠⚠ **The mechanism inverts the whole family. The predicate answered
+`search_symbols` on 58 of 60 tasks** — 100% of class S and **28 of 30 of class
+T** — because in a real repository the symbol vocabulary absorbs ordinary
+English. fastapi: 6,841 symbols to **4,303 matchable name parts**, and 14 of 16
+common English words tested are among them (`message`, `path`, `error`,
+`status`, `value`, `name`, `body`, `type`, `data`, `request`, ...). A membership
+test fires on nearly any sentence.
+
+| hypothesis | fires on | fails because |
+|---|---|---|
+| H1 identifier shape | ~15% | decides too few cases |
+| H2 imperative verb | ~5% | decides too few cases |
+| H3 vocabulary probe | **~97%** | decides them all the same way |
+
+⚠⚠ **COVERAGE WAS NEVER THE PROPERTY THAT MATTERED, AND H3 WAS ARGUED FOR ON
+EXACTLY THAT GROUND.** 100% coverage was necessary and not sufficient — the same
+shape as conditions 1 and 2 being met without clearing the freeze. The property
+all three lack is **separation**: a predicate must fire DIFFERENTLY on the two
+classes, and firing often is not firing differently. **Any future hypothesis
+should be screened on separation before anyone counts its coverage.**
+
+⚠⚠ **THE CORPUS PROJECT IS CANCELLED, which is what the pilot was for.** The
+protocol registered the asymmetry in advance: a negative is decisive. Building
+cases bound to real repositories with labels assigned by someone who can see them
+would have cost a project and hit the same wall, because the wall is not the
+corpus — it is that vocabulary membership does not separate these classes in any
+repository large enough to matter.
+
+⚠ **Not ruled out, and it must NOT be run on these 60 cases:** a probe keyed on
+retrieval OUTCOME rather than vocabulary membership — does `search_symbols`
+actually outrank `search_text` for this query against this index? That compares
+two scores instead of testing set membership, and index size does not trivially
+defeat it. **That is H4; this corpus is spent, and reusing it would be a fitting
+pass wearing an experiment's clothes.**
 
 ⚠⚠ **H3 IS NOT RUNNABLE ON THIS CORPUS, AND THE BLOCKER KILLS THE WHOLE REMAINING
 HYPOTHESIS CLASS. Established 2026-08-21 before starting it.** The joint H1/H2

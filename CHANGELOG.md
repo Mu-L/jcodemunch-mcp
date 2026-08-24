@@ -94,6 +94,351 @@ Every fix below was reproduced against the unfixed tree first.
   `counter.resolve_tool_surface` — shared by the server and the hooks
   (whitespace-only env now falls through to config on both sides).
 
+## [1.108.293] - 2026-08-23 - Ten skipped modules that hid 209 tests
+
+### Fixed - ten skipped modules that hid 209 tests between them
+
+Test-only; nothing user-facing moves. Every module-scope `pytest.importorskip`
+in the suite is now `importlib.util.find_spec`, because importorskip RAISES
+during import and collapses a whole file to one `1 skipped` line however many
+tests it holds.
+
+⚠⚠ **Nothing was being lost, and that is the reason to fix it.** Every
+optional package happens to be installed on the dev box and in CI. A CI image
+that quietly stopped installing `watchfiles` would have reported a clean run
+**49 tests short**, and `N passed` cannot show that. The guards stood in front
+of 209 tests: watchfiles 105, yaml 51, starlette 44, tiktoken 9.
+
+⚠⚠ **Three of the ten sat PARTWAY DOWN their file**, so the import abort
+also took out tests defined ABOVE the guard that never touched the package.
+Measured with the dependency actually removed, then and now:
+
+| file | dep absent, before | dep absent, now |
+|---|---|---|
+| `test_dbt_provider.py` | 1 skipped | **15 passed**, 16 skipped |
+| `test_provider_metadata_and_perf.py` | 1 skipped | **16 passed**, 4 skipped |
+| `test_v1_108_95.py` | 1 skipped | **3 passed**, 9 skipped |
+
+⚠ Imports that genuinely need the package moved under an `if _HAS_X:` flag;
+without that they raise ImportError and turn a clean skip into a collection
+error. Collection counts are unchanged with the packages present, and the ten
+files' lint findings are identical before and after.
+
+⚠⚠ **Found in the sibling repo first, the expensive way.** jdatamunch's
+`test_excel_parser.py` reported one skip while holding 29 tests, **19 of which
+passed on an ordinary dev box and had never run**. It surfaced only by
+comparing TOTALS across two interpreters - 819 against 839 - never from a
+passed count. **A setting fixed in one repo of a suite is fixed in one repo.**
+
+⚠ `tests/test_optional_dep_skips_are_visible.py` bans the pattern and
+separately asserts the heaviest files still collect real items, so a rewrite
+that hides them another way fails too. Verified by restoring an old guard.
+Inside a fixture or test body `importorskip` stays correct and visible.
+
+## [1.108.292] - 2026-08-23 - The one string that survives tool deferral
+
+### Added — the one string that survives tool deferral
+
+The MCP `initialize` response now carries an `instructions` string. It did not
+before: all three transports called `server.create_initialization_options()`
+bare, so the field went out empty and nothing anywhere said so.
+
+⚠⚠ **The cost is invisible in a normal session and concentrated in a deferred
+one.** A host over its schema budget sends tool NAMES and withholds the
+JSONSchemas until a `ToolSearch`-style lookup fetches them. On the default
+surface that is 91 bare strings. Every description we budget and smell-test
+(`test_description_smells.py`, the 4,000-token `core_compact` ceiling) is
+absent at exactly the moment the agent has the least to go on. The spec
+delivers `instructions` on a separate track from the tool list, so it arrives
+whole either way — it is the entire steering budget a plain MCP client gives us.
+
+The string does two things, in this order: it says to load the working set in
+ONE lookup (a round trip for the session instead of two calls per use), and it
+gives a decision rule per tool rather than a feature summary. It is
+surface-aware — `counter` names `route`/`menu`/`order` and nothing else,
+because on that surface the other 91 names are not reachable and pointing an
+agent at one strands it.
+
+⚠ Budget of 1,000 characters, currently 931 on `full` and 599 on `counter`.
+Nothing proves a longer string survives un-truncated.
+
+⚠⚠ **The prose is bound to the catalog, because prose is what rots.**
+`tests/test_mcp_instructions.py` fails when the string names a tool the server
+does not dispatch on that surface, when the `select:` query and the bullet list
+disagree about which tools to load, and — parsing the dispatcher's own AST —
+when any of the three `server.run()` sites goes back to a bare
+`create_initialization_options()`. **A handshake that sends nothing raises no
+error and serves every request normally**, so the only witness is a test.
+Verified by reintroducing both defects and watching them fail, not only by
+watching them pass.
+
+### Fixed — `serverInfo` named the SDK's version, not ours
+
+`Server("jcodemunch-mcp")` was constructed with no `version=`, so the SDK filled
+the field with its own package version. Every host that displays a server
+version displayed `1.26.0` while we shipped 1.108.x.
+
+⚠ Found by smoke-testing the handshake the change above touches, not by a
+report. Nothing errors, nothing logs, and the field is wrong on every single
+initialize — the same shape as the empty `instructions` beside it, which is why
+one probe found both.
+
+⚠⚠ **Green tests do not prove the wire carries a real number.** `__version__`
+falls back to `"unknown"` when distribution metadata is absent, which is every
+`PYTHONPATH=src` run. That fallback is deliberate and older than this fix:
+`"unknown"` is an honest could-not-establish, where `1.26.0` was a confident
+answer about a different package.
+
+⚠ An SDK predating the field is handled: we allow `mcp>=1.10.0`, so the field
+is checked before it is set. Nothing to say, and nowhere to say it.
+
+## [1.108.291] - 2026-08-22 - Counting each byte of source once
+
+### Added — the savings meter can say which tool earned it
+
+`_savings.json` gains `by_tool`, a lifetime token count per tool, alongside the
+scalar it has always kept. `get_session_stats` reports it as `lifetime_by_tool`.
+
+The gap it closes is a question we could not answer about our own meter: after
+correcting the baseline above, "how much did that change the total" had no
+answer at any scale, because the ledger stored one number and the wire payload
+carries no breakdown. It is answerable from the next call onward.
+
+⚠⚠ **LOCAL ONLY, and pinned by a test.** The telemetry payload stays exactly
+`{delta, total, anon_id}`; per-tool data is never shared.
+`test_savings_by_tool.py::TestAttributionStaysLocal` reads the sender's own
+source and fails if that dict changes shape or if `by_tool` reaches it —
+verified by putting the leak in and watching it fail, not only by watching it
+pass. Disclosed in `SECURITY.md` beside the meter it sits next to.
+
+⚠⚠ **The history cannot be backfilled and is NOT quietly dropped.** A ledger
+predating this holds savings that no tool can be credited with, so
+`sum(by_tool)` starts below `total_tokens_saved`. The difference is reported as
+`lifetime_unattributed` and `by_tool_since` dates the start. **An unexplained
+shortfall between two numbers in the same payload reads as missing data**, which
+is how a disclosure becomes a bug report.
+
+⚠ Tool names only — no code, paths, queries or repo names — and an absent
+`tool_name` opens no key. Savings still count toward the total when the caller
+is unknown; only the attribution is absent, and it shows up in
+`lifetime_unattributed` rather than being assigned to a guess.
+
+### Fixed — the savings baseline counts each byte of source once
+
+`raw_bytes` is the "what would this have cost to read by hand" half of the
+`tokens_saved` figure these tools report. Two ways of building it over-counted,
+in seven places, so the affected tools credited themselves with more than they
+had saved. Found and corrected on our own tree.
+
+**Shape 1, nested spans.** `sum(byte_length for s in symbols)` counts a class's
+span and then each of its methods again. **25.1% above the merged spans**, and
+**2.85x the real size of the files it describes**. Nobody reads a method twice
+for being inside a class. Five sites: `assemble_task_context`,
+`find_implementations`, `find_similar_symbols`, `winnow_symbols`,
+`get_group_contracts`.
+
+**Shape 2, a file charged per symbol.** `get_ranked_context` looked
+`index.file_sizes` up once per packed symbol, so a file with eight symbols in
+the answer was billed eight times: **12.3x at 40 symbols, 32.2x at 1000**.
+
+⚠⚠ **The second shape was ALSO under-reporting, and saying only the 32x would be
+cherry-picking in the direction that flatters us.** `file_sizes` is populated
+from retained raw content, which covers **244 of 858 source files (28.4%)** on a
+local-folder index — for the other 71.6% that expression contributed **zero**.
+Two errors in opposite directions in one line, so the corrected figure for that
+tool is not simply lower; it is computed on the right basis for the first time,
+and the sign for any single call depends on how much of the pack came from files
+whose size was known.
+
+Two helpers, one definition each, in `tools/_utils`: `symbol_span_bytes()` merges
+spans, `distinct_file_bytes()` charges a file once. ⚠ **Both are deliberately
+CONSERVATIVE** — bytes outside every symbol span (imports, comments, module
+docstrings, data literals) are not counted, and a file whose spans cannot be
+trusted contributes 0 rather than a guess. Understating our own savings is the
+safe way to be wrong about a number we publish.
+
+⚠⚠ **The lifetime total is STAMPED, not restated.** `SAVINGS_BASIS_GENERATION`
+is 2; `_savings.json` records the generation it was first written under, and
+`get_session_stats` reports `total_tokens_saved_basis` beside the figure, so a
+total spanning the change reads `mixed_basis: true` instead of passing as one
+consistent measurement. **A recomputed history would be a guess wearing a
+measurement's clothes.** ⚠ A ledger holding counts but naming no generation IS
+generation 1 — defaulting that to the current one would quietly claim every
+historical count was taken the corrected way, which is the single thing this
+field exists to prevent. A fresh install reads `mixed_basis: false`.
+
+⚠ **The reported list was four sites; the property found seven.** Both shapes are
+ratcheted in `tests/test_savings_baseline.py` over the whole of `src/`.
+⚠⚠ **The first ratchet was written wrong and the non-vacuity pass is what caught
+it**: a depth-limited regex walked straight past
+`sum(int(s.get("byte_length", 0) or 0) for ...)`, two parens deep, and PASSED
+against the reintroduced defect. It scans paren depth now. A third test pins
+that summing distinct file sizes over `source_files` still passes, so the
+ratchet cannot become standing pressure to "fix" the two sites already correct.
+
+⚠ **Scope, because `tokens_saved` values move and readers will ask how far.**
+The affected sites are six analytical tools. The high-volume retrieval path is
+NOT among them and never was: `search_symbols`, `search_text` and
+`get_symbol_source` accumulate their baseline under a `seen_files` guard, and
+`get_file_content` measures one file. Those were already counting each file
+once, which is checkable in the diff.
+
+### Fixed — a class and its methods are not two files' worth of source
+
+`get_architecture_metrics` summed `byte_length` over every symbol in a file to
+get that file's byte mass. A class's span already covers its methods, and each
+method is a symbol of its own, so those bytes were counted twice.
+
+⚠⚠ **The inflation is not uniform, which is why it corrupts the metric rather
+than scaling it.** It tracks how class-heavy a file is. Measured on this repo:
+**33.4% overall** (12,201,425 vs 9,143,088 real bytes) and up to **2.28x on a
+single file** — `test_watcher_serve.py` x2.28, `sqlite_store.py` x1.81,
+`extractor.py` x1.40. A Gini coefficient is a comparison ACROSS files, so an
+error that varies with each file's style is bias, not a constant factor.
+
+⚠ **Two things were wrong, and the second is the one callers act on.**
+`bytes_per_file` moves 0.5682 -> **0.5519**, and the top-concentrator ranking
+changes: `sqlite_store.py` drops from 2nd to 3rd. A ranking is the output of
+this tool that turns into someone's refactoring decision.
+
+Byte mass now merges each file's symbol spans, in ONE definition —
+`tools/_utils.file_byte_mass()` — rather than at the call site that reported it.
+`tests/test_architecture_metrics.py::TestByteMassRatchet` fails on any
+`x[f] += ... byte_length` anywhere in `src/`, so a second spelling cannot
+reappear.
+
+⚠ **Untrustworthy spans are UNKNOWN, never 0.** More than one symbol carrying
+real length at `byte_offset == 0` is the signature of a parser that never set
+offsets (the field defaults to 0, so "unset" and "starts at byte 0" are
+indistinguishable for one symbol but not for two). Those files leave the metric
+and are disclosed as `bytes_unmeasurable_files`; `bytes_files_measured` says how
+many the byte axis actually covered, which can be fewer than `files_measured`.
+With nothing measurable `bytes_per_file` is **`None`** — `0.0` would read as
+"perfectly even", a confident wrong answer.
+
+⚠⚠ **The same mechanism ran in the token-savings baseline, and the sweep for it
+found seven sites where the report named four.** Fixed in the entry above, in
+the same release rather than filed as follow-up work: a metric that credits us
+is the one direction a defect must never be left to sit.
+
+### Changed — 71.4% of the routing decision does not need making
+
+The emitted harness now emits `pair_availability`, and it reframes the figure the
+whole moratorium argument has been resting on.
+
+On **25 of the 35** pair-gold cases (**71.4%**) `route` returns **both**
+`search_text` and `search_symbols`. Those are the same 25 where the gold action
+appears in the recommendation list at all. The caller has both candidates in
+hand, and choosing between two returned options costs nothing.
+
+⚠⚠ **So the 52.2% within-family figure is not "route gets a coin flip wrong". It
+is "route declines to break a tie it has already surfaced, and `@1` scores that
+as failure"** — which is precisely the suspicion the moratorium block opened
+with: `@1` penalises a router for being honest about ambiguity.
+
+⚠⚠ **The residual is a different and larger failure.** In the other 10 cases
+neither search action was offered at all — the wrong neighbourhood rather than
+the wrong order:
+
+    gold=search_text     offered=[check_delete_safe, check_edit_safe, check_rename_safe]
+    gold=search_symbols  offered=[get_context_bundle, get_session_context, get_ranked_context]
+
+**28.6% wrong neighbourhood against 71.4% right-pair-wrong-order.** A single
+fused "52.2%" hides which half is worth work, and no tie-break can fix the 28.6%.
+
+⚠ Availability is computed over the **three actions the response carries**, not
+the untruncated internal ranking. Crediting route with options the caller never
+saw would measure the wrong thing.
+
+⚠ **Consequence for H4**, the retrieval-outcome probe and the family's only
+survivor: its prize is re-ranking a pair the caller can already see, on 71.4% of
+the cases it targets — much smaller than 52.2% suggests, and invisible from that
+number alone. The whole motivating gap is 52.2 against 51.4 **on 23 cases**. The
+recommendation is to weigh a fresh corpus against that rather than build one; the
+previous corpus project was cancelled for less.
+
+⚠ Computed by the harness rather than derived by hand, so it is covered by
+`tests/test_route_recall_artifacts_are_fresh.py` and cannot drift the way
+`results.json` did.
+
+⚠ Benchmarks and docs only — no source change, no version bump, and the
+moratorium does not move.
+
+### Added — the grounded route pilot, and H3 is refuted
+
+`benchmarks/route_binary_pilot/` runs the third hypothesis about the
+`search_text` vs `search_symbols` decision, on 60 cases bound to real
+repositories at the SHAs published in `benchmarks/tasks.json`. **One predicate,
+one run, nothing fitted.** The predicate and the protocol were committed before
+a single case existed; `git log` for that directory is the evidence, because an
+assertion in prose is not.
+
+**Result: indistinguishable from a coin.** Full vocabulary **53.3%** against a
+50% floor, Wilson 95% **[40.9, 65.4]**, **p = 0.699**. Ablating each target's own
+name parts returns **50.0%, p = 1.000**. Leakage existed — 12 of 30 class-S tasks
+matched their own target's name — and bought nothing.
+
+⚠⚠ **The predicate answered `search_symbols` on 58 of 60 tasks** — 100% of class
+S and 28 of 30 of class T. It is a constant classifier wearing a probe's
+clothing, because **in a real repository the symbol vocabulary absorbs ordinary
+English**: fastapi has 6,841 symbols yielding 4,303 matchable name parts, and 14
+of 16 common English words tested are among them (`message`, `path`, `error`,
+`status`, `value`, `name`, `body`, `type`, `data`, `request`, …).
+
+⚠⚠ **Coverage was never the property that mattered, and H3 was argued for on
+exactly that ground.** H1 fires on ~15% of queries, H2 on ~5%, H3 on ~97% — and
+all three fail. The first two decide too few cases; the third decides them all
+the same way. **The property is SEPARATION: a predicate must fire differently on
+the two classes, and firing often is not firing differently.** 100% coverage was
+necessary and not sufficient — the same shape as moratorium conditions 1 and 2
+being met without clearing the freeze. Screen the next hypothesis on separation
+before counting its coverage.
+
+⚠⚠ **The repo-grounded corpus project is cancelled, which is what the pilot was
+built to decide.** The protocol registered the asymmetry in advance: a negative
+is decisive, a positive would have certified nothing. Building the full corpus
+would have cost a project and hit the same wall, because the wall is not the
+corpus — it is that vocabulary membership does not separate these classes in any
+repository large enough to matter.
+
+⚠ Not ruled out, and deliberately not run: a probe keyed on retrieval OUTCOME
+rather than vocabulary membership — does `search_symbols` outrank `search_text`
+for this query against this index. That compares two scores instead of testing
+set membership. **These 60 cases are spent; reusing them for it would be a
+fitting pass wearing an experiment's clothes.**
+
+⚠ One correction made mid-build and disclosed rather than buried: the first
+generated corpus filled class T with `it('should …')` test titles, which would
+have made it a test-title detector. Test paths are excluded now. The fix landed
+after inspecting the cases and **before the predicate was run once** — no
+prediction was computed against the discarded version, and `predicate.py` is
+untouched since its registration commit.
+
+⚠⚠ **A spent corpus is an attractive nuisance, so it is GATED rather than
+labelled.** `tests/test_route_binary_pilot_is_frozen.py` pins `predicate.py` by
+digest: editing it while `cases.json` still exists is a fitting pass, and the
+test cannot judge whether a given edit is one — **it makes the judgement happen**,
+the same design as the LICENSE digest pin. The digest is over line-ending-
+normalised text, because hashing raw bytes pins a property of the checkout rather
+than of the file (that mistake went red on every Ubuntu leg and green on every
+Windows one when the LICENSE pin shipped).
+
+⚠ **The pilot cannot have a freshness gate** — re-running it needs three external
+checkouts and three local indexes, none of which exist in CI — so the guard runs
+the other way: every number quotable from `RESULT.md` must match `results.json`,
+the verdict must still be stated, and the at-chance conclusion must still follow
+from the artifact (interval spans the floor, p is not significant). That last one
+is asserted as the PROPERTY rather than the literals, so a genuinely separating
+re-run would fail it and force a re-reading instead of quietly inheriting the old
+conclusion.
+
+⚠ The gate found two prose/artifact mismatches on its first run: `RESULT.md`
+rounded `0.6989` to `0.699` and never used the word "cancelled". The prose was
+corrected, not the gate.
+
+⚠ Benchmarks, tests and docs only — no source change, no version bump, and the
+moratorium does not move.
+
 ### Fixed — the route benchmark compared three guesses against a baseline allowed one
 
 `run_emitted_task.py` reported route's `@3` recall against the best constant

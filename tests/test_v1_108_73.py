@@ -14,16 +14,28 @@ project/legacy keys (sk-proj-/sk-), and Anthropic keys (sk-ant-).
 from __future__ import annotations
 
 import pytest
+from importlib.util import find_spec
 
 import jcodemunch_mcp.config as cfg
 from jcodemunch_mcp.redact import _redact_string
 
-starlette = pytest.importorskip("starlette")
-from starlette.applications import Starlette  # noqa: E402
-from starlette.testclient import TestClient  # noqa: E402
+# ⚠⚠ `find_spec`, NOT `pytest.importorskip`. At module scope importorskip
+# RAISES during import, so this whole file would collapse to a single
+# "1 skipped" line however many tests it holds -- a CI box quietly missing
+# starlette would look like a healthy run rather than one 10 tests short.
+# find_spec asks the same question without raising: every test is collected
+# and skipped individually. The imports below need the package present, so
+# they move under the flag.
+_HAS_STARLETTE = find_spec("starlette") is not None
+pytestmark = pytest.mark.skipif(
+    not _HAS_STARLETTE, reason="starlette not installed"
+)
+if _HAS_STARLETTE:
+    from starlette.applications import Starlette  # noqa: E402
+    from starlette.testclient import TestClient  # noqa: E402
 
-from jcodemunch_mcp.runtime.http_routes import make_runtime_routes  # noqa: E402
-from jcodemunch_mcp.org.http_routes import make_org_routes  # noqa: E402
+    from jcodemunch_mcp.runtime.http_routes import make_runtime_routes  # noqa: E402
+    from jcodemunch_mcp.org.http_routes import make_org_routes  # noqa: E402
 
 
 # ── WI-2.1: fail closed when enabled without a token ──────────────────────

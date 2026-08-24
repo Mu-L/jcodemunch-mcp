@@ -55,6 +55,15 @@ _CURRENT_CALL_UID: ContextVar[Optional[str]] = ContextVar(
 
 _SAVINGS_FILE = "_savings.json"
 
+# Basis generation for the savings meter. Bumped when the DEFINITION of a
+# tool's raw_bytes baseline changes, so a lifetime total spanning the change is
+# never read as one consistent measurement. Generation 2 (2026-08-22) stopped
+# summing nested symbol spans and stopped charging a file once per symbol
+# selected from it; both over-counted, so pre-2 counts read HIGH. Nothing is
+# rewritten — a recomputed history would be a guess wearing a measurement's
+# clothes — the mixed basis is disclosed instead.
+SAVINGS_BASIS_GENERATION = 2
+
 # Days of per-day savings history kept in _savings.json's "daily" map. Two years
 # covers every window a dashboard offers ("this year", year-over-year) while
 # keeping the file a few KB.
@@ -103,6 +112,12 @@ class _State:
     def __init__(self):
         self._lock = threading.Lock()
         self._loaded = False
+        self._basis_first = SAVINGS_BASIS_GENERATION
+        # Lifetime savings attributed per tool. LOCAL ONLY — never added to
+        # the telemetry payload, which stays {delta, total, anon_id}.
+        self._tool_totals: dict = {}
+        self._tool_unflushed: dict = {}
+        self._by_tool_since: Optional[str] = None
         self._total: int = 0          # cumulative total (disk + in-flight)
         self._unflushed: int = 0      # delta not yet written to disk
         self._encoding_total: int = 0    # cumulative MUNCH encoding savings
@@ -189,8 +204,25 @@ class _State:
             logger.debug("Failed to load savings data from %s", path, exc_info=True)
             data = {}
         self._total = data.get("total_tokens_saved", 0)
+        # A ledger that already holds counts but names no generation was written
+        # before generations existed, so its history IS generation 1 — the
+        # over-counting basis. Defaulting THAT to the current generation would
+        # silently claim every historical count was taken the corrected way,
+        # which is the one thing this field exists to prevent. A ledger with no
+        # counts (fresh install, or a file holding only an anon_id) starts clean
+        # at the current generation: there is no history to have taken wrongly.
+        recorded = data.get("basis_generation_first", data.get("basis_generation"))
+        if recorded is not None:
+            self._basis_first = int(recorded)
+        elif self._total:
+            self._basis_first = 1
+        else:
+            self._basis_first = SAVINGS_BASIS_GENERATION
         self._encoding_total = data.get("total_encoding_tokens_saved", 0)
         self._anon_id = data.get("anon_id")
+        by_tool = data.get("by_tool")
+        self._tool_totals = dict(by_tool) if isinstance(by_tool, dict) else {}
+        self._by_tool_since = data.get("by_tool_since")
         self._loaded = True
 
     def add(self, delta: int, base_path: Optional[str], tool_name: Optional[str] = None) -> int:
@@ -204,6 +236,13 @@ class _State:
             self._session_tokens += delta
             self._session_calls += 1
             if tool_name:
+                # Lifetime attribution, alongside the session breakdown. Keys come
+                # from our own tool registry, so the map is bounded; an absent or
+                # empty tool_name is skipped rather than opening a junk key.
+                if self._by_tool_since is None:
+                    self._by_tool_since = datetime.now().date().isoformat()
+                self._tool_totals[tool_name] = self._tool_totals.get(tool_name, 0) + delta
+                self._tool_unflushed[tool_name] = self._tool_unflushed.get(tool_name, 0) + delta
                 self._session_tool_breakdown[tool_name] = (
                     self._session_tool_breakdown.get(tool_name, 0) + delta
                 )
@@ -514,6 +553,21 @@ class _State:
             "session_duration_s": round(elapsed, 1),
             "session_response_tokens": self._session_response_tokens,
             "total_tokens_saved": self._total,
+            # A lifetime total that spans a basis change is not one measurement.
+            # mixed_basis=True says the figure includes counts taken before the
+            # baseline definition was corrected downward on 2026-08-22.
+            "total_tokens_saved_basis": {
+                "generation": SAVINGS_BASIS_GENERATION,
+                "first_generation": self._basis_first,
+                "mixed_basis": self._basis_first != SAVINGS_BASIS_GENERATION,
+            },
+            # Lifetime per-tool attribution, and the honest complement: what the
+            # meter earned before it could attribute anything. A caller that sees
+            # only `lifetime_by_tool` would read the shortfall against
+            # total_tokens_saved as missing data.
+            "lifetime_by_tool": dict(self._tool_totals),
+            "lifetime_by_tool_since": self._by_tool_since,
+            "lifetime_unattributed": max(0, self._total - sum(self._tool_totals.values())),
             "tool_breakdown": dict(self._session_tool_breakdown),
             # Sibling of tool_breakdown, not a replacement: tool_breakdown is
             # tokens per tool and has consumers. Reported savings scales with
@@ -1075,6 +1129,26 @@ class _State:
         else:
             data["anon_id"] = self._anon_id
         data["total_tokens_saved"] = data.get("total_tokens_saved", 0) + self._unflushed
+        # Record the first generation this file was ever written under, and the
+        # current one. Equal => the lifetime total is one consistent basis.
+        data.setdefault("basis_generation_first", data.get("basis_generation", SAVINGS_BASIS_GENERATION))
+        data["basis_generation"] = SAVINGS_BASIS_GENERATION
+        # Per-tool attribution. ⚠⚠ It starts EMPTY and can never be backfilled —
+        # the meter only ever stored a scalar — so sum(by_tool) is less than
+        # total_tokens_saved by however much was earned before this shipped.
+        # `by_tool_since` dates the start so that gap reads as unattributed
+        # history rather than as loss; session_stats reports it as a number.
+        if self._tool_unflushed:
+            merged = data.get("by_tool")
+            merged = dict(merged) if isinstance(merged, dict) else {}
+            for tool, amount in self._tool_unflushed.items():
+                merged[tool] = merged.get(tool, 0) + amount
+            data["by_tool"] = merged
+            data.setdefault(
+                "by_tool_since", self._by_tool_since or datetime.now().date().isoformat()
+            )
+            self._by_tool_since = data["by_tool_since"]
+            self._tool_unflushed = {}
         # Daily rollup alongside the lifetime total, so windowed views ("today",
         # "this month") can come from THIS meter — the authoritative record —
         # instead of transcript scans, which miss cleared history and model

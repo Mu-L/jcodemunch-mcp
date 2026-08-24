@@ -20,6 +20,7 @@ import zlib
 from pathlib import Path
 
 import pytest
+from importlib.util import find_spec
 
 from jcodemunch_mcp.tools.assemble_task_context import assemble_task_context
 from jcodemunch_mcp.tools.find_hot_paths import find_hot_paths as real_find_hot_paths
@@ -91,15 +92,19 @@ class TestRuntimeStageCallsFindHotPaths:
 # 2. _read_body streaming cap + bounded gunzip
 # ──────────────────────────────────────────────────────────────────────
 
-pytest.importorskip("starlette")
+# ⚠⚠ `find_spec`, NOT `pytest.importorskip`. The importorskip here RAISED
+# during import and took the whole file with it -- including two tests above
+# this line and the Nuxt block below, neither of which touches starlette.
+_HAS_STARLETTE = find_spec("starlette") is not None
 
-from starlette.applications import Starlette  # noqa: E402
-from starlette.testclient import TestClient  # noqa: E402
+if _HAS_STARLETTE:
+    from starlette.applications import Starlette  # noqa: E402
+    from starlette.testclient import TestClient  # noqa: E402
 
-from jcodemunch_mcp.runtime.http_routes import (  # noqa: E402
-    _bounded_gunzip,
-    make_runtime_routes,
-)
+    from jcodemunch_mcp.runtime.http_routes import (  # noqa: E402
+        _bounded_gunzip,
+        make_runtime_routes,
+    )
 
 
 @pytest.fixture
@@ -113,6 +118,9 @@ def small_cap_app(tmp_path, monkeypatch):
     return Starlette(routes=make_runtime_routes())
 
 
+@pytest.mark.skipif(
+    find_spec("starlette") is None, reason="starlette not installed"
+)
 class TestBoundedGunzip:
     def test_small_payload_round_trips(self):
         data = b'{"spans": []}'
@@ -136,6 +144,9 @@ class TestBoundedGunzip:
         assert _bounded_gunzip(gzip.compress(data), 1024) == data
 
 
+@pytest.mark.skipif(
+    find_spec("starlette") is None, reason="starlette not installed"
+)
 class TestReadBodyStreamingCap:
     def test_plain_over_cap_rejected_413(self, small_cap_app):
         client = TestClient(small_cap_app)

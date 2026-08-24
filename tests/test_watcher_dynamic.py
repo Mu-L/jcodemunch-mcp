@@ -5,11 +5,23 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from importlib.util import find_spec
 
-pytest.importorskip("watchfiles")
+# ⚠⚠ `find_spec`, NOT `pytest.importorskip`. At module scope importorskip
+# RAISES during import, so this whole file would collapse to a single
+# "1 skipped" line however many tests it holds -- a CI box quietly missing
+# watchfiles would look like a healthy run rather than one 16 tests short.
+# find_spec asks the same question without raising: every test is collected
+# and skipped individually. The imports below need the package present, so
+# they move under the flag.
+_HAS_WATCHFILES = find_spec("watchfiles") is not None
+pytestmark = pytest.mark.skipif(
+    not _HAS_WATCHFILES, reason="watchfiles not installed"
+)
 
-from jcodemunch_mcp import watcher
-from jcodemunch_mcp.watcher import WatcherManager
+if _HAS_WATCHFILES:
+    from jcodemunch_mcp import watcher
+    from jcodemunch_mcp.watcher import WatcherManager
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 import logging
 import pytest
+from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -122,9 +123,16 @@ class TestResolveDescriptionInline:
 # ===========================================================================
 
 
-yaml = pytest.importorskip("yaml", reason="pyyaml required")
+# ⚠⚠ The guard here used to be `yaml = pytest.importorskip("yaml")` -- a
+# module-scope call that RAISES during import, so the whole file vanished
+# behind one "1 skipped" line, taking 8 tests above it that never touched
+# yaml. (The bound name was never used, either.) Skipping only what needs
+# the package keeps the rest of the file collectable and counted.
 
 
+@pytest.mark.skipif(
+    find_spec("yaml") is None, reason="pyyaml not installed"
+)
 class TestDbtTagsMerge:
 
     def test_top_level_tags_only(self, tmp_path):

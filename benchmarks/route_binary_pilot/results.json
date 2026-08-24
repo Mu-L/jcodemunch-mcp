@@ -1,0 +1,980 @@
+{
+ "summary": {
+  "n": 60,
+  "balanced": {
+   "search_symbols": 30,
+   "search_text": 30
+  },
+  "blind_floor": {
+   "answer": "search_text",
+   "pct": 50.0,
+   "note": "best constant single class; the k-matched bar for a predicate that emits one class"
+  },
+  "full_vocabulary": {
+   "accuracy_pct": 53.3,
+   "vs_floor_pts": 3.3,
+   "wilson95": [
+    40.9,
+    65.4
+   ],
+   "binomial_p_vs_50": 0.6989,
+   "by_class": {
+    "search_symbols": 100.0,
+    "search_text": 6.7
+   }
+  },
+  "ablated_own_name": {
+   "accuracy_pct": 50.0,
+   "vs_floor_pts": 0.0,
+   "wilson95": [
+    37.7,
+    62.3
+   ],
+   "binomial_p_vs_50": 1.0,
+   "by_class": {
+    "search_symbols": 93.3,
+    "search_text": 6.7
+   },
+   "note": "vocabulary minus the parts of each case's OWN target name. A collapse here means the predicate was reading the target out of the task, i.e. leakage, and the run is discarded."
+  },
+  "leakage": {
+   "class_S_cases_matching_own_name": 12,
+   "class_S_total": 30
+  },
+  "protocol": "benchmarks/route_binary_pilot/PROTOCOL.md",
+  "reading": "A negative is decisive and kills the corpus project. A positive certifies nothing: these tasks are synthetic paraphrase, a third distribution distinct from both the human corpus and agent-emitted wording."
+ },
+ "per_case": [
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Assert that a supertest response does not have a header.",
+   "target": "shouldNotHaveHeader",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "response",
+    "header"
+   ],
+   "matched_is_own_name": [
+    "header"
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Create an ETag generator function, generating ETags with",
+   "target": "createETagGenerator",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_text",
+   "matched_full": [
+    "Create",
+    "ETag",
+    "generator"
+   ],
+   "matched_is_own_name": [
+    "create",
+    "generator"
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Initialize a new ` ` with the given `name`.",
+   "target": "View",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "new"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Assert that a supertest response has a specific body.",
+   "target": "shouldHaveBody",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "response",
+    "body"
+   ],
+   "matched_is_own_name": [
+    "body"
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "using our plain-object database of doom!",
+   "target": "authenticate",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "object"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "var = function(req, res){ res.end(new Error('wrong ')) };",
+   "target": "handler",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "new",
+    "Error"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Helper function for creating a getter on an object.",
+   "target": "defineGetter",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "getter",
+    "object"
+   ],
+   "matched_is_own_name": [
+    "getter"
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Get the local client address depending on AF_NET of server",
+   "target": "getExpectedClientAddress",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "client",
+    "address",
+    "server"
+   ],
+   "matched_is_own_name": [
+    "address",
+    "client"
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "function (app, inputUrl, expected, expectedHost, done)",
+   "target": "testRequestedRedirect",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "app",
+    "expected",
+    "expectedHost"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_symbols",
+   "task": "Assert that a supertest response does not have a body.",
+   "target": "shouldNotHaveBody",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "response",
+    "body"
+   ],
+   "matched_is_own_name": [
+    "body"
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message path must be a string to res.sendFile come from",
+   "target": "path must be a string to res.sendFile",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "string",
+    "sendFile"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message Router.use() requires a middleware function but got a come from",
+   "target": "Router.use() requires a middleware function but got a",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "Router"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message res.send(status): Use res.sendStatus(status) instead come from",
+   "target": "res.send(status): Use res.sendStatus(status) instead",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "send",
+    "sendStatus"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message Failed to lookup view come from",
+   "target": "Failed to lookup view",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "lookup",
+    "view"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message no routes defined on app come from",
+   "target": "no routes defined on app",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "app"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message Hello from root route. come from",
+   "target": "Hello from root route.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "route"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message utils.flatten: use array-flatten npm module instead come from",
+   "target": "utils.flatten: use array-flatten npm module instead",
+   "target_kind": "literal",
+   "pred_full": "search_text",
+   "pred_ablated": "search_text",
+   "matched_full": [],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message res.redirect(url, status): Use res.redirect(status, url) instead come from",
+   "target": "res.redirect(url, status): Use res.redirect(status, url) instead",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "redirect",
+    "redirect"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message res.jsonp(status, obj): Use res.status(status).jsonp(obj) instead come from",
+   "target": "res.jsonp(status, obj): Use res.status(status).jsonp(obj) instead",
+   "target_kind": "literal",
+   "pred_full": "search_text",
+   "pred_ablated": "search_text",
+   "matched_full": [],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "expressjs/express",
+   "gold": "search_text",
+   "task": "where does the message List of APIv1 users. come from",
+   "target": "List of APIv1 users.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "users"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "def (background_tasks: BackgroundTasks) -> BackgroundTasks",
+   "target": "add_background_task",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "background_tasks",
+    "BackgroundTasks",
+    "BackgroundTasks"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "def ( session: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 100, )",
+   "target": "read_heroes",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "session",
+    "SessionDep",
+    "offset",
+    "int",
+    "limit",
+    "Annotated",
+    "int",
+    "Query"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "def (user_id: str, expected_response: dict)",
+   "target": "test_get_users",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "user_id",
+    "str",
+    "expected_response",
+    "dict"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "def (benchmark, client: TestClient) -> None",
+   "target": "test_sync_return_dict_with_response_model",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "client",
+    "TestClient",
+    "None"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "async def (p: Annotated[list[UploadFile], File()])",
+   "target": "read_list_uploadfile",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "async",
+    "Annotated",
+    "UploadFile"
+   ],
+   "matched_is_own_name": [
+    "uploadfile"
+   ]
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "async def (x_token: Annotated[str, Header()])",
+   "target": "verify_token",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "async",
+    "x_token",
+    "Annotated",
+    "str",
+    "Header"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "async def (files: Annotated[list[bytes], File()]): # return something that makes order obvious",
+   "target": "upload",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "async",
+    "Annotated",
+    "bytes",
+    "return",
+    "something",
+    "order"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "async def (request: Request) -> Response",
+   "target": "custom_route_handler",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "async",
+    "request",
+    "Request",
+    "Response"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "async def (self, value: str) -> AsyncGenerator[str, None]",
+   "target": "__call__",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "async",
+    "value",
+    "str",
+    "AsyncGenerator",
+    "str",
+    "None"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_symbols",
+   "task": "def ( type_encoder_map: dict[Any, Callable[[Any], Any]], ) -> dict[Callable[[Any]",
+   "target": "generate_encoders_by_class_tuples",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "type_encoder_map",
+    "dict",
+    "Callable",
+    "dict",
+    "Callable"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message A frontend path cannot be empty come from",
+   "target": "A frontend path cannot be empty",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "frontend",
+    "path",
+    "cannot",
+    "empty"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message The original file name. come from",
+   "target": "The original file name.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "original",
+    "name"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message The size of the file in bytes. come from",
+   "target": "The size of the file in bytes.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "size",
+    "bytes"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message The HTTP Basic password. come from",
+   "target": "The HTTP Basic password.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "HTTP",
+    "Basic",
+    "password"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message pydantic.v1 models are no longer supported by FastAPI. come from",
+   "target": "pydantic.v1 models are no longer supported by FastAPI.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "pydantic",
+    "models",
+    "supported",
+    "FastAPI"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message has a block with a bare except, or a block with except Exception, come from",
+   "target": "has a block with a bare except, or a block with except Exception,",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "block",
+    "bare",
+    "block",
+    "Exception"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message The standard Python file object (non-async). come from",
+   "target": "The standard Python file object (non-async).",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "standard",
+    "Python",
+    "object",
+    "non",
+    "async"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message fallback must be 'auto', 'index.html', '404.html', or None come from",
+   "target": "fallback must be 'auto', 'index.html', '404.html', or None",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "fallback",
+    "auto",
+    "index",
+    "html",
+    "html",
+    "None"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message An optional path prefix for the router. come from",
+   "target": "An optional path prefix for the router.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "optional",
+    "path",
+    "prefix",
+    "router"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "gold": "search_text",
+   "task": "where does the message Freshly pickled plumbus come from",
+   "target": "Freshly pickled plumbus",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "message",
+    "plumbus"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "Tests that no XML is rendered if code is 204",
+   "target": "TestContextRenderNoContentXML",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "Tests",
+    "XML"
+   ],
+   "matched_is_own_name": [
+    "xml"
+   ]
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "returns the value associated with the key as a float64.",
+   "target": "GetFloat64",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "value",
+    "key",
+    "float64"
+   ],
+   "matched_is_own_name": [
+    "float64"
+   ]
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "func TestTreeDuplicateWildcard(t *testing.",
+   "target": "TestTreeTrailingSlashRedirect",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "func",
+    "TestTreeDuplicateWildcard"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "func (t *testing.T, method, path, badPath, body, badBody string)",
+   "target": "testFormBindingForTimeFailFormat",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "func",
+    "path",
+    "badPath",
+    "body",
+    "badBody",
+    "string"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "serializes the given struct as into the response body.",
+   "target": "YAML",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "struct",
+    "response",
+    "body"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "returns an array with all the error messages.",
+   "target": "Errors",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "array",
+    "error"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "TestSingleRouteOK tests that POST route is correctly invoked.",
+   "target": "testRouteNotOK2",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "TestSingleRouteOK",
+    "tests",
+    "POST",
+    "route"
+   ],
+   "matched_is_own_name": [
+    "route"
+   ]
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "is the parsed multipart form, including file uploads.",
+   "target": "MultipartForm",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_text",
+   "matched_full": [
+    "multipart",
+    "form"
+   ],
+   "matched_is_own_name": [
+    "form",
+    "multipart"
+   ]
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "returns the specified key from a POST urlencoded form or multipart form",
+   "target": "PostForm",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "key",
+    "POST",
+    "form",
+    "multipart",
+    "form"
+   ],
+   "matched_is_own_name": [
+    "form",
+    "post"
+   ]
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_symbols",
+   "task": "func (json ing) (req *http.Request, obj any) error",
+   "target": "Bind",
+   "target_kind": "symbol",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "func",
+    "json",
+    "http",
+    "Request",
+    "obj",
+    "error"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message Proxy Authorization Required come from",
+   "target": "Proxy Authorization Required",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "Proxy",
+    "Authorization",
+    "Required"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message catch-all wildcard ' come from",
+   "target": "catch-all wildcard '",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "catch",
+    "wildcard"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message can not convert to map of strings come from",
+   "target": "can not convert to map of strings",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "map"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message s id to key AuthUserKey in this context, the user come from",
+   "target": "s id to key AuthUserKey in this context, the user",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "key",
+    "AuthUserKey",
+    "context"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message catch-all routes are only allowed at the end of the path in path ' come from",
+   "target": "catch-all routes are only allowed at the end of the path in path '",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "catch",
+    "routes",
+    "only",
+    "allowed",
+    "path",
+    "path"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message path must begin with come from",
+   "target": "path must begin with",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "path"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message Listening and serving HTTP on listener what come from",
+   "target": "Listening and serving HTTP on listener what",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "HTTP",
+    "listener"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message there must be at least one handler come from",
+   "target": "there must be at least one handler",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "one",
+    "handler"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message s name. For example if the handler is come from",
+   "target": "s name. For example if the handler is",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "name",
+    "example",
+    "handler"
+   ],
+   "matched_is_own_name": []
+  },
+  {
+   "repo": "gin-gonic/gin",
+   "gold": "search_text",
+   "task": "where does the message TrustedPlatform: gin.PlatformGoogleAppEngine' instead. come from",
+   "target": "TrustedPlatform: gin.PlatformGoogleAppEngine' instead.",
+   "target_kind": "literal",
+   "pred_full": "search_symbols",
+   "pred_ablated": "search_symbols",
+   "matched_full": [
+    "TrustedPlatform",
+    "PlatformGoogleAppEngine"
+   ],
+   "matched_is_own_name": []
+  }
+ ]
+}
