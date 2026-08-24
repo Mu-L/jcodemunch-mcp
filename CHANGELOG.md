@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.293] - 2026-08-23 - Ten skipped modules that hid 209 tests
+
 ### Fixed - ten skipped modules that hid 209 tests between them
 
 Test-only; nothing user-facing moves. Every module-scope `pytest.importorskip`
