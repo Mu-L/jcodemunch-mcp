@@ -38,9 +38,9 @@ class TestCopilotHookExtraction:
             args = popen.call_args[0][0]
             # Spawn via _self_invocation, never a bare PATH lookup (the agent
             # hook shell's minimal PATH is exactly where the bare name died).
+            # (TestSelfInvocation pins that the invocation is never bare.)
             from jcodemunch_mcp.cli.hooks import _self_invocation
             assert args == _self_invocation() + ["index-file", "/tmp/test.py"]
-            assert args != ["jcodemunch-mcp", "index-file", "/tmp/test.py"]
 
     def test_extracts_from_dict_toolargs_too(self, stdin_with):
         """toolArgs delivered as a dict directly (defensive)."""

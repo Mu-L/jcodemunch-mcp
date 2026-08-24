@@ -159,6 +159,15 @@ class TestBashSearchInterception:
         assert rc == 0
         assert "search_text" in json.loads(out)["hookSpecificOutput"]["additionalContext"], cmd
 
+    def test_home_anchored_target_passes_even_strict(self, indexed_tmp, monkeypatch):
+        """`grep foo ~/notes.txt` names a home path outside the repo — the
+        `~/` half of the path-token veto."""
+        monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Bash", {"command": "grep -n foo ~/notes.txt"},
+            cwd=str(indexed_tmp)))
+        assert (rc, out) == (0, "")
+
     def test_dotdot_target_passes_even_strict(self, indexed_tmp, monkeypatch):
         """`grep foo ../sibling/` escapes cwd — the one relative shape that
         provably leaves the repo; silence, never a false deny."""
@@ -181,6 +190,21 @@ class TestBashSearchInterception:
         assert "get_file_tree" in hso["additionalContext"]
 
 
+class TestReadSizeBoundary:
+    def test_exactly_threshold_nudges_one_below_does_not(self, indexed_tmp):
+        from jcodemunch_mcp.cli.hooks import _MIN_SIZE_BYTES
+        at = indexed_tmp / "at.py"
+        at.write_bytes(b"#" * _MIN_SIZE_BYTES)
+        below = indexed_tmp / "below.py"
+        below.write_bytes(b"#" * (_MIN_SIZE_BYTES - 1))
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Read", {"file_path": str(at)}))
+        assert "get_file_outline" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Read", {"file_path": str(below)}))
+        assert (rc, out) == (0, "")
+
+
 class TestGlobInterception:
     def test_glob_in_indexed_repo_nudges(self, indexed_tmp):
         rc, out, _ = _run(run_pretooluse, _pretool(
@@ -188,6 +212,12 @@ class TestGlobInterception:
         assert rc == 0
         ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
         assert "get_file_tree" in ctx
+
+    def test_glob_with_outside_path_passes_silently(self, indexed_tmp):
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Glob", {"pattern": "**/*.py", "path": "/usr/lib"},
+            cwd=str(indexed_tmp)))
+        assert (rc, out) == (0, "")
 
     def test_glob_strict_denies(self, indexed_tmp, monkeypatch):
         monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
@@ -271,6 +301,72 @@ class TestTaskCompleteLiveJournal:
         assert "Possibly orphaned" in msg
 
 
+class TestTaskCompleteDiagnosticQuality:
+    """The diagnostics must be LOSSLESS for the session's files and render
+    the negative reference verdicts they were built to surface."""
+
+    @pytest.fixture
+    def _diag_env(self, monkeypatch):
+        monkeypatch.setattr(
+            "jcodemunch_mcp.tools.session_state.load_live_journal",
+            lambda **kw: {"files_edited": [{"file": "src/a.py", "edits": 1}]},
+        )
+        idx = mock.MagicMock()
+        idx.source_files = ["src/a.py", "src/b.py"]
+        idx.symbols = [{"name": "f", "file": "src/a.py", "line": 1}]
+        _mock_store(monkeypatch, [{"repo": "local/proj"}], idx=idx)
+        monkeypatch.setattr(
+            "jcodemunch_mcp.tools.find_dead_code.find_dead_code",
+            lambda repo_id, granularity: {"dead_symbols": []},
+        )
+
+    def test_session_untested_symbols_survive_a_large_corpus(
+        self, _diag_env, monkeypatch
+    ):
+        """The regression the branch review caught: a corpus-wide call CAPPED
+        its result before the session filter, so the session file's symbols
+        vanished in exactly the worst-tested repos. This mock is an honest
+        oracle: the session symbol ranks LAST among 150, so any capped
+        corpus-wide read loses it and any lossless read keeps it."""
+        corpus = [
+            {"name": f"other_{i}", "file": "other.py", "line": i}
+            for i in range(149)
+        ] + [{"name": "session_sym", "file": "src/a.py", "line": 1}]
+
+        def fake_untested(repo_id, file_pattern=None, max_results=50, **kw):
+            pool = ([u for u in corpus if u["file"] == file_pattern]
+                    if file_pattern else corpus)
+            return {"untested_symbols": pool[:max_results]}
+
+        monkeypatch.setattr(
+            "jcodemunch_mcp.tools.get_untested_symbols.get_untested_symbols",
+            fake_untested,
+        )
+        monkeypatch.setattr(
+            "jcodemunch_mcp.tools.check_references.check_references",
+            lambda *a, **kw: {"results": []},
+        )
+        _, out, _ = _run(run_taskcomplete, '{"hook_event_name": "TaskCompleted"}')
+        assert "session_sym" in json.loads(out)["systemMessage"]
+
+    def test_unreferenced_symbol_is_rendered(self, _diag_env, monkeypatch):
+        """The negative verdict path — the one #406 showed was mis-consumed —
+        must reach the agent-facing message."""
+        monkeypatch.setattr(
+            "jcodemunch_mcp.tools.get_untested_symbols.get_untested_symbols",
+            lambda *a, **kw: {"untested_symbols": []},
+        )
+        monkeypatch.setattr(
+            "jcodemunch_mcp.tools.check_references.check_references",
+            lambda *a, **kw: {
+                "results": [{"identifier": "f", "is_referenced": False}],
+            },
+        )
+        _, out, _ = _run(run_taskcomplete, '{"hook_event_name": "TaskCompleted"}')
+        msg = json.loads(out)["systemMessage"]
+        assert "Unreferenced" in msg and "`f`" in msg
+
+
 class TestSelfInvocation:
     """The reindex child must reuse THIS install's invocation — a bare-name
     Popen died silently under the hook shell's minimal PATH, on exactly the
@@ -324,6 +420,21 @@ class TestSubagentCatalogMatchesSurface:
         assert "test/a" in ctx
         assert "test/b" not in ctx
         assert loaded == ["a"]  # the unrelated repo was never hydrated
+
+    def test_no_cwd_overlap_briefs_everything(self, monkeypatch, tmp_path):
+        """Scoping is an optimisation, not a filter contract: a cwd outside
+        every indexed root keeps the brief-everything fallback."""
+        a = tmp_path / "a"
+        a.mkdir()
+        _mock_store(monkeypatch, [
+            {"repo": "test/a", "source_root": str(a)},
+            {"repo": "test/b", "source_root": str(tmp_path / "b")},
+        ])
+        monkeypatch.setenv("JCODEMUNCH_TOOL_SURFACE", "full")
+        _, out, _ = _run(run_subagentstart, json.dumps(
+            {"cwd": str(tmp_path / "elsewhere")}))
+        ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        assert "test/a" in ctx and "test/b" in ctx
 
     def test_full_surface_briefs_catalog(self, _store, monkeypatch):
         monkeypatch.setenv("JCODEMUNCH_TOOL_SURFACE", "full")
@@ -406,6 +517,19 @@ class TestStoreBackedGates:
         ))
         assert len(loaded) == 1  # the indexed file is repo-relative
 
+    def test_steering_end_to_end_through_symlink_alias(
+        self, real_store, tmp_path
+    ):
+        """The full chain, nothing mocked: index_folder stores the resolved
+        root, the gate reads it via list_source_roots, and a Grep addressed
+        through a symlink alias of the repo still gets the nudge."""
+        alias = tmp_path / "alias"
+        os.symlink(tmp_path / "proj", alias)
+        rc, out, _ = _run(run_pretooluse, _pretool(
+            "Grep", {"pattern": "alpha"}, cwd=str(alias)))
+        assert rc == 0
+        assert "search_text" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
+
     def test_probe_fails_open_without_sqlite_backend(self, monkeypatch):
         """A store fake without _sqlite must hydrate, never silently skip."""
         idx = mock.MagicMock()
@@ -434,6 +558,17 @@ class TestHostileStdin:
         rc, _, _ = _run(run_pretooluse, payload)
         assert rc == 0
 
+    def test_posttooluse_swallows_nul_byte_path_with_real_spawn(self):
+        """No Popen mock: the NUL byte must reach the real spawn and die in
+        _spawn_index_file's except, not crash the hook."""
+        from jcodemunch_mcp.cli.hooks import run_posttooluse
+        payload = json.dumps({
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "src/a\u0000.py"},
+        })
+        rc, out, _ = _run(run_posttooluse, payload)
+        assert (rc, out) == (0, "")
+
     @pytest.mark.parametrize("payload", [
         "null", "[]", '{"tool_input": null}', '{"tool_input": {"file_path": 7}}',
     ])
@@ -448,18 +583,22 @@ class TestMinSizeGarbageEnv:
         """Garbage JCODEMUNCH_HOOK_MIN_SIZE must fall back to the default, not
         crash every hook at import time."""
         import subprocess
+        env = {**os.environ,
+               "JCODEMUNCH_HOOK_MIN_SIZE": "not-a-number",
+               # Anchored to this file: a cwd-relative "src" would import
+               # whatever package the runner's cwd happens to expose.
+               "PYTHONPATH": str(Path(__file__).parents[1] / "src")}
         r = subprocess.run(
             [sys.executable, "-c",
              "from jcodemunch_mcp.cli.hooks import _MIN_SIZE_BYTES; "
              "print(_MIN_SIZE_BYTES)"],
-            env={**os.environ, "JCODEMUNCH_HOOK_MIN_SIZE": "not-a-number",
-                 # Anchored to this file: a cwd-relative "src" would import
-                 # whatever package the runner's cwd happens to expose.
-                 "PYTHONPATH": str(Path(__file__).parents[1] / "src")},
-            capture_output=True, text=True, timeout=60,
+            env=env, capture_output=True, text=True, timeout=60,
         )
         assert r.returncode == 0, r.stderr
-        assert r.stdout.strip() == "4096"
+        # The property: garbage parses to the same default an env-free import
+        # gets (this process's own value), not to any pinned literal.
+        from jcodemunch_mcp.cli.hooks import _MIN_SIZE_BYTES
+        assert int(r.stdout.strip()) == _MIN_SIZE_BYTES > 0
 
 
 class TestMatcherUpgrade:

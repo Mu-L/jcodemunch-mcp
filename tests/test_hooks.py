@@ -464,9 +464,9 @@ class TestPostToolUse:
         # The spawn must reuse THIS install's invocation (_self_invocation), not
         # a bare PATH lookup — the hook shell's minimal PATH is the reason
         # init writes absolute paths, and a bare name died silently there.
+        # (TestSelfInvocation pins that the invocation is never the bare name.)
         from jcodemunch_mcp.cli.hooks import _self_invocation
         assert call_args == _self_invocation() + ["index-file", str(f)]
-        assert call_args != ["jcodemunch-mcp", "index-file", str(f)]
 
     def test_skips_non_code_file(self, tmp_path):
         """Non-code files don't trigger indexing."""

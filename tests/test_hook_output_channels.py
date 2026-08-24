@@ -6,7 +6,6 @@ perfect nudge and still be inert if it writes to stderr or systemMessage.
 
 import io
 import json
-import os
 import sys
 from unittest import mock
 
@@ -14,6 +13,7 @@ import pytest
 
 from jcodemunch_mcp.cli.hooks import (
     _emit_additional_context,
+    _norm_path,
     run_pretooluse,
     run_sessionstart,
     run_subagentstart,
@@ -114,7 +114,7 @@ class TestGrepNudgeReachesModel:
     def _indexed(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
             "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
-            lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
+            lambda: [_norm_path(str(tmp_path))],
         )
 
     def test_grep_nudge_uses_additional_context(self, tmp_path):
@@ -141,7 +141,7 @@ class TestStrictModeUnaffected:
         monkeypatch.setenv("JCODEMUNCH_ENFORCE", "strict")
         monkeypatch.setattr(
             "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
-            lambda: [os.path.normcase(os.path.abspath(str(tmp_path)))],
+            lambda: [_norm_path(str(tmp_path))],
         )
         rc, out, _ = _run(run_pretooluse, _read_input(str(big_py)))
         assert rc == 0
