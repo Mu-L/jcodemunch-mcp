@@ -1,11 +1,15 @@
 """PreCompact / SessionStart: session-snapshot restore (#334 bridge)."""
 
+import logging
+
 from ._common import (
     _emit_additional_context,
     _note_transcript_root,
     _read_hook_payload,
 )
 from .landmarks import _build_landmark_section
+
+logger = logging.getLogger(__name__)
 
 
 def _build_session_snapshot() -> str:
@@ -29,6 +33,7 @@ def _build_session_snapshot() -> str:
             snapshot_text = live.get("snapshot", "")
             live_context = live.get("_context")
     except Exception:
+        logger.debug("live snapshot read failed", exc_info=True)
         snapshot_text = ""
 
     if not snapshot_text:
@@ -39,6 +44,7 @@ def _build_session_snapshot() -> str:
             if structured.get("total_files_explored") or structured.get("total_searches"):
                 snapshot_text = snap.get("snapshot", "")
         except Exception:
+            logger.debug("in-process snapshot failed", exc_info=True)
             snapshot_text = ""
 
     if not snapshot_text:
@@ -52,7 +58,8 @@ def _build_session_snapshot() -> str:
         if landmarks:
             snapshot_text += landmarks
     except Exception:
-        pass  # Landmark enrichment must not block compaction
+        logger.debug("landmark enrichment failed", exc_info=True)
+        # Landmark enrichment must not block the snapshot
 
     return snapshot_text
 

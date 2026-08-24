@@ -71,7 +71,7 @@ def _note_transcript_root(data) -> None:
         from ...storage.transcript_roots import register_from_transcript_path
         register_from_transcript_path(data.get("transcript_path"))
     except Exception:
-        pass
+        logger.debug("transcript-root registration failed", exc_info=True)
 
 
 def _read_hook_payload() -> "dict | None":
@@ -203,6 +203,7 @@ def _iter_loaded_repos(store, repos, wanted_files=None):
         try:
             idx = store.load_index(owner, name)
         except Exception:
+            logger.debug("load_index failed for %s/%s", owner, name, exc_info=True)
             continue
         if not idx:
             continue
