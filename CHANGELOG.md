@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [1.108.295] - 2026-08-24 - What the guard could not see
+
+### Fixed - `_build`, the third spelling of a build tree
+
+`build` and `.build` were both excluded from indexing. `_build` was not — and
+that is the spelling **Elixir/Mix, Sphinx and Dune** use. We index Elixir.
+
+⚠⚠ **This is the same defect as `backup`/`old`/`archive` (v1.108.234), not a new
+one.** `mix` copies dependency **sources** into `_build`, so an Elixir project
+indexed here got every dependency symbol twice and the copies then competed
+with the originals in ranking — the exact outcome the .234 entry describes. The
+only reason it survived is that nobody wrote down the third spelling.
+
+⚠ **Bounded, and listed anyway.** `_build/` is in the standard Elixir
+`.gitignore` and gitignore is honoured, so this bites a project without one or
+indexed outside git. `build/` is in that same `.gitignore` and has been
+excluded since the beginning; the argument for one is the argument for the
+other.
+
+⚠ Reaches both derived exports — `SKIP_DIRECTORIES` (the local walk) and
+`SKIP_PATTERNS` (the GitHub indexer) — because it was added to the canonical
+list rather than to either export. Still overridable per-project via
+`exclude_skip_directories`, which matters because these are ordinary words that
+can name a real package.
+
+⚠ Found by reading Graft's fix titles against our tree
+(`fix(ingest): skip _build, the underscore spelling of a build tree`). Third
+time that probe has paid, after the Gini double-count and the byte-mass basis.
+`tests/test_build_tree_spellings.py` asserts the property across every spelling
+rather than pinning the list; verified by removing `_build` again and watching
+only its three assertions fail.
+
 ### Fixed - a strict deny now requires a target the hook can resolve (#541)
 
 Two blindnesses in the same guard, found in ordinary use of the
@@ -54,68 +86,6 @@ The matcher that surfaced this is @marcelruhf's from
 [#535](https://github.com/jgravelle/jcodemunch-mcp/pull/535); the guard it
 slipped past already handled four other shapes correctly.
 
-### Docs - deferring our schemas via Anthropic tool search, and a catalog-size number from the vendor
-
-README gains a section on keeping jCodeMunch's tool schemas out of the context
-prefix using [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool).
-⚠ For an MCP server you do **not** set `defer_loading` per tool — it goes once
-on the `mcp_toolset` entry's `default_config`, with per-tool `configs`
-overriding it. The snippet keeps `resolve_repo` / `search_symbols` /
-`get_ranked_context` resident, which is Anthropic's own 3–5-resident-tools
-advice. ⚠ Both halves of the connector are required and the beta header is
-named, because the `tools`-only form is a validation error; and the connector
-is URL-based, so this is for `sse` / `streamable-http`, not default stdio.
-⚠ Deferred definitions are excluded from the prefix and appended as
-`tool_reference` blocks, so **prompt caching is preserved** — worth stating,
-since a dynamic tool list normally invalidates it.
-
-ROADMAP records a number beside the catalog moratorium:
-
-> "Claude's ability to pick the right tool degrades once you exceed **30–50
-> available tools**."
-
-⚠⚠ **We serve 91 on `full` and that is 2–3x past it** — the first EXTERNAL
-evidence for the freeze, and it is on an axis the exit conditions do not
-measure. Every prior argument has been about whether `route` is good enough;
-this says the catalog is already past where the *model's* selection degrades,
-independent of `route`. ⚠⚠ **It moves conditions 1–3 in neither direction and
-must not be cited as progress**: the "over 85 percent" headline is a TOKEN
-figure over a five-server setup, their accuracy claim carries no number, and
-our wall is `route` at 52.2% against a 51.4% majority baseline. ⚠ Their 85% and
-our 95.9% have the same epistemic status — one configuration each, neither a
-benchmark. ⚠ The 91 applies to carried-forward installs; `init` writes
-`counter` (3 tools) on a first-ever install.
-
-### Fixed - `_build`, the third spelling of a build tree
-
-`build` and `.build` were both excluded from indexing. `_build` was not — and
-that is the spelling **Elixir/Mix, Sphinx and Dune** use. We index Elixir.
-
-⚠⚠ **This is the same defect as `backup`/`old`/`archive` (v1.108.234), not a new
-one.** `mix` copies dependency **sources** into `_build`, so an Elixir project
-indexed here got every dependency symbol twice and the copies then competed
-with the originals in ranking — the exact outcome the .234 entry describes. The
-only reason it survived is that nobody wrote down the third spelling.
-
-⚠ **Bounded, and listed anyway.** `_build/` is in the standard Elixir
-`.gitignore` and gitignore is honoured, so this bites a project without one or
-indexed outside git. `build/` is in that same `.gitignore` and has been
-excluded since the beginning; the argument for one is the argument for the
-other.
-
-⚠ Reaches both derived exports — `SKIP_DIRECTORIES` (the local walk) and
-`SKIP_PATTERNS` (the GitHub indexer) — because it was added to the canonical
-list rather than to either export. Still overridable per-project via
-`exclude_skip_directories`, which matters because these are ordinary words that
-can name a real package.
-
-⚠ Found by reading Graft's fix titles against our tree
-(`fix(ingest): skip _build, the underscore spelling of a build tree`). Third
-time that probe has paid, after the Gini double-count and the byte-mass basis.
-`tests/test_build_tree_spellings.py` asserts the property across every spelling
-rather than pinning the list; verified by removing `_build` again and watching
-only its three assertions fail.
-
 ### Fixed - a cache hit-rate that counted key-presence as validity
 
 `analyze_perf` published `hit_rate` bare. A "hit" is key-presence in the
@@ -157,6 +127,38 @@ best-effort and wrapped: a telemetry failure can never affect an answer.
 asserts the outcome at the surface that reports to a user, verified by
 reintroducing both defects — folding unknown into fresh, and republishing the
 raw rate bare — and watching exactly their own guards fail.
+
+### Docs - deferring our schemas via Anthropic tool search, and a catalog-size number from the vendor
+
+README gains a section on keeping jCodeMunch's tool schemas out of the context
+prefix using [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool).
+⚠ For an MCP server you do **not** set `defer_loading` per tool — it goes once
+on the `mcp_toolset` entry's `default_config`, with per-tool `configs`
+overriding it. The snippet keeps `resolve_repo` / `search_symbols` /
+`get_ranked_context` resident, which is Anthropic's own 3–5-resident-tools
+advice. ⚠ Both halves of the connector are required and the beta header is
+named, because the `tools`-only form is a validation error; and the connector
+is URL-based, so this is for `sse` / `streamable-http`, not default stdio.
+⚠ Deferred definitions are excluded from the prefix and appended as
+`tool_reference` blocks, so **prompt caching is preserved** — worth stating,
+since a dynamic tool list normally invalidates it.
+
+ROADMAP records a number beside the catalog moratorium:
+
+> "Claude's ability to pick the right tool degrades once you exceed **30–50
+> available tools**."
+
+⚠⚠ **We serve 91 on `full` and that is 2–3x past it** — the first EXTERNAL
+evidence for the freeze, and it is on an axis the exit conditions do not
+measure. Every prior argument has been about whether `route` is good enough;
+this says the catalog is already past where the *model's* selection degrades,
+independent of `route`. ⚠⚠ **It moves conditions 1–3 in neither direction and
+must not be cited as progress**: the "over 85 percent" headline is a TOKEN
+figure over a five-server setup, their accuracy claim carries no number, and
+our wall is `route` at 52.2% against a 51.4% majority baseline. ⚠ Their 85% and
+our 95.9% have the same epistemic status — one configuration each, neither a
+benchmark. ⚠ The 91 applies to carried-forward installs; `init` writes
+`counter` (3 tools) on a first-ever install.
 
 ## [1.108.294] - 2026-08-24 - The hook layer, and the three seconds behind it
 
