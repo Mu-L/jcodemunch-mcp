@@ -2,6 +2,58 @@
 
 ## [Unreleased]
 
+### Fixed - a strict deny now requires a target the hook can resolve (#541)
+
+Two blindnesses in the same guard, found in ordinary use of the
+`Read|Grep|Glob|Bash` matcher rather than by looking for them. Both only bite
+`JCODEMUNCH_ENFORCE=strict`, where the cost is blocked work; advisory (the
+default) got one extra nudge.
+
+**1. Shell expansions.** `_bash_targets_outside_roots` reads path tokens out of
+the raw command string, so it cannot see `$B`, `${B}`, `$HOME`, `$(...)` or
+backticks. Overlap is then judged on `cwd`, which is the indexed repo, so it
+denied. ⚠⚠ **The reported pair: `grep ~/x.md` allowed, `grep $HOME/x.md`
+denied — same destination, opposite verdicts.**
+
+⚠ Not a regex gap to close: the hook cannot know what `$B` holds and guessing
+is worse than not looking. **A deny now requires a resolvable target**, which
+is the caution already applied everywhere else in that function (`find` is
+never deniable, a pipeline is never denied, `../` returns silent). It
+downgrades to a nudge rather than to silence — a wrong nudge is a sentence of
+text, a wrong deny is blocked work.
+
+⚠⚠ **The detector is deliberately not a bare `\$`.** A trailing `$` is a regex
+end-anchor and `grep -n "foo$" src/` is idiomatic; suppressing on any `$` would
+stop denying one of the commonest in-repo searches and quietly weaken the
+enforcement a strict user opted into. Requiring a name char, `{` or `(` after
+the `$` separates an expansion from an anchor.
+
+**2. Windows absolute paths — surfaced BY the test for the first half.**
+`_BASH_PATH_TOKEN_RE` recognised only POSIX-style roots, so `/c/Users/j/x.md`
+(git-bash) was seen and **`C:/Users/j/x.md` was not**. ⚠⚠ **A strict deny fired
+on a search targeting a path outside every indexed root, on the platform most
+of this project's users are on, and the verdict depended on how the user
+spelled the drive.** Unlike a `$VAR` this is genuinely resolvable, so it gets a
+real fix rather than a downgrade: the token regex now matches `C:/…`, `C:\…`
+and a leading quote. A quoted path containing a space still captures only its
+first segment, which resolves to "not inside any root" and therefore errs
+toward allowing.
+
+⚠ `tests/test_strict_deny_requires_resolvable_target.py` asserts outcomes both
+ways — the outside cases must not deny, and the in-repo cases (including regex
+end-anchors and a drive-letter path inside the repo) must still deny, which is
+what stops either fix from becoming a strict-mode regression. Verified by
+reintroducing each defect separately: each fails only its own half.
+
+⚠ Hermetic by construction. The first draft resolved the real index and
+reported **11 skipped** under conftest's `CODE_INDEX_PATH` isolation — a file
+announcing success while checking nothing, which is the v1.108.293 defect class
+in a new costume. It now owns its roots via `monkeypatch`.
+
+The matcher that surfaced this is @marcelruhf's from
+[#535](https://github.com/jgravelle/jcodemunch-mcp/pull/535); the guard it
+slipped past already handled four other shapes correctly.
+
 ### Docs - deferring our schemas via Anthropic tool search, and a catalog-size number from the vendor
 
 README gains a section on keeping jCodeMunch's tool schemas out of the context

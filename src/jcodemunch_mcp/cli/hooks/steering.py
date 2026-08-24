@@ -178,7 +178,42 @@ _BASH_SEARCH_RE = re.compile(
 )
 
 # Absolute or ~-anchored path tokens inside a command line.
-_BASH_PATH_TOKEN_RE = re.compile(r"(?:^|[\s=])((?:/|~/)[^\s;|&)>\"']+)")
+# Absolute or ~-anchored path tokens inside a command line.
+#
+# ⚠⚠ The drive-letter alternative is load-bearing on Windows and was missing
+# (#541, found by the test for the shell-expansion half). `/c/Users/j/x.md`
+# (git-bash) was seen and `C:/Users/j/x.md` was not, so a strict deny fired on
+# a search targeting a path outside every indexed root — on the platform most
+# of this project's users are on.
+#
+# ⚠ Unlike a `$VAR`, a drive-letter path IS resolvable, so this is a real fix
+# rather than a downgrade: the guard now sees the target and answers correctly.
+#
+# ⚠ A leading quote is allowed so `grep "C:/x.md"` is seen. A quoted path
+# containing a space still captures only its first segment, which resolves to
+# "not inside any root" and therefore errs toward ALLOWING — the safe direction.
+_BASH_PATH_TOKEN_RE = re.compile(
+    r"(?:^|[\s=])[\"']?((?:/|~/|[A-Za-z]:[\\/])[^\s;|&)>\"']+)"
+)
+
+# A shell expansion the hook cannot resolve: $VAR, ${VAR}, $(cmd), `cmd`.
+#
+# ⚠⚠ Deliberately NOT a bare `\$`. A trailing `$` is a regex end-anchor and
+# `grep -n "foo$" src/` is idiomatic — treating that as unresolvable would
+# stop denying one of the commonest in-repo searches, weakening the very
+# enforcement a strict-mode user opted into. Requiring a name char, `{` or `(`
+# after the `$` separates an expansion from an anchor.
+_SHELL_EXPANSION_RE = re.compile(r"\$[A-Za-z_{(]|`")
+
+
+def _bash_path_is_unresolvable(command: str) -> bool:
+    """True when the command's target depends on a shell expansion.
+
+    ``_bash_targets_outside_roots`` reads path tokens out of the raw command
+    string, so it is blind to anything the shell has not expanded yet: the
+    hook cannot know what ``$B`` holds, and guessing is worse than not looking.
+    """
+    return _SHELL_EXPANSION_RE.search(command) is not None
 
 
 def _bash_targets_outside_roots(command: str, roots: "list[str]") -> bool:
@@ -215,6 +250,22 @@ def _handle_bash(tool_input: dict, cwd: str, mode: str) -> int:
     deny = mode == "strict" and _BASH_SEARCH_COMMANDS[cmd_word]
     if deny and re.search(r"[|&;]", command):
         deny = False  # Pipeline/compound: the non-search half is real work.
+    if deny and _bash_path_is_unresolvable(command):
+        # ⚠⚠ A DENY REQUIRES A RESOLVABLE TARGET (#541). The overlap test below
+        # judges `cwd` only, so a search whose target sits outside every indexed
+        # root is caught by `_bash_targets_outside_roots` — but only when the
+        # path is written literally. `grep ~/x.md` is allowed and
+        # `grep $HOME/x.md` was denied: same destination, opposite verdicts.
+        #
+        # ⚠ This is not a regex gap to close. `_handle_bash` deliberately does
+        # not parse shell, and the caution already exists everywhere else here:
+        # `find` is never deniable, a pipeline is never denied, `../` returns
+        # silent rather than resolving where it lands. This was the one shape
+        # the same rule was not applied to.
+        #
+        # Downgrade to a nudge rather than going silent: a wrong nudge is a
+        # sentence of text, a wrong deny is blocked work.
+        deny = False
     if not deny and not _search_nudge_enabled():
         return 0  # Guaranteed silent — skip the store load below.
     roots = _indexed_source_roots()
