@@ -16,14 +16,9 @@ from unittest import mock
 
 import pytest
 
-from jcodemunch_mcp.cli.hooks import (
-    _norm_path,
-    _repo_owner_name,
-    _self_invocation,
-    run_pretooluse,
-    run_subagentstart,
-    run_taskcomplete,
-)
+from jcodemunch_mcp.cli.hooks import run_pretooluse, run_subagentstart, run_taskcomplete
+from jcodemunch_mcp.cli.hooks._common import _norm_path, _repo_owner_name
+from jcodemunch_mcp.cli.hooks.reindex import _self_invocation
 
 
 def _run(func, stdin_text: str) -> tuple[int, str, str]:
@@ -192,7 +187,7 @@ class TestBashSearchInterception:
 
 class TestReadSizeBoundary:
     def test_exactly_threshold_nudges_one_below_does_not(self, indexed_tmp):
-        from jcodemunch_mcp.cli.hooks import _MIN_SIZE_BYTES
+        from jcodemunch_mcp.cli.hooks.steering import _MIN_SIZE_BYTES
         at = indexed_tmp / "at.py"
         at.write_bytes(b"#" * _MIN_SIZE_BYTES)
         below = indexed_tmp / "below.py"
@@ -451,6 +446,33 @@ class TestSubagentCatalogMatchesSurface:
         monkeypatch.setattr(cfg, "_GLOBAL_CONFIG", {})
         monkeypatch.setattr(cfg, "_CONFIG_LOADED", False)
 
+    def test_briefed_catalog_names_exist_in_the_server_catalog(
+        self, monkeypatch
+    ):
+        """The full-surface briefing hardcodes a tool list; without this
+        ratchet it rots exactly like the surface-blind briefing this batch
+        fixed (a briefed name the server does not serve trains the model to
+        distrust jcm). Binds the prose to the live catalog, same as
+        test_mcp_instructions does for the MCP instructions string."""
+        # Import server BEFORE mocking the store: the import chain binds
+        # whatever IndexStore is visible into lazily-imported modules for
+        # the rest of the process.
+        from jcodemunch_mcp import server
+        live = set(server._catalog_names())
+        _mock_store(monkeypatch, [{"repo": "test/repo"}])
+        monkeypatch.setenv("JCODEMUNCH_TOOL_SURFACE", "full")
+        _, out, _ = _run(run_subagentstart, "{}")
+        ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        catalog_text = ctx.split("### Available jCodemunch Tools", 1)[1]
+        briefed = {
+            n.strip().strip("`.")
+            for n in catalog_text.replace("\n", " ").split(",")
+            if n.strip()
+        }
+        briefed = {n.split()[-1] for n in briefed if n} - {"task"}
+        missing = sorted(n for n in briefed if n and n not in live)
+        assert not missing, f"briefing names tools the server does not serve: {missing}"
+
     def test_counter_from_config_file_not_env(self, _store, monkeypatch, tmp_path):
         """The defect's primary scenario: fresh installs get counter via
         config.jsonc, not the env var. _tool_surface must read it through
@@ -463,7 +485,7 @@ class TestSubagentCatalogMatchesSurface:
             '{"tool_surface": "counter"}', encoding="utf-8"
         )
         self._fresh_config_state(monkeypatch, store)
-        from jcodemunch_mcp.cli.hooks import _tool_surface
+        from jcodemunch_mcp.cli.hooks.briefing import _tool_surface
         assert _tool_surface() == "counter"
 
     def test_tool_surface_read_never_writes_config(self, monkeypatch, tmp_path):
@@ -474,7 +496,7 @@ class TestSubagentCatalogMatchesSurface:
         store.mkdir()
         (store / "index.db").write_text("", encoding="utf-8")  # looks installed
         self._fresh_config_state(monkeypatch, store)
-        from jcodemunch_mcp.cli.hooks import _tool_surface
+        from jcodemunch_mcp.cli.hooks.briefing import _tool_surface
         _tool_surface()
         assert not (store / "config.jsonc").exists()
 
@@ -590,14 +612,14 @@ class TestMinSizeGarbageEnv:
                "PYTHONPATH": str(Path(__file__).parents[1] / "src")}
         r = subprocess.run(
             [sys.executable, "-c",
-             "from jcodemunch_mcp.cli.hooks import _MIN_SIZE_BYTES; "
+             "from jcodemunch_mcp.cli.hooks.steering import _MIN_SIZE_BYTES; "
              "print(_MIN_SIZE_BYTES)"],
             env=env, capture_output=True, text=True, timeout=60,
         )
         assert r.returncode == 0, r.stderr
         # The property: garbage parses to the same default an env-free import
         # gets (this process's own value), not to any pinned literal.
-        from jcodemunch_mcp.cli.hooks import _MIN_SIZE_BYTES
+        from jcodemunch_mcp.cli.hooks.steering import _MIN_SIZE_BYTES
         assert int(r.stdout.strip()) == _MIN_SIZE_BYTES > 0
 
 

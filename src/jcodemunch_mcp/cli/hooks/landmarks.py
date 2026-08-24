@@ -29,8 +29,14 @@ def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> s
     if context is None:
         journal = get_journal()
         context = journal.get_context(max_files=50, max_queries=0, max_edits=50)
-    edited_files = [e["file"] for e in context.get("files_edited", [])]
-    accessed_files = [f["file"] for f in context.get("files_accessed", [])]
+    edited_files = [
+        e["file"] for e in context.get("files_edited", [])
+        if isinstance(e, dict) and e.get("file")  # disk JSON — shape not trusted
+    ]
+    accessed_files = [
+        f["file"] for f in context.get("files_accessed", [])
+        if isinstance(f, dict) and f.get("file")
+    ]
 
     if not edited_files and not accessed_files:
         return ""
@@ -43,14 +49,14 @@ def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> s
 
     session_edited = set(edited_files)
     parts: list[str] = []
-    seen: set[str] = set()
+    seen_repos: set[str] = set()
 
     for repo_id, index in _iter_loaded_repos(
         store, repos, wanted_files=edited_files + accessed_files
     ):
-        if repo_id in seen or not index.imports or not index.source_files:
+        if repo_id in seen_repos or not index.imports or not index.source_files:
             continue
-        seen.add(repo_id)
+        seen_repos.add(repo_id)
 
         try:
             landmarks = _top_symbols_by_pagerank(
@@ -81,13 +87,13 @@ def _build_landmark_section(top_n: int = 20, context: "dict | None" = None) -> s
         if changed_syms:
             parts.append(f"\n### Recently Changed ({repo_id})")
             # Deduplicate and limit
-            seen: set[str] = set()
+            seen_sids: set[str] = set()
             count = 0
             for sym in changed_syms:
                 sid = sym.get("id", sym.get("name", ""))
-                if sid in seen:
+                if sid in seen_sids:
                     continue
-                seen.add(sid)
+                seen_sids.add(sid)
                 name = sym.get("name", "?")
                 kind = sym.get("kind", "")
                 f = sym.get("file", "")

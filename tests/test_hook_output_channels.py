@@ -11,13 +11,8 @@ from unittest import mock
 
 import pytest
 
-from jcodemunch_mcp.cli.hooks import (
-    _emit_additional_context,
-    _norm_path,
-    run_pretooluse,
-    run_sessionstart,
-    run_subagentstart,
-)
+from jcodemunch_mcp.cli.hooks import run_pretooluse, run_sessionstart, run_subagentstart
+from jcodemunch_mcp.cli.hooks._common import _emit_additional_context, _norm_path
 
 
 def _run(func, stdin_text: str) -> tuple[int, str, str]:
@@ -84,7 +79,7 @@ class TestReadNudgeReachesModel:
     def _indexed(self, tmp_path, monkeypatch):
         # The nudge only fires for files inside an indexed repo — outside,
         # the recommended tools would error and erode trust in the hints.
-        from jcodemunch_mcp.cli.hooks import _norm_path
+        from jcodemunch_mcp.cli.hooks._common import _norm_path
         monkeypatch.setattr(
             "jcodemunch_mcp.cli.hooks.steering._indexed_source_roots",
             lambda: [_norm_path(str(tmp_path))],

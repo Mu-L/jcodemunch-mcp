@@ -9,14 +9,13 @@ from unittest import mock
 import pytest
 
 from jcodemunch_mcp.cli.hooks import (
-    _CODE_EXTENSIONS,
-    _norm_path,
-    run_pretooluse,
     run_posttooluse,
     run_precompact,
-    run_taskcomplete,
+    run_pretooluse,
     run_subagentstart,
+    run_taskcomplete,
 )
+from jcodemunch_mcp.cli.hooks._common import _CODE_EXTENSIONS, _norm_path
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +464,7 @@ class TestPostToolUse:
         # a bare PATH lookup — the hook shell's minimal PATH is the reason
         # init writes absolute paths, and a bare name died silently there.
         # (TestSelfInvocation pins that the invocation is never the bare name.)
-        from jcodemunch_mcp.cli.hooks import _self_invocation
+        from jcodemunch_mcp.cli.hooks.reindex import _self_invocation
         assert call_args == _self_invocation() + ["index-file", str(f)]
 
     def test_skips_non_code_file(self, tmp_path):
@@ -579,7 +578,7 @@ class TestPreCompact:
 
     def test_precompact_landmark_enrichment_graceful_on_no_repos(self, monkeypatch):
         """Landmark enrichment should not crash if no indexed repos exist."""
-        from jcodemunch_mcp.cli.hooks import _build_landmark_section
+        from jcodemunch_mcp.cli.hooks.landmarks import _build_landmark_section
         from jcodemunch_mcp.tools.session_journal import get_journal
 
         journal = get_journal()
@@ -596,7 +595,7 @@ class TestPreCompact:
 
     def test_precompact_landmark_returns_string(self):
         """_build_landmark_section must always return a string."""
-        from jcodemunch_mcp.cli.hooks import _build_landmark_section
+        from jcodemunch_mcp.cli.hooks.landmarks import _build_landmark_section
         result = _build_landmark_section()
         assert isinstance(result, str)
 

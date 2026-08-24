@@ -14,6 +14,9 @@ from ._common import (
 logger = logging.getLogger(__name__)
 
 
+_FINDING_KEYS = ("dead_symbols", "untested_symbols", "unreferenced_symbols")
+
+
 def run_taskcomplete() -> int:
     """TaskCompleted hook: surface dead code, untested symbols, and dangling refs.
 
@@ -140,7 +143,9 @@ def run_taskcomplete() -> int:
         except Exception:
             pass
 
-        if len(diag) > 2:  # More than just repo + files_checked
+        # Explicit finding keys, not a dict-size check — a size check lies
+        # the first time a bookkeeping field joins repo/files_checked.
+        if any(k in diag for k in _FINDING_KEYS):
             diagnostics.append(diag)
 
     if not diagnostics:
