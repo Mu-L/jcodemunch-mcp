@@ -1,6 +1,7 @@
 """Tests for the dbt context provider."""
 
 import pytest
+from importlib.util import find_spec
 
 from pathlib import Path
 from jcodemunch_mcp.parser.context.dbt import (
@@ -182,9 +183,16 @@ class TestResolveDescription:
 # ===========================================================================
 
 
-yaml = pytest.importorskip("yaml", reason="pyyaml required for yml tests")
+# ⚠⚠ The guard here used to be `yaml = pytest.importorskip("yaml")` -- a
+# module-scope call that RAISES during import, so the whole file vanished
+# behind one "1 skipped" line, taking 15 tests above it that never touched
+# yaml. (The bound name was never used, either.) Skipping only what needs
+# the package keeps the rest of the file collectable and counted.
 
 
+@pytest.mark.skipif(
+    find_spec("yaml") is None, reason="pyyaml not installed"
+)
 class TestParseSchemaYml:
 
     def test_parse_model_metadata(self, tmp_path):
@@ -299,6 +307,9 @@ models:
 # ===========================================================================
 
 
+@pytest.mark.skipif(
+    find_spec("yaml") is None, reason="pyyaml not installed"
+)
 class TestDbtModelMetadata:
 
     def test_to_file_context(self):
@@ -327,6 +338,9 @@ class TestDbtModelMetadata:
 # ===========================================================================
 
 
+@pytest.mark.skipif(
+    find_spec("yaml") is None, reason="pyyaml not installed"
+)
 class TestDbtContextProvider:
 
     def test_full_lifecycle(self, tmp_path):

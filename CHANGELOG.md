@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### Fixed - ten skipped modules that hid 209 tests between them
+
+Test-only; nothing user-facing moves. Every module-scope `pytest.importorskip`
+in the suite is now `importlib.util.find_spec`, because importorskip RAISES
+during import and collapses a whole file to one `1 skipped` line however many
+tests it holds.
+
+⚠⚠ **Nothing was being lost, and that is the reason to fix it.** Every
+optional package happens to be installed on the dev box and in CI. A CI image
+that quietly stopped installing `watchfiles` would have reported a clean run
+**49 tests short**, and `N passed` cannot show that. The guards stood in front
+of 209 tests: watchfiles 105, yaml 51, starlette 44, tiktoken 9.
+
+⚠⚠ **Three of the ten sat PARTWAY DOWN their file**, so the import abort
+also took out tests defined ABOVE the guard that never touched the package.
+Measured with the dependency actually removed, then and now:
+
+| file | dep absent, before | dep absent, now |
+|---|---|---|
+| `test_dbt_provider.py` | 1 skipped | **15 passed**, 16 skipped |
+| `test_provider_metadata_and_perf.py` | 1 skipped | **16 passed**, 4 skipped |
+| `test_v1_108_95.py` | 1 skipped | **3 passed**, 9 skipped |
+
+⚠ Imports that genuinely need the package moved under an `if _HAS_X:` flag;
+without that they raise ImportError and turn a clean skip into a collection
+error. Collection counts are unchanged with the packages present, and the ten
+files' lint findings are identical before and after.
+
+⚠⚠ **Found in the sibling repo first, the expensive way.** jdatamunch's
+`test_excel_parser.py` reported one skip while holding 29 tests, **19 of which
+passed on an ordinary dev box and had never run**. It surfaced only by
+comparing TOTALS across two interpreters - 819 against 839 - never from a
+passed count. **A setting fixed in one repo of a suite is fixed in one repo.**
+
+⚠ `tests/test_optional_dep_skips_are_visible.py` bans the pattern and
+separately asserts the heaviest files still collect real items, so a rewrite
+that hides them another way fails too. Verified by restoring an old guard.
+Inside a fixture or test body `importorskip` stays correct and visible.
+
 ## [1.108.292] - 2026-08-23 - The one string that survives tool deferral
 
 ### Added — the one string that survives tool deferral

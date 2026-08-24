@@ -26,28 +26,40 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from importlib.util import find_spec
 
 
 # Pretend the http extra is installed for the test session.
-pytest.importorskip("starlette")
-
-from starlette.applications import Starlette
-from starlette.testclient import TestClient
-
-from jcodemunch_mcp.runtime import (
-    iter_otel_from_text,
-    iter_sql_from_text,
-    iter_stack_from_text,
-    ingest_otel_file,
-    ingest_otel_stream,
-    ingest_sql_log_file,
-    ingest_sql_log_stream,
-    ingest_stack_log_file,
-    ingest_stack_log_stream,
+# ⚠⚠ `find_spec`, NOT `pytest.importorskip`. At module scope importorskip
+# RAISES during import, so this whole file would collapse to a single
+# "1 skipped" line however many tests it holds -- a CI box quietly missing
+# starlette would look like a healthy run rather than one 17 tests short.
+# find_spec asks the same question without raising: every test is collected
+# and skipped individually. The imports below need the package present, so
+# they move under the flag.
+_HAS_STARLETTE = find_spec("starlette") is not None
+pytestmark = pytest.mark.skipif(
+    not _HAS_STARLETTE, reason="starlette not installed"
 )
-from jcodemunch_mcp.runtime.http_routes import make_runtime_routes
-from jcodemunch_mcp.storage.sqlite_store import SQLiteIndexStore
-from jcodemunch_mcp.tools.get_redaction_log import get_redaction_log
+
+if _HAS_STARLETTE:
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from jcodemunch_mcp.runtime import (
+        iter_otel_from_text,
+        iter_sql_from_text,
+        iter_stack_from_text,
+        ingest_otel_file,
+        ingest_otel_stream,
+        ingest_sql_log_file,
+        ingest_sql_log_stream,
+        ingest_stack_log_file,
+        ingest_stack_log_stream,
+    )
+    from jcodemunch_mcp.runtime.http_routes import make_runtime_routes
+    from jcodemunch_mcp.storage.sqlite_store import SQLiteIndexStore
+    from jcodemunch_mcp.tools.get_redaction_log import get_redaction_log
 
 
 # ──────────────────────────────────────────────────────────────────────

@@ -32,11 +32,22 @@ import pathlib
 import sys
 
 import pytest
+from importlib.util import find_spec
 
 BENCH = pathlib.Path(__file__).resolve().parents[1] / "benchmarks"
 HARNESS_PATH = BENCH / "harness" / "run_benchmark.py"
 
-pytest.importorskip("tiktoken")
+# ⚠⚠ `find_spec`, NOT `pytest.importorskip`. At module scope importorskip
+# RAISES during import, so this whole file would collapse to a single
+# "1 skipped" line however many tests it holds -- a CI box quietly missing
+# tiktoken would look like a healthy run rather than one 9 tests short.
+# find_spec asks the same question without raising: every test is collected
+# and skipped individually. The imports below need the package present, so
+# they move under the flag.
+_HAS_TIKTOKEN = find_spec("tiktoken") is not None
+pytestmark = pytest.mark.skipif(
+    not _HAS_TIKTOKEN, reason="tiktoken not installed"
+)
 
 
 def _load_harness():
