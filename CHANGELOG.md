@@ -92,6 +92,32 @@ parse with an empty result and no error signal is worse than no support at all.
 This does **not** apply to at-exp in ordinary `.rkt` files, which is a different
 situation and works.
 
+#### `require` edges resolve to files
+
+⚠⚠ Caught late, and worth recording because the symptom was so far from the
+cause. `(require "helper.rkt")` -- the commonest way one file in a Racket
+project pulls in another -- resolved to **nothing**, because `resolve_specifier`
+only treats a specifier as relative when it starts with a dot, and Racket string
+requires carry no `./`. `(require racket/list)` also resolved to nothing,
+because `.rkt` is not among the extensions the generic candidate list tries.
+Two of the four real require shapes produced edges that pointed nowhere.
+
+The visible symptom was in a different tool entirely: `find_dead_code` reported
+**78%** of the Racket collects tree as dead, at confidence 1.0, reason
+`zero_importers`. A Python stdlib corpus indexed the same isolated way reports
+13%. After resolving both shapes, Racket reports **21%**.
+
+⚠ The tests for the import extractor could not have caught this -- they
+asserted the extractor returned `{"specifier": "helper.rkt"}`, which was always
+correct. An edge nothing downstream can resolve is indistinguishable from no
+edge, so the new tests go through `resolve_specifier` rather than stopping at
+the extractor.
+
+⚠ A Racket string require is resolved **relative to the importing file, ahead
+of any repo-root match**. `(require "util.rkt")` from `lib/caller.rkt` means
+`lib/util.rkt`, never a `util.rkt` at the root -- that is Racket's rule, and
+the generic absolute-match branch would otherwise win.
+
 #### Measured against Racket's own expander
 
 `benchmarks/racket_fidelity/` compares the index against what Racket says a

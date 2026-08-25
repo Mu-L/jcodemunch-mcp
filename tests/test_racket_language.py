@@ -16,7 +16,7 @@ the reason practice #8 exists.
 import pytest
 
 from jcodemunch_mcp.parser.extractor import parse_file
-from jcodemunch_mcp.parser.imports import extract_imports
+from jcodemunch_mcp.parser.imports import extract_imports, resolve_specifier
 from jcodemunch_mcp.parser.languages import LANGUAGE_EXTENSIONS, LANGUAGE_REGISTRY
 
 
@@ -307,3 +307,48 @@ def test_requires_inside_comments_are_ignored():
     src = ';; (require fake/one)\n#| (require fake/two) |#\n(require real/three)'
     specs = [e["specifier"] for e in extract_imports(src, "a.rkt", "racket")]
     assert specs == ["real/three"]
+
+
+# ── import edges must RESOLVE, not merely parse ───────────────────────────
+#
+# ⚠⚠ An extracted edge nothing downstream can resolve is indistinguishable
+# from no edge at all. The first cut of this parser produced correct
+# specifiers that resolved to nothing for two of the four real require
+# shapes, and the visible symptom was `find_dead_code` reporting 78% of the
+# Racket collects tree as dead -- against 13% for a Python stdlib corpus
+# indexed the same isolated way. Asserting on the extractor's output alone
+# could not see it, which is why these tests go through resolve_specifier.
+
+RACKET_FILES = frozenset({
+    "racket/list.rkt", "racket/string.rkt",
+    "app/main.rkt", "app/helper.rkt", "lib/util.rkt",
+})
+
+
+@pytest.mark.parametrize("specifier,expected", [
+    # A collection path names <path>.rkt. `.rkt` is not in _ALL_EXTENSIONS,
+    # so the generic candidate list never reaches it.
+    ("racket/list", "racket/list.rkt"),
+    # ⚠ A Racket STRING require is relative to the IMPORTING FILE and has no
+    # `./` convention. The generic relative branch only fires on a leading
+    # dot, so this -- the commonest intra-project form -- resolved to nothing.
+    ("helper.rkt", "app/helper.rkt"),
+    ("../lib/util.rkt", "lib/util.rkt"),
+    ("./helper.rkt", "app/helper.rkt"),
+], ids=["collection-path", "sibling-string", "parent-relative", "explicit-dot"])
+def test_require_specifiers_resolve_to_files(specifier, expected):
+    assert resolve_specifier(specifier, "app/main.rkt", RACKET_FILES) == expected
+
+
+def test_a_string_require_is_relative_not_repo_rooted():
+    """`(require "util.rkt")` from lib/ must NOT reach a repo-root util.rkt."""
+    files = frozenset({"util.rkt", "lib/caller.rkt", "lib/util.rkt"})
+    assert resolve_specifier("util.rkt", "lib/caller.rkt", files) == "lib/util.rkt"
+
+
+def test_an_unresolvable_collection_require_yields_no_edge():
+    """`(require racket/base)` in a project that does not vendor Racket names
+    an installed collection, not a file. Inventing an edge would be worse
+    than having none."""
+    assert resolve_specifier("racket/base", "app/main.rkt",
+                             frozenset({"app/main.rkt"})) is None
