@@ -454,3 +454,49 @@ def test_synthesised_names_point_at_the_struct_form():
     assert accessor.parent == syms["posn"].id
     assert accessor.kind == "function"
     assert "posn-x" in accessor.signature
+
+
+@pytest.mark.parametrize("opts", [
+    "#:transparent", "#:prefab", "#:authentic", "#:sealed", "#:inspector #f",
+    "#:guard (lambda (a b n) (values a b))",
+    "#:property prop:procedure (lambda (s) 1)",
+    "#:reflection-name (quote other)",
+    "#:transparent #:authentic",
+], ids=["transparent", "prefab", "authentic", "sealed", "inspector",
+        "guard", "property", "reflection-name", "combined"])
+def test_struct_options_do_not_disturb_the_derived_names(opts):
+    """Options follow the field list, so none of them may displace it.
+
+    `#:guard` and `#:property` in particular take a `(lambda ...)` argument --
+    another list node -- so a field-list rule that took the LAST list, or a
+    fixed index, would read the guard as the fields.
+    """
+    assert _names(f"(struct posn (x y) {opts})") == {
+        "posn", "posn?", "posn-x", "posn-y"}
+
+
+def test_methods_clause_does_not_leak_its_internal_defines():
+    """`#:methods gen:x [(define (f ...) ...)]` holds real `define` forms; they
+    are class members, not module-level bindings."""
+    n = _names("(require racket/generic)\n"
+               "(struct posn (x y) #:methods gen:custom-write "
+               "[(define (write-proc s p m) (void))])")
+    assert {"posn", "posn?", "posn-x", "posn-y"} <= n
+    assert "write-proc" not in n
+
+
+def test_auto_fields_get_an_accessor():
+    assert "posn-z" in _names("(struct posn (x y [z #:auto]) #:auto-value 0)")
+
+
+def test_a_struct_with_no_fields_still_binds_a_predicate():
+    assert _names("(struct posn ())") == {"posn", "posn?"}
+
+
+@pytest.mark.parametrize("kw", ["#:name", "#:extra-name"])
+def test_name_keywords_bind_a_type_not_a_callable(kw):
+    """Both bind their argument as a struct-type transformer. Emitting it as a
+    function would claim you can call it."""
+    syms = {s.name: s for s in _parse(f"#lang racket/base\n(struct posn (x y) {kw} posn-type)")}
+    assert "posn-type" in syms
+    assert syms["posn-type"].kind == "type"

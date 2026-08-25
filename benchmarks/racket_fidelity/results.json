@@ -3,14 +3,14 @@
     "racket_version": "Welcome to Racket v9.2 [cs].",
     "files_measured": 211,
     "files_oracle_failed": 0,
-    "jcm_symbols": 3437,
+    "jcm_symbols": 3438,
     "methods_unscored": 0,
     "oracle_source_names": 3526,
     "oracle_generated_names": 2017,
     "extra": 0,
     "wrong_span": 0,
     "callable_unknowable": 212,
-    "missing": 476,
+    "missing": 475,
     "export_only": 12612,
     "source_coverage_pct": 86.5
   },
@@ -14211,7 +14211,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/object-c.rkt",
-      "jcm_symbols": 56,
+      "jcm_symbols": 57,
       "methods_unscored": 0,
       "oracle_source": 41,
       "oracle_generated": 52,
@@ -14226,7 +14226,6 @@
         }
       ],
       "missing": [
-        "dynamic-object/c-struct",
         "instanceof/c-object/c",
         "object-contract",
         "object/c"
