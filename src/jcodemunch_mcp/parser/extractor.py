@@ -400,6 +400,8 @@ def parse_file(content: str, filename: str, language: str, source_bytes: Optiona
         symbols = _parse_tcl_symbols(source_bytes, filename)
     elif language == "dlang":
         symbols = _parse_dlang_symbols(source_bytes, filename)
+    elif language == "racket":
+        symbols = _parse_racket_symbols(source_bytes, filename)
     elif language in ("sass", "less", "styl"):
         symbols = []  # No tree-sitter grammar; files indexed for text search only
     elif language == "json":
@@ -10871,4 +10873,417 @@ def _parse_dlang_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
             _walk(child, scope)
 
     _walk(tree.root_node)
+    return symbols
+
+
+# ---------------------------------------------------------------------------
+# Racket custom parser
+# ---------------------------------------------------------------------------
+#
+# Racket's tree-sitter grammar is fully HOMOICONIC: there are NO named `define`
+# or `struct` nodes. Every form is `list` -> [symbol("define"), ...], and `(...)`
+# and `[...]` share the node type `list` (they differ only in the ANONYMOUS
+# first child), so every child scan below filters on `is_named`. Dispatch is on
+# the TEXT of the head symbol, exactly as in _parse_clojure_symbols.
+
+#: Values that make `(define name VALUE)` a procedure rather than a constant.
+_RACKET_LAMBDA_HEADS = frozenset({
+    "lambda", "λ", "case-lambda", "opt-lambda", "kw-lambda",
+})
+
+#: Heads of a class expression, for `(define C (class object% ...))`.
+_RACKET_CLASS_HEADS = frozenset({"class", "class*", "mixin"})
+
+#: Container forms that open a scope for their body.
+_RACKET_MODULE_FORMS = frozenset({"module", "module+", "module*"})
+
+#: Only legal inside a class body, so seeing one IS the evidence -- these are
+#: `method` unconditionally rather than conditional on class detection, so a
+#: `(define c% (class* ...))` shape we did not recognise still kinds correctly.
+_RACKET_METHOD_FORMS = frozenset({
+    "define/public", "define/private", "define/override", "define/augment",
+    "define/pubment", "define/overment", "define/public-final",
+    "define/override-final", "define/augride",
+})
+
+#: `define`-shaped forms: children[1] is either a header list or a bare symbol.
+_RACKET_DEFINE_FORMS = frozenset({
+    "define", "define/contract", "define/match", "define-for-syntax",
+})
+
+#: Macro definitions. `function` follows Clojure's and Common Lisp's
+#: `defmacro` -> function: a macro is invoked in operator position.
+_RACKET_SYNTAX_FORMS = frozenset({
+    "define-syntax", "define-syntax-rule", "define-simple-macro",
+    "define-syntax-parser",
+})
+
+#: Multiple-value binding forms; children[1] is a list of names.
+_RACKET_VALUES_FORMS = frozenset({
+    "define-values", "define-syntaxes", "define-values-for-syntax",
+})
+
+#: head -> kind, where the name is always children[1] and must be a `symbol`.
+#: `struct` -> class, not type: VALID_KINDS documents `class` as covering
+#: "Classes, structs, modules-as-containers", _parse_commonlisp_symbols maps
+#: `defstruct` -> class, and a Racket struct has a real supertype chain.
+#: `type` stays reserved for `define-type`, which is a genuine alias.
+_RACKET_NAMED_FORMS = {
+    "struct": "class",
+    "define-struct": "class",
+    "struct/contract": "class",
+    "define-struct/contract": "class",
+    "define-type": "type",
+    "define-signature": "type",
+    "define-generics": "type",
+    "define-predicate": "function",
+    "define-runtime-path": "constant",
+}
+
+#: ⚠ LOAD-BEARING. These are NAMED WRAPPER nodes whose child is a real `list`,
+#: so without this guard `#;(define x 1)` and `'(define x 1)` both extract as
+#: LIVE symbols. `#;` is how Racketeers disable code, so a disabled definition
+#: would appear in outlines and count as live for dead-code analysis.
+_RACKET_SKIP_WRAPPERS = frozenset({
+    "sexp_comment", "quote", "quasiquote", "syntax", "quasisyntax",
+    "unquote", "unquote_splicing", "comment", "block_comment",
+})
+
+#: Do NOT descend: their child `list`s are shaped like define headers, or their
+#: bodies are internal-definition contexts rather than module scope.
+#:
+#: ⚠ The conditional forms are here for a measured reason. A `define` inside a
+#: `(when ...)` body is an INTERNAL definition -- `racket/interactive.rkt` has
+#: `(when (collection-file-path ...) (define toplevel-prefix ...))`, and that
+#: name is not requirable from the module. Emitting it told the caller a
+#: binding exists that they cannot import. `begin` is deliberately ABSENT: it
+#: splices, so a `define` inside it really is module-level.
+_RACKET_OPAQUE_HEADS = frozenset({
+    "lambda", "λ", "case-lambda", "let", "let*", "letrec", "let-values",
+    "let*-values", "letrec-values", "let-syntax", "letrec-syntax", "let/cc",
+    "let/ec", "parameterize", "syntax-rules", "syntax-case", "provide",
+    "require", "when", "unless", "cond", "case", "if", "with-handlers",
+    "match", "match*",
+})
+
+#: The ONLY forms whose body still contributes MODULE-LEVEL bindings. `begin`
+#: splices, so `(begin (define a 1))` really does define `a` at module scope;
+#: nothing else does.
+#:
+#: ⚠⚠ This set is what makes the walker's descent rule an ALLOW-LIST. A `define`
+#: nested inside any other form is an INTERNAL definition and is not requirable
+#: -- measured on `racket/private/dict.rkt`, where `(define dict-ref hash-ref)`
+#: appears five times inside `#:fast-defaults` clauses of a `define-generics`
+#: form, and on `racket/set.rkt`, where `elem/c` / `cmp/c` / `lazy?` are locals
+#: inside a contract macro. Descending into unrecognised forms reported all of
+#: them as module-level bindings that no caller can import.
+_RACKET_SPLICING_HEADS = frozenset({
+    "begin", "begin-for-syntax", "#%module-begin", "#%plain-module-begin",
+})
+
+#: Descend, but do NOT count the head as a call. Distinct from
+#: _RACKET_OPAQUE_HEADS: a call inside an `if` branch is a real call, `if`
+#: itself is not. Conflating the two sets loses real edges.
+_RACKET_NON_CALL_HEADS = (
+    _RACKET_OPAQUE_HEADS
+    | _RACKET_DEFINE_FORMS
+    | _RACKET_SYNTAX_FORMS
+    | _RACKET_VALUES_FORMS
+    | _RACKET_METHOD_FORMS
+    | _RACKET_MODULE_FORMS
+    | _RACKET_CLASS_HEADS
+    | frozenset(_RACKET_NAMED_FORMS)
+    | frozenset({
+        "if", "cond", "case", "when", "unless", "and", "or", "begin", "begin0",
+        "set!", "match", "match*", "match-define", "with-handlers", "else",
+        "define", "quote", "quasiquote", "unquote", "syntax", "quasisyntax",
+        "for", "for*", "for/list", "for*/list", "for/fold", "for*/fold",
+        "for/vector", "for/hash", "for/sum", "for/and", "for/or", "for/first",
+        "for/last", "for/set", "do", "delay", "lazy", "time", ":", "->", "->*",
+        "struct-out", "all-defined-out", "all-from-out", "rename-out",
+        "prefix-out", "except-out", "contract-out", "only-in", "rename-in",
+        "prefix-in", "except-in", "for-syntax", "for-template", "for-label",
+        "submod", "#%app", "#%module-begin",
+    })
+)
+
+#: Binding-clause holders: `(let ([x (helper 1)]) ...)`. The head of
+#: `[x (helper 1)]` is a binding, not a call, so the clause list is skipped for
+#: head collection while its VALUE expressions are still walked.
+_RACKET_BINDING_CLAUSE_FORMS = frozenset({
+    "let", "let*", "letrec", "let-values", "let*-values", "letrec-values",
+    "let-syntax", "letrec-syntax", "parameterize", "for", "for*", "for/list",
+    "for*/list", "for/fold", "for*/fold", "do",
+})
+
+
+def _racket_named(node) -> list:
+    """Named children only -- skips the anonymous ``(`` / ``[`` / ``)`` / ``]``."""
+    return [c for c in node.children if c.is_named]
+
+
+def _racket_head_name(node):
+    """Descend the left spine of a (possibly curried) define header.
+
+    ``(f x)`` -> ``f``; ``((f a) b)`` -> ``f``; ``(((f a) b) c)`` -> ``f``.
+    Returns None for ``(define () 1)`` / ``(define ("s") 1)``, so the caller's
+    ``if name_node is None: return`` is the only guard needed. The depth cap
+    means a pathological or ERROR-recovered tree cannot spin.
+    """
+    cur, depth = node, 0
+    while cur is not None and cur.type == "list" and depth < 8:
+        named = _racket_named(cur)
+        if not named:
+            return None
+        first = named[0]
+        if first.type == "symbol":
+            return first
+        cur, depth = first, depth + 1
+    return None
+
+
+def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
+    """Extract symbols from Racket source using tree-sitter.
+
+    ⚠ #414: every text read goes through ``node.text``, never
+    ``source_bytes.decode()`` followed by a slice with ``start_byte`` /
+    ``end_byte``. There is no offset arithmetic in this walker at all, which
+    makes that bug class structurally impossible rather than merely avoided.
+    Byte offsets survive only where they are correct by construction -- slicing
+    ``source_bytes``, which is ``bytes``.
+    """
+    try:
+        parser = get_parser("racket")
+    except Exception:
+        logger.debug("racket grammar unavailable", exc_info=True)
+        return []
+
+    tree = parser.parse(source_bytes)
+    symbols: list[Symbol] = []
+    calls: list[tuple[int, str]] = []
+    # Last `(: name type)` seen -- the mutable-container idiom
+    # _parse_clojure_symbols uses for `ns`.
+    pending = {"name": "", "type": ""}
+
+    def _text(node) -> str:
+        return node.text.decode("utf-8", errors="replace")
+
+    def _squash(s: str) -> str:
+        # Racket keyword-argument headers legitimately wrap across lines, and a
+        # signature holding raw newlines breaks single-line outline rendering.
+        return " ".join(s.split())
+
+    def _preceding_comment(node) -> str:
+        """Contiguous ``;;`` / ``#| |#`` block immediately above a form.
+
+        Racket has no docstring construct, but a preceding comment block is the
+        community convention. The shared ``_extract_preceding_comments`` is
+        reachable only from the spec-driven ``_walk_tree`` path and its
+        ``_clean_comment_markers`` has no ``;`` branch, so this is local -- the
+        same choice three other custom walkers in this file already made.
+        """
+        parts: list[str] = []
+        prev = node.prev_named_sibling
+        while prev is not None and prev.type in ("comment", "block_comment"):
+            text = _text(prev)
+            if text.startswith("#|"):
+                text = text[2:-2] if text.endswith("|#") else text[2:]
+            else:
+                text = text.lstrip(";")
+            parts.insert(0, text.strip())
+            prev = prev.prev_named_sibling
+        return "\n".join(p for p in parts if p).strip()
+
+    def _emit(node, name, kind, sig, scope, parent_id=None) -> None:
+        qualified = f"{scope}::{name}" if scope else name
+        if pending["name"] == name and pending["type"]:
+            sig = f"{sig} : {pending['type']}"
+        # Cleared whether or not it matched: a stale annotation must never
+        # attach to a later unrelated define.
+        pending["name"] = pending["type"] = ""
+        symbols.append(Symbol(
+            id=make_symbol_id(filename, qualified, kind),
+            file=filename, name=name, qualified_name=qualified,
+            kind=kind, language="racket",
+            signature=_squash(sig)[:120],
+            docstring=_preceding_comment(node),
+            parent=parent_id,
+            line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            byte_offset=node.start_byte,
+            byte_length=node.end_byte - node.start_byte,
+            content_hash=compute_content_hash(source_bytes[node.start_byte:node.end_byte]),
+        ))
+
+    def _is_class_expr(node) -> bool:
+        if node.type != "list":
+            return False
+        named = _racket_named(node)
+        return bool(named) and named[0].type == "symbol" and _text(named[0]) in _RACKET_CLASS_HEADS
+
+    def _value_kind(kids, in_class: bool) -> str:
+        """`(define name VALUE)` -- procedure or constant?"""
+        if len(kids) >= 3 and kids[2].type == "list":
+            inner = _racket_named(kids[2])
+            if inner and inner[0].type == "symbol" and _text(inner[0]) in _RACKET_LAMBDA_HEADS:
+                return "method" if in_class else "function"
+        return "constant"
+
+    def _collect_calls(node, skip_clause_of: str = "") -> None:
+        """Head symbols in operator position, for _attribute_calls_to_symbols."""
+        if node.type in _RACKET_SKIP_WRAPPERS:
+            return
+        if node.type == "list":
+            named = _racket_named(node)
+            if named and named[0].type == "symbol":
+                head = _text(named[0])
+                if head not in _RACKET_NON_CALL_HEADS:
+                    calls.append((node.start_byte, head))
+                if head in _RACKET_BINDING_CLAUSE_FORMS and len(named) >= 2:
+                    # Walk the clause list's VALUES but never its binding heads.
+                    for clause in _racket_named(named[1]):
+                        for value in _racket_named(clause)[1:]:
+                            _collect_calls(value)
+                    for rest in named[2:]:
+                        _collect_calls(rest)
+                    return
+        for child in node.children:
+            _collect_calls(child)
+
+    def _walk(node, scope: str = "", in_class: bool = False) -> None:
+        if node.type in _RACKET_SKIP_WRAPPERS:
+            return
+
+        if node.type == "list":
+            kids = _racket_named(node)
+            if len(kids) >= 2 and kids[0].type == "symbol":
+                # ⚠ NO .lower() here. _parse_commonlisp_symbols lowercases
+                # because Common Lisp readers upcase; Racket is CASE-SENSITIVE,
+                # and copying that line would make `(Define x 1)` a definition.
+                form = _text(kids[0])
+
+                # (: f type) -- record, emit nothing. Emitting a `type` named
+                # `f` would put two same-named symbols of different kinds in one
+                # file, which is strictly worse than ignoring the annotation.
+                if form == ":" and kids[1].type == "symbol" and len(kids) >= 3:
+                    pending["name"] = _text(kids[1])
+                    pending["type"] = _squash(_text(kids[2]))
+                    return
+
+                if form in _RACKET_OPAQUE_HEADS:
+                    return
+
+                if form in _RACKET_MODULE_FORMS and kids[1].type == "symbol":
+                    name = _text(kids[1])
+                    _emit(node, name, "class", f"({form} {name})", scope)
+                    inner = f"{scope}::{name}" if scope else name
+                    for c in kids[2:]:
+                        # Submodule members are module-level definitions, not
+                        # object members: they stay function/constant.
+                        _walk(c, inner, False)
+                    return
+
+                if (form == "define" and kids[1].type == "symbol"
+                        and len(kids) >= 3 and _is_class_expr(kids[2])):
+                    name = _text(kids[1])
+                    cls_named = _racket_named(kids[2])
+                    superclass = _text(cls_named[1]) if len(cls_named) >= 2 else ""
+                    _emit(node, name, "class",
+                          f"(define {name} (class {superclass}))".replace(" )", ")"), scope)
+                    inner = f"{scope}::{name}" if scope else name
+                    for c in kids[2].children:
+                        _walk(c, inner, True)
+                    return
+
+                if form in _RACKET_METHOD_FORMS:
+                    nn = _racket_head_name(kids[1]) if kids[1].type == "list" else (
+                        kids[1] if kids[1].type == "symbol" else None)
+                    if nn is not None:
+                        header = _text(kids[1]) if kids[1].type == "list" else _text(nn)
+                        parent_id = (make_symbol_id(filename, scope, "class")
+                                     if scope and in_class else None)
+                        _emit(node, _text(nn), "method",
+                              f"({form} {header})", scope, parent_id=parent_id)
+                    return
+
+                if form in _RACKET_DEFINE_FORMS or form in _RACKET_SYNTAX_FORMS:
+                    parent_id = (make_symbol_id(filename, scope, "class")
+                                 if scope and in_class else None)
+                    if kids[1].type == "list":
+                        nn = _racket_head_name(kids[1])
+                        if nn is not None:
+                            kind = "method" if in_class else "function"
+                            _emit(node, _text(nn), kind,
+                                  f"({form} {_text(kids[1])})", scope,
+                                  parent_id=parent_id)
+                    elif kids[1].type == "symbol":
+                        name = _text(kids[1])
+                        if form in _RACKET_SYNTAX_FORMS:
+                            # A macro is ALWAYS a function -- it is invoked in
+                            # operator position. Never route it through
+                            # _value_kind, whose transformer expression
+                            # (syntax-rules ...) is not a lambda head and would
+                            # therefore squash every macro to `constant`.
+                            kind, sig = "function", f"({form} {name})"
+                        else:
+                            kind = _value_kind(kids, in_class)
+                            if kind in ("function", "method"):
+                                params = _racket_named(kids[2])
+                                plist = _text(params[1]) if len(params) >= 2 else ""
+                                sig = f"({form} {name} ({_text(params[0])} {plist}))"
+                            else:
+                                sig = f"({form} {name})"
+                        _emit(node, name, kind, sig, scope, parent_id=parent_id)
+                    # ⚠ THE rule: return without descending, so an internal
+                    # helper `define` inside this body stays invisible.
+                    return
+
+                if form in _RACKET_NAMED_FORMS and kids[1].type == "symbol":
+                    name = _text(kids[1])
+                    kind = _RACKET_NAMED_FORMS[form]
+                    extra = ""
+                    if kind == "class":
+                        # First list child (the field list) + keyword children
+                        # only, so a `#:methods` body is not dragged in.
+                        bits = []
+                        seen_list = False
+                        for c in kids[2:]:
+                            if c.type == "list" and not seen_list:
+                                bits.append(_text(c))
+                                seen_list = True
+                            elif c.type == "symbol" and not seen_list:
+                                bits.append(_text(c))  # supertype
+                            elif c.type == "keyword":
+                                bits.append(_text(c))
+                        extra = (" " + " ".join(bits)) if bits else ""
+                    elif len(kids) >= 3:
+                        extra = " " + _text(kids[2])
+                    _emit(node, name, kind, f"({form} {name}{extra})", scope)
+                    return
+
+                if form in _RACKET_VALUES_FORMS and kids[1].type == "list":
+                    names = _racket_named(kids[1])
+                    # Rejects `(define-values (a . rest) ...)`, whose binding
+                    # list carries a `dot` node.
+                    if names and all(c.type == "symbol" for c in names):
+                        sig = f"({form} {_text(kids[1])})"
+                        for c in names:
+                            _emit(node, _text(c), "constant", sig, scope)
+                    return
+
+            # Nothing matched. ⚠ Do NOT fall through into the body of an
+            # unrecognised form: a `define` inside a macro invocation, a
+            # contract combinator or a generics clause is an INTERNAL
+            # definition, and emitting it claims an importable binding that
+            # does not exist. Only splicing forms keep module scope.
+            if not (kids and kids[0].type == "symbol"
+                    and _text(kids[0]) in _RACKET_SPLICING_HEADS):
+                return
+
+        for child in node.children:
+            _walk(child, scope, in_class)
+
+    _walk(tree.root_node)
+    _collect_calls(tree.root_node)
+    _attribute_calls_to_symbols(symbols, calls)
     return symbols

@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "description": "Racket extraction-fidelity corpus. Ground truth is Racket's own expander (see oracle.rkt), so every target must be a module the local Racket install can expand AND instantiate.",
+  "pinning": {
+    "policy": "The collects tree is pinned by the Racket VERSION rather than a git SHA -- it ships with the toolchain, so the interpreter identifies the corpus. results.json records the version it was measured against; a run under a different Racket is measuring a different corpus.",
+    "instantiation": "oracle.rkt calls dynamic-require to test whether an export is a procedure, which RUNS module top-level code. Targets must be libraries, never scripts with side effects."
+  },
+  "targets": [
+    {
+      "id": "collects/racket",
+      "kind": "collects",
+      "path": "racket",
+      "glob": "*.rkt",
+      "stresses": "Heavy macrology, contract wrappers, re-export shims. racket/list.rkt alone defines twelve names via (define-lgetter second 2) -- real, exported, human-written names no static parser can see."
+    },
+    {
+      "id": "collects/racket/private",
+      "kind": "collects",
+      "path": "racket/private",
+      "glob": "*.rkt",
+      "stresses": "Bootstrapping code and the class system internals: define/public, mixins, deep syntax-case."
+    }
+  ]
+}
