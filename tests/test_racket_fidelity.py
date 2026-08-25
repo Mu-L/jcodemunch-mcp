@@ -40,7 +40,7 @@ def _load_classifier():
 
 @pytest.fixture(scope="module")
 def frozen() -> dict:
-    return json.loads(FROZEN.read_text())["files"]
+    return json.loads(FROZEN.read_text(encoding="utf-8"))["files"]
 
 
 @pytest.fixture(scope="module")

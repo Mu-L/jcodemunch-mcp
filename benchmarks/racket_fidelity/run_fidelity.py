@@ -217,7 +217,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args()
 
-    corpus = json.loads(Path(args.corpus).read_text())
+    corpus = json.loads(Path(args.corpus).read_text(encoding="utf-8"))
     paths = resolve_targets(corpus)
     if args.limit:
         paths = paths[:args.limit]
@@ -278,7 +278,7 @@ def main() -> int:
         "oracle_errors": oracle_errors[:50],
         "per_file": per_file,
     }
-    Path(args.out).write_text(json.dumps(results, indent=2) + "\n")
+    Path(args.out).write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
 
     print()
     for k, v in summary.items():
