@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Fixed - PARSER_GENERATION was never bumped for four parser changes that altered which symbols exist
+
+`PARSER_GENERATION` 1 -> 2. Ten commits touched `parser/` since it was pinned to
+1 on 2026-08-05; four of them change what gets extracted — `.246` (class field
+initializers stop donating members), `.254` (Python package-relative import
+edges), `.267` (Kotlin/Bash constants), `#428` (Rust/Go/Java/PHP constants).
+Each is the shape the counter exists for: **file content is unchanged, so the
+incremental path never re-reads it and the new symbols never appear.**
+
+⚠⚠ **The half with no other remedy is the indexes already stamped `1`.** A
+stamp EQUAL to the constant is indistinguishable from a current one, so they
+were permanently exempt from repair — 8 of 13 measured on 2026-08-25 predated
+parser changes they were missing, including this repo's own index. **This is
+why the fix is a bump and not a better trigger: re-running the upgrade more
+often cannot reach an index that already claims to be current.**
+
+⚠ **Effect size is small and should not be oversold.** Measured on NestJS at a
+pinned commit with a clean tree, so the parser was the only variable: **0.5%**
+id churn (58 gone, 61 new, 10,652 identical), and the sampled churn sits in a
+file with **zero non-ASCII bytes** — so it is not #414, it is ordinary parser
+evolution. The case is the drift mechanism, not corruption.
+
+⚠⚠ **The mechanism is unfixed and that is deliberate.** This counter is a
+MANUAL assertion about an AUTOMATED thing, so it drifts silently and the drift
+is invisible exactly where it matters. Deriving it from the extractor sources
+and the tree-sitter grammar versions is specced in
+`docs/prd-extraction-fingerprint.md` — including two things a naive version
+would miss: `tree-sitter-language-pack` is an unpinned RANGE, so the grammar
+moves with no code change at all; and `parse_cache` keys on `INDEX_VERSION`,
+which moves for storage-schema reasons, so a shared cache serves stale parses
+to every seat. **Until that exists, any parser change that alters which symbols
+exist must bump this line in the same commit.**
+
+⚠ Costs one full re-parse per index. `refresh` is the paced vehicle.
+
+
 ## [1.108.296] - 2026-08-24 - Four ways a guard can be present without working
 
 ### Added - `investigate_reuse_before_write`, and four ways a guard can be present without working
