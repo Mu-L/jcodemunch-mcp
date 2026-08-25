@@ -77,7 +77,19 @@ index.php
 .claudeignore
 
 # Local docs notes
-docs/
+# ⚠ `docs/*` and NOT `docs/`: git cannot re-include a file whose PARENT
+# DIRECTORY is excluded, so the negation below is silently inert under the
+# directory form. Verified with `git check-ignore -v`.
+docs/*
+# The one exception: CLAUDE.md binds a live rule to this spec (the
+# PARSER_GENERATION comment cites it as the thing that ends the manual-bump
+# obligation), so a contributor bound by that rule has to be able to read it.
+!docs/prd-extraction-fingerprint.md
+# ...except a spec CLAUDE.md binds a live rule to. `prd-extraction-fingerprint`
+# is cited by the PARSER_GENERATION comment as the thing that ends the
+# manual-bump obligation, so a contributor who is bound by that rule has to be
+# able to read it. The rest of docs/ stays local notes.
+!docs/prd-extraction-fingerprint.md
 
 # macOS
 .DS_Store
