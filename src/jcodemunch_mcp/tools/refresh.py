@@ -137,6 +137,23 @@ def _index_generation(store, owner: str, name: str) -> Optional[int]:
     return int(getattr(index, "parser_generation", 0) or 0)
 
 
+def _index_files(store, owner: str, name: str) -> Optional[set]:
+    """The file paths the index still holds, or None if it cannot be read.
+
+    ⚠ None is could-not-establish, never "the index is empty". The caller must
+    not read an unreadable index as an absent one -- that is the same
+    UNKNOWN-is-not-False rule the rest of this tree runs on.
+    """
+    try:
+        index = store.load_index(owner, name)
+    except Exception:
+        logger.warning("refresh: could not read index file list", exc_info=True)
+        return None
+    if index is None:
+        return None
+    return {str(f) for f in (getattr(index, "source_files", None) or [])}
+
+
 def start_campaign(
     source_root: str, store, owner: str, name: str, storage_path: Optional[str]
 ) -> dict:
@@ -350,6 +367,56 @@ def _finish(state: dict, result: dict, store, owner: str, name: str, source_root
         return
 
     known = set(state.get("files") or [])
+
+    # ⚠⚠ A CAMPAIGN THAT SAW NOTHING MUST NOT CERTIFY EVERYTHING.
+    #
+    # The drift check below asks only whether the corpus GREW. It cannot see the
+    # opposite failure: a source root that has gone away -- moved, renamed,
+    # unmounted, a removed worktree, a cleaned scratch dir -- makes discovery
+    # return an empty list, so `current` and `known` are both empty, nothing has
+    # "drifted", no batch errored, and the campaign stamps the target generation
+    # having re-parsed zero files.
+    #
+    # ⚠⚠ That is not a cosmetic wrong answer, it is UNREPAIRABLE. A stamp EQUAL
+    # to the constant is indistinguishable from a genuine one, so the index is
+    # exempt from every future upgrade -- the exact bucket `PARSER_GENERATION`
+    # exists to drain. Measured 2026-08-25 on the three pinned benchmark
+    # corpora: bare .git directories with no working tree, 8,220 pre-.246
+    # symbols between them, all three stamped `2` after re-parsing 0 files.
+    #
+    # ⚠ The test is EMPTY-vs-NON-EMPTY, deliberately not a shrink threshold. A
+    # repo may legitimately lose most of its files, and inventing a percentage
+    # here would be a magic number nobody measured. Files that are still indexed
+    # but were never re-parsed are DISCLOSED below instead of guessed at.
+    # ⚠ UNKNOWN blocks too. `_index_files` returns None when the index could not
+    # be read, and `refresh` refuses to build a first index, so by this point an
+    # index exists -- None therefore means could-not-establish, not empty. An
+    # empty discovery we cannot check against is exactly the state this guard
+    # exists for, so it refuses rather than assuming the benign reading.
+    indexed = _index_files(store, owner, name)
+    if not current and (indexed is None or indexed):
+        result["stamped"] = False
+        result["stamp_skipped_reason"] = (
+            "index_unreadable" if indexed is None else "corpus_unreadable"
+        )
+        if indexed is not None:
+            result["indexed_files_not_reparsed"] = len(indexed)
+        logger.warning(
+            "refresh: discovery found no files under %s while the index holds %s; "
+            "not stamping generation (source root moved, unmounted or removed?)",
+            source_root,
+            "an unreadable number of" if indexed is None else len(indexed),
+        )
+        return
+
+    # Disclosed, not blocked: rows for files this campaign never re-parsed are
+    # still at the OLD generation. Ordinary deletions land here, which is why it
+    # is a number the caller can see rather than a refusal.
+    if indexed:
+        stale = indexed - known
+        if stale:
+            result["indexed_files_not_reparsed"] = len(stale)
+
     added = sorted(current - known)
     if added:
         state["files"] = list(state.get("files") or []) + added

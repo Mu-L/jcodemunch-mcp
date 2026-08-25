@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Fixed - `refresh` certified indexes it re-parsed zero files of
+
+`tools/refresh.py` re-runs discovery before stamping `parser_generation` and
+asked only whether the corpus had GROWN:
+
+```python
+added = sorted(current - known)
+if added: ... return          # drift -> defer, correct
+```
+
+It could not see the opposite failure. When a source root goes away -- moved,
+renamed, unmounted, a removed worktree, a cleaned scratch dir -- discovery
+returns an empty list, so `current` and `known` are both empty, nothing has
+drifted, no batch errored, and the campaign stamps the target generation
+having re-parsed nothing.
+
+⚠⚠ **The damage is UNREPAIRABLE, which is what lifts this above a wrong
+number.** A stamp EQUAL to the constant is indistinguishable from a genuine
+one, so the index is exempt from every future upgrade -- the exact bucket
+v1.108.297 bumped `PARSER_GENERATION` to drain. **The tool built to prevent the
+exempt bucket was putting indexes into it**, and the way in was running the
+documented command.
+
+Found by running `refresh` on the three pinned benchmark corpora: bare `.git`
+directories with no working tree, 8,220 pre-`.246` symbols between them, all
+three stamped `2` in under a second each after re-parsing 0 files.
+
+`_finish` now refuses when discovery comes back empty against a non-empty
+index (`corpus_unreadable`). ⚠ `_index_files` returning `None` is
+could-not-establish and refuses too (`index_unreadable`) -- `refresh` will not
+build a first index, so by that point an index exists and `None` cannot mean
+"empty". Same UNKNOWN-is-not-False rule as `has_any()`.
+
+⚠ **The test is EMPTY-vs-NON-EMPTY, deliberately not a shrink threshold.** A
+repo may legitimately lose most of its files, and a percentage nobody measured
+would be a magic number. Files still indexed but never re-parsed are
+DISCLOSED as `indexed_files_not_reparsed` instead of guessed at.
+
+⚠⚠ `tests/test_refresh_corpus_unreadable.py` carries a non-vacuity class that
+reinstates the one-directional check and asserts the false certificate comes
+back. Without it the other five tests pass equally well against a guard that
+never fires.
+
 ## [1.108.297] - 2026-08-25 - The counter that never moved
 
 ### Fixed - PARSER_GENERATION was never bumped for four parser changes that altered which symbols exist
