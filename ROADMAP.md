@@ -1628,6 +1628,172 @@ pass it through" is a guess, and this entry stays closed.**
 
 ---
 
+## Portable handoff: resuming a task on a different model, host or provider
+
+Accepted 2026-08-25. Builds directly on the v1 handoff contract (#374) and the
+v2 arc (#377), both designed by **@mightydanp** (handle only, name unknown).
+Sequencing is not authorship: this entry extends their design, it does not
+replace it.
+
+### Why this is a jcm arc and not a new product
+
+The industry push is multi-model adaptability, and every major provider is still
+an island. The obvious hedge is an orchestration utility that persists sessions
+across providers. That build is wrong for two reasons worth writing down, because
+they will be re-proposed.
+
+**A session-format converter has a short half-life.** AGENTS.md spread across
+Codex, Cursor, Copilot and Amp inside a year. MCP went cross-provider in roughly
+the same window. Providers have a positive incentive to make *inbound* migration
+easy, so the format half gets commoditized by the very people it was meant to
+hedge against.
+
+**Faithful session transfer is impossible, and that is the useful fact.** Signed
+thinking blocks, encrypted reasoning tokens, cached prefixes, provider-specific
+tool-call ids and sampler state are all bound to a provider and usually to a
+model version. None of it moves. So every cross-provider resume is a
+*re-grounding* problem, not a copy problem. The transcript is the wrong unit of
+persistence. Task state plus verifiable evidence is the right one, and
+re-grounding a task against a repo is what this server already does.
+
+That makes portable handoff an expression of the evidence arc above, not a
+departure from it. It also ages in our favour: a 1M-token window makes "we save
+you tokens" weaker every quarter, but a model that can read everything still
+cannot say which part it actually used.
+
+### The blocking defect, verified 2026-08-25 (do NOT re-derive)
+
+`src/jcodemunch_mcp/handoff.py:45-49` stores handoffs in an in-process dict:
+
+```
+# Session-scoped store: handoff_id -> {"body": str, "receipt": dict}.
+# Process lifetime == MCP session lifetime (same precedent as server._steer_state);
+# process exit is the cleanup.
+_lock = threading.Lock()
+_handoffs: dict[str, dict] = {}
+```
+
+⚠ Quoted verbatim, `_lock` included, because that lock is the whole argument
+against reading this as a stub nobody finished: the store was built for
+concurrent access **within** a process. P0 does not add safety that is missing,
+it moves the boundary the safety is drawn around.
+
+`finalize_handoff`'s docstring says "persist", and `list_handoff_resources` is
+documented "one per finalized handoff **this session**". ⚠⚠ **The artifact cannot
+cross to another provider because it cannot cross the process boundary at all.**
+Every phase below is gated on P0.
+
+The second gap is already recorded under Phase 2: `_validate_evidence` attests a
+ref matching a served symbol id **or the file component of one**, and
+`render_handoff` emits refs in a single global Evidence block, so v1 proves
+"retrieved this session" and binds no ref to any individual claim. P2 closes it.
+
+### P0 - durable handoff store
+
+Move `_handoffs` to disk. Follow `<CODE_INDEX_PATH>/refresh_state/` and
+`digest_state/`, which are the actual on-disk precedents, rather than inventing a
+location.
+
+⚠⚠ **Do NOT model this on the `munch://evidence/<id>` receipts.** They look like
+the obvious precedent and they are not one: `evidence/receipts.py` is
+**session-scoped, in memory, bounded at 500** — the same defect as `_handoffs`,
+one subsystem over. Copying it reproduces what P0 exists to fix.
+
+- The handoff id stays the address. `get_handoff` and `handoff_for_uri` read
+  through to disk.
+- `list_handoff_resources` lists what is on disk, not what this process wrote.
+- **Local-first. No network, no service, no sync.** See the out-of-scope note.
+- Retention and eviction stated in the README before shipping, because a new
+  on-disk artifact is new persistent behavior and those get disclosed first.
+
+**Close condition:** a handoff finalized in one process is readable through
+`munch://handoff/<id>` by a different process started afterwards, proven by a
+test that crosses the boundary rather than by clearing and repopulating the dict.
+
+### P1 - `resume_handoff`, the symmetric read side
+
+Handoff is write-only today. Add the receiving half: take a handoff id, return a
+budgeted, model-agnostic context bundle for a fresh session.
+
+- Compose over `assemble_task_context` and `get_ranked_context`. This must not
+  grow a parallel retrieval path.
+- Re-resolve every evidence ref against the **current** index, not the snapshot
+  the handoff was written against.
+- Honour a token budget the same way the rest of the retrieval surface does.
+
+⚠⚠ **`resume_handoff` is a new MCP tool, so its final step is BLOCKED and this
+phase must be planned that way from the start.** `CATALOG_CEILING` is 91 and the
+binding half of exit condition 1 is control-subset route@1 at **40.0% against a
+55.0% bar** — not a near miss, and the name-leakage half has to clear too.
+Build the capability, register it in `WITHHELD`, expose it when the gate
+clears. That is the route `investigate_reuse_before_write` took in v1.108.296,
+and the reason to say so here is that a phase whose ceiling is discovered at
+the end reads as buildable until the last commit.
+
+**Close condition:** `finalize_handoff` in session A then `resume_handoff` in
+session B on a different model reconstructs the task without reading session A's
+transcript. ⚠ Reached through the module function, not a catalog action, until
+the moratorium lifts.
+
+### P2 - per-claim freshness verdicts
+
+The differentiator, and the piece that closes the v1 evidence gap. A resumed
+session's worst failure is not missing context. It is confidently stale context:
+the file moved, the symbol was renamed, the claim was true at 14:00 and false at
+16:00.
+
+- Bind refs to individual claims instead of to one global Evidence block.
+- On resume each claim carries a verdict: `still_true`, `drifted`,
+  `unverifiable`, computed from `get_changed_symbols`, `get_symbol_provenance`
+  and `check_edit_safe`, all shipped.
+- `unverifiable` is a first-class state, not an error. Absence of proof is
+  reported as absence of proof, consistent with the absence-honesty behavior
+  elsewhere in this server.
+
+This is the part no provider can match cheaply, because computing it needs a
+repo index and a retrieval record, not a bigger context window.
+
+**Close condition:** renaming a symbol cited by a stored handoff flips that
+claim's verdict to `drifted` on the next resume, and only that claim.
+
+### P3 - host projection
+
+Hosts read different memory files: CLAUDE.md, AGENTS.md, GEMINI.md,
+`.cursorrules`. A resumed handoff should emit into the host's native shape.
+
+- A small emit layer over the rendered handoff. No per-host retrieval logic.
+- Writing is opt-in and never silent. The target path is reported.
+
+**Close condition:** one handoff emits a valid AGENTS.md and a valid CLAUDE.md
+whose task content is equivalent, verified by a rendering test rather than by
+eyeball.
+
+### Explicitly out of scope
+
+**A hosted sync service.** Three independent reasons, and they compound.
+
+1. It is a persistent network service holding user prompts and source code. This
+   account was quarantined on PyPI once over an undisclosed persistent service.
+   That is a design constraint, not a scar to be brave about.
+2. It puts jMunch in the model wire, which is the lane this suite has stayed out
+   of alongside its no-mutate and no-execute position.
+3. It is the half the big players will commoditize. Building the commoditizable
+   half while skipping the defensible half is the worst available split.
+
+Sync is the user's git. The artifact is a file.
+
+**A standalone package.** A fourth install surface splits already-thin adoption
+and buys nothing that P0 through P3 do not.
+
+### Provenance
+
+Strategic question from jjg, 2026-08-25: what is the adaptation path if the major
+providers compete directly with jcodemunch. The answer recorded here is that
+multi-model adaptability is not where they can attack, because they cannot be
+multi-model. Durability and verification of the handoff artifact is the lane.
+
+---
+
 ## Conventions
 
 - Entries here are **accepted**, not speculative. A rejected proposal gets a
