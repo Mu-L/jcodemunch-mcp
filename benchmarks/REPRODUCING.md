@@ -78,16 +78,16 @@ Measured 2026-08-02 at jcodemunch-mcp 1.108.222:
 
 | Repo | Commit | Files | Symbols | Baseline tokens |
 |------|--------|------:|--------:|----------------:|
-| expressjs/express | `1faf228935aa` | 182 | 200 | 154,272 |
-| fastapi/fastapi | `a64dfbbd21a4` | 1,182 | 6,841 | 823,784 |
-| gin-gonic/gin | `75ccf94d605a` | 98 | 1,179 | 151,842 |
+| expressjs/express | `1faf228935aa` | 186 | 200 | 154,569 |
+| fastapi/fastapi | `a64dfbbd21a4` | 1,186 | 6,841 | 825,326 |
+| gin-gonic/gin | `75ccf94d605a` | 98 | 1,260 | 151,842 |
 
 Grand total across 15 task-runs, both baselines measured in the same run:
 
 | Baseline | Tokens | jCodeMunch | Reduction | Ratio |
 |---|--:|--:|--:|--:|
-| **Grep-top-3** (quote this) | **664,975** | 23,805 | **96.4%** | **27.9x** |
-| Read-all (ceiling) | 5,649,490 | 23,805 | 99.6% | 237.3x |
+| **Grep-top-3** (quote this) | **664,975** | 24,249 | **96.4%** | **27.4x** |
+| Read-all (ceiling) | 5,658,685 | 24,249 | 99.6% | 233.4x |
 
 Small differences in `file_count` are expected across installations and are not
 a bug in either run: what a machine can index depends on its grammar pack and
