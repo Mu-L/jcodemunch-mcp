@@ -1953,7 +1953,7 @@ DLANG_SPEC = LanguageSpec(
 )
 
 
-# Racket: the grammar is fully HOMOIENIC -- there are no named `define` /
+# Racket: the grammar is fully HOMOICONIC -- there are no named `define` /
 # `struct` nodes. Every form is `list` -> [symbol("define"), ...], and `(...)`
 # and `[...]` share the node type `list`, so nothing here can be expressed as a
 # node-type map. Same shape as CLOJURE_SPEC / COMMONLISP_SPEC / ELISP_SPEC.

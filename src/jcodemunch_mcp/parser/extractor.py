@@ -10880,7 +10880,7 @@ def _parse_dlang_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
 # Racket custom parser
 # ---------------------------------------------------------------------------
 #
-# Racket's tree-sitter grammar is fully HOMOIENIC: there are NO named `define`
+# Racket's tree-sitter grammar is fully HOMOICONIC: there are NO named `define`
 # or `struct` nodes. Every form is `list` -> [symbol("define"), ...], and `(...)`
 # and `[...]` share the node type `list` (they differ only in the ANONYMOUS
 # first child), so every child scan below filters on `is_named`. Dispatch is on

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.298] - 2026-08-25 - A campaign that saw nothing
+
 ### Fixed - `refresh` certified indexes it re-parsed zero files of
 
 `tools/refresh.py` re-runs discovery before stamping `parser_generation` and
@@ -159,6 +161,38 @@ newly added language, and `config --upgrade` only injects entirely missing
 *keys*, so it does not repair the list. This affects every language ever added,
 not only Racket. A fresh config enables Racket automatically; users on an
 explicit list must add `"racket"` by hand.
+### Changed - the published benchmark reference had drifted for 22 days
+
+`benchmarks/jcm_reference.json` was captured 2026-08-03 on v1.108.233, before
+every parser change v1.108.297 bumped `PARSER_GENERATION` for. Re-measured at
+the same pinned commits, so the parser and this installation are the only
+variables.
+
+⚠⚠ **Our side moved AGAINST us, which is the whole reason Practice 4 exists:**
+
+| | before | after |
+|---|--:|--:|
+| jMunch total | 23,805 | **24,249** |
+| vs grep-top-3 | 27.9x | **27.4x** |
+| vs read-all | 237.3x | **233.4x** |
+| per-query spread | 7.3-84.3x | **7.3-79.8x** |
+
+⚠ **Two independent causes, and they must not be conflated.** gin is the clean
+parser signal: identical file count, identical baseline, **+81 symbols**
+(1,179 -> 1,260) from `#428`'s Go constants. express and fastapi each gained
+**4 files at the SAME commit**, which is a coverage change -- a property of
+this installation, never of the repo -- and it lifts their baselines.
+⚠ fastapi's symbol count did not move at all, which is evidence against reading
+`.246` as a general Python effect.
+
+⚠⚠ **EIGHT artifacts mirror one run, not the four this repo's notes claimed.**
+The harness rewrites three and names three more; `test_provenance.py` and
+`test_benchmark_reference.py` check the grand-total row and the run date, and
+**both passed with five artifacts still on August-3 figures** -- including
+README's own table, whose 2026-08-25 grand total sat on top of 2026-08-03
+per-repo rows, and the tagline in line 3. Re-synced by hand and swept for the
+old literals. ⚠ `rag_baseline_results.md` and `route_binary_pilot/RESULT.md`
+carry the same numbers from SEPARATE runs and are deliberately untouched.
 
 ## [1.108.297] - 2026-08-25 - The counter that never moved
 
