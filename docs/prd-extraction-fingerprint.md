@@ -21,19 +21,40 @@ them change which symbols exist:
 These are exactly the case the counter exists for: **file content is unchanged,
 so the incremental path never re-reads it, so the new constants never appear.**
 
-Census of one developer machine, 2026-08-25:
+Census of one developer machine, 2026-08-25, **corrected the same day**:
 
-- **113** local indexes
-- **100** at generation `0` — repairable, because the stamp is below the constant
-- **13** at generation `1` — **permanently exempt**, because the stamp equals the constant
-- **8 of those 13** predate parser changes they are missing, including
-  `MCPs-jcodemunch-mcp` itself (missing Kotlin/Bash constants since 2026-08-10)
+|  | as first counted | as measured after |
+|---|---|---|
+| local indexes | 113 | **51** |
+| repairable (stamp below the constant) | 100 | **49** (38 unstamped, 11 at gen `1`) |
+| **permanently exempt** (stamp equals the constant) | 13 | **0** |
 
-⚠⚠ **This is why "have the watcher trigger the rebuild" is not the fix.** It
-would repair the 100 once, stamp them `1`, and move them into the exempt
-bucket — converting an observable problem into an unobservable one. The trigger
-is not what is broken. **The stamp is a manual assertion about an automated
-thing, and it has drifted from what it names.**
+⚠⚠ **Both original figures were wrong, in two independent ways, and the
+correction is recorded rather than swapped in silently — a census is exactly the
+kind of number that gets quoted later.**
+
+**(1) 63 of the 113 were not repositories.** They were pytest tmpdir fixtures
+(`local-test_pnpm_detected0-18bf74c4`, `local-tmp4ysp8nif-...`) written into the
+real `~/.code-index` before the conftest `CODE_INDEX_PATH` isolation closed that
+leak. Every one had a dangling `source_root`, none was ever a real corpus, and
+the newest was 2026-08-17. The real population was always about 50.
+
+**(2) The exempt bucket is empty because `PARSER_GENERATION` moved to `2`.**
+Those 11 indexes were unreachable only while the constant was *also* `1`. Moving
+it put them below it, which is the whole mechanism the bump was chosen for.
+
+⚠⚠ **Do NOT read that as the hazard being gone.** It is dormant, not removed:
+the bucket refills the instant an index is stamped equal to whatever the constant
+currently is, which is what every ordinary re-index does. The bump drained it
+once. Nothing stops it filling again, and a bump cannot be the standing answer
+because **re-running an upgrade cannot reach an index that already claims to be
+current.**
+
+⚠⚠ **This is also why "have the watcher trigger the rebuild" is not the fix.**
+It would repair the 49 once, stamp them at the constant, and move them into the
+exempt bucket — converting an observable problem into an unobservable one. The
+trigger is not what is broken. **The stamp is a manual assertion about an
+automated thing, and it has drifted from what it names.**
 
 ### The same defect, one level down, in shared infrastructure
 
@@ -119,12 +140,14 @@ from whether it is *counted*, and it should be disclosed.
 ### Migration
 
 An index with no `extraction_fingerprint` key mismatches by construction, so
-every existing index — **both** the 100 at generation 0 and the 13 exempt at
-generation 1 — takes exactly one re-parse. That is the point: the 13 are
-currently unreachable and this is what reaches them.
+every existing index takes exactly one re-parse, whatever its current stamp and
+whether or not it is exempt under the counter. That is the point: exemption is a
+property of comparing two integers, and a fingerprint no stored index can already
+match has no exempt case left to reach.
 
-⚠ **Cost is real and must be paced, not hidden.** 113 indexes on this machine;
-NestJS alone was 46.7 s. `tools/refresh.py` already exists for bounded,
+⚠ **Cost is real and must be paced, not hidden.** 51 indexes on this machine;
+NestJS alone was 46.7 s, and this repo's own 883 files took four `refresh`
+slices. `tools/refresh.py` already exists for bounded,
 resumable, cursor-persisted re-parsing and is the right vehicle — it was built
 for a `PARSER_GENERATION` bump and this is one, just an automatic one.
 
