@@ -80,6 +80,10 @@ CASES = [
      "; kommentti @@PAD@@\n"
      "(defun laske-summa (a b) (+ a b))\n",
      {"laske-summa"}),
+    ("racket", "demo.rkt",
+     ";; kommentti @@PAD@@\n"
+     "(define (laske-summa a b) (+ a b))\n",
+     {"laske-summa"}),
     ("solidity", "demo.sol",
      "// kommentti @@PAD@@\n"
      "pragma solidity ^0.8.0;\ncontract Kassa {\n    function talleta() public {}\n}\n",

@@ -45,6 +45,73 @@ reinstates the one-directional check and asserts the false certificate comes
 back. Without it the other five tests pass equally well against a guard that
 never fires.
 
+### Added - Racket language support, with its ceiling measured rather than asserted
+
+`.rkt` / `.rktl` / `.rktd` are indexed. The tree-sitter grammar is fully
+homoiconic -- there are no named `define` or `struct` nodes, every form is
+`list` -> `symbol` -- so this is a custom walker like the three Lisps already
+here, dispatching on the head symbol.
+
+Extracts `define` (procedure vs value discriminated by the header shape or a
+lambda-valued RHS), the `define/*` method forms, `define-syntax` /
+`define-syntax-rule`, `struct` / `define-struct` / `struct/contract`,
+`define-type` / `define-signature` / `define-generics`, `define-values`, and
+`module` / `module+` / `module*` plus `(define C (class ...))` as nested scopes
+with `::`-qualified names. `(require ...)` becomes import edges, and
+`call_references` are populated -- the first Lisp in the tree with either.
+`;;` and `#| |#` blocks above a form become the docstring.
+
+⚠⚠ **The limitation that matters, and it is not fixable by parsing harder:
+a macro that DEFINES is invisible.** `racket/list.rkt` writes
+`(define-lgetter second 2)` twelve times and `racket/fasl.rkt` generates 49
+constants from one macro. Those names are real, exported, and typed by a human,
+and no static parser can reach them. **Measured, not estimated: 86.2% of
+human-written module-level bindings across 211 files of the Racket collects
+tree, with 152 of 211 files completely clean** -- misses concentrate in
+macro-heavy files rather than spreading evenly. Numbers come from
+`benchmarks/racket_fidelity/results.json`; do not hand-type them.
+
+⚠⚠ **The bar that IS zero: `extra` and `wrong_span`.** Nothing we emit is a name
+Racket does not know, and every definition falls inside the bytes
+`get_symbol_source` would return for it. That asymmetry is deliberate -- an
+incomplete index makes an agent read the file, a wrong one makes it repeat a
+falsehood. `tests/test_racket_fidelity.py` gates both against a frozen copy of
+the expander's answer, so they are checked on machines with no Racket.
+
+⚠ **`rename-out` is not represented and cannot be.** The index has an import
+graph and no export graph, so `(provide (rename-out [greet say-hello]))` leaves
+`greet` indexed while consumers call `say-hello`. `(require (rename-in "m.rkt"
+[f g]))` records `f`, the definition-site name -- the same reduction
+`_clean_names` already applies to `import {a as b}` and Gleam's `X as Y`.
+
+⚠ **`callable_unknowable` is a ceiling, not a bar (212 occurrences).**
+`(define curry (make-curry #f))` is callable and no syntactic test can know it,
+so it is reported as `constant`. Driving that to zero needs an evaluator.
+
+⚠ **`.scrbl` is deliberately unsupported, on a measurement.** A Scribble file
+parses with `has_error: False` and yields garbage -- every prose word becomes a
+top-level `symbol` and `@defproc[(greet ...)]` extracts nothing. A green parse
+with an empty result and no error signal is worse than no support.
+
+⚠ Three guards exist because the grammar makes their absence invisible:
+`quote` / `quasiquote` / `syntax` / `sexp_comment` are NAMED WRAPPER nodes
+holding a real `list`, so without a skip `#;(define x 1)` -- how Racketeers
+disable code -- extracts as a live symbol. The head symbol is NOT lowercased
+(Common Lisp's reader upcases and ours does not). And descent is an ALLOW-LIST:
+a `define` inside a `when` body or a macro invocation's clause is an internal
+definition, and emitting it claimed importable bindings that do not exist.
+
+⚠ No `PARSER_GENERATION` bump. That counter is for files whose content is
+unchanged AND already in the index; `.rkt` files are absent from every existing
+index, so `detect_changes_with_mtimes` reports them as new.
+
+⚠ **Known, pre-existing, NOT fixed here:** a config carrying an explicit
+`languages` list -- which `jcodemunch-mcp init` writes -- will not enable a
+newly added language, and `config --upgrade` only injects entirely missing
+KEYS, so it does not repair the list. This affects every language ever added,
+not just Racket. Users on an explicit list must add `"racket"` by hand.
+
+
 ## [1.108.297] - 2026-08-25 - The counter that never moved
 
 ### Fixed - PARSER_GENERATION was never bumped for four parser changes that altered which symbols exist

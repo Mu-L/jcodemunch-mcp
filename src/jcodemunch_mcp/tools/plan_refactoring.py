@@ -76,6 +76,7 @@ _IMPORT_PATTERNS = {
     "fsharp": re.compile(r"^\s*(?:open|module)\s+"),
     "clojure": re.compile(r"^\s*\(\s*(?:require|import|use)\s+"),
     "elisp": re.compile(r"^\s*\(\s*(?:require|load)\s+"),
+    "racket": re.compile(r"^\s*\(\s*require\s+"),
     "nim": re.compile(r"^\s*(?:import|from\s+\w+\s+import)\s+"),
     "tcl": re.compile(r"^\s*(?:source|package\s+require)\s+"),
     "dlang": re.compile(r"^\s*import\s+"),
@@ -149,6 +150,10 @@ _DEF_PATTERNS = {
     "fsharp": re.compile(r"^\s*(?:let|type|module|namespace|class)\s+{name}\b"),
     "clojure": re.compile(r"^\s*\(\s*(?:defn|defmacro|def|defrecord)\s+{name}\b"),
     "elisp": re.compile(r"^\s*\(\s*(?:defun|defmacro|defvar|defcustom)\s+{name}\b"),
+    "racket": re.compile(
+        r"^\s*\(\s*(?:define|define/contract|define-syntax|define-syntax-rule|"
+        r"struct|define-struct|define-values|define-type)\s+\(?{name}\b"
+    ),
     "nim": re.compile(r"^\s*(?:proc|func|method|iterator|macro|template|type)\s+{name}\b"),
     "tcl": re.compile(r"^\s*(?:proc|namespace\s+eval)\s+{name}\b"),
     "dlang": re.compile(r"^\s*(?:class|struct|interface|enum|template|function)\s+{name}\b"),
@@ -980,6 +985,18 @@ def _compute_new_import(old_import_line, old_file, new_file, sym_name, language)
             return old_import_line.replace(old_ns, new_ns), None
         return old_import_line, f"Clojure namespace '{old_ns}' not found"
 
+    elif language == "racket":
+        # Racket: (require "old/path.rkt") -> (require "new/path.rkt"). A string
+        # require carries a real relative path, so rewrite the path itself
+        # rather than a module name.
+        if old_file in old_import_line:
+            return old_import_line.replace(old_file, new_file), None
+        old_mod = PurePosixPath(old_file).name
+        new_mod = PurePosixPath(new_file).name
+        if old_mod in old_import_line:
+            return old_import_line.replace(old_mod, new_mod), None
+        return old_import_line, f"Racket module '{old_mod}' not found"
+
     elif language in ("elisp", "commonlisp"):
         # Elisp/Common Lisp: (require 'old-module) -> (require 'new-module)
         old_mod = PurePosixPath(old_file).stem
@@ -1173,6 +1190,10 @@ def _format_import_line(imp_dict, language):
         if names:
             return f"(:require [{spec} :refer [{', '.join(names)}]])"
         return f"(:require [{spec}])"
+    elif language == "racket":
+        if names:
+            return f'(require (only-in "{spec}" {" ".join(names)}))'
+        return f'(require "{spec}")'
     elif language in ("elisp", "commonlisp"):
         return f"(require '{spec})"
     elif language == "nim":

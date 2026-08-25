@@ -656,6 +656,193 @@ def _extract_svelte_imports(content: str) -> list[dict]:
     return deduped
 
 
+# ---------------------------------------------------------------------------
+# Racket
+# ---------------------------------------------------------------------------
+# `(require ...)` nests arbitrarily -- (only-in ...), (prefix-in ...),
+# (rename-in ...), (for-syntax ...) -- so a flat regex cannot read it. This is a
+# minimal balanced reader over the require form only; it never parses the whole
+# file, so it stays as cheap as the regex extractors around it.
+
+_RACKET_REQUIRE_RE = re.compile(r"\(\s*require\b")
+
+#: Wrappers that carry the real module path deeper inside.
+_RACKET_REQUIRE_UNWRAP = frozenset({
+    "for-syntax", "for-template", "for-label", "for-meta", "combine-in",
+})
+
+
+def _racket_strip_comments(text: str) -> str:
+    """Blank out `;` line comments and `#| |#` blocks, preserving offsets.
+
+    String literals are stepped over so a `;` inside one is not treated as a
+    comment. Offsets are preserved so the caller's paren matching stays valid.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                if text[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1
+        elif ch == ";":
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+        elif ch == "#" and i + 1 < n and text[i + 1] == "|":
+            depth = 1
+            out[i] = out[i + 1] = " "
+            i += 2
+            while i < n and depth:
+                if text.startswith("|#", i):
+                    depth -= 1
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                elif text.startswith("#|", i):
+                    depth += 1
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                else:
+                    if text[i] != "\n":
+                        out[i] = " "
+                    i += 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _racket_read_form(text: str, start: int):
+    """Read one balanced form beginning at `text[start]`; return (node, end).
+
+    `node` is a str for an atom or quoted string, or a list for a form.
+    Returns (None, start + 1) when the character starts nothing readable.
+    """
+    n = len(text)
+    i = start
+    while i < n and text[i].isspace():
+        i += 1
+    if i >= n:
+        return None, n
+    ch = text[i]
+    if ch in "([":
+        close = ")" if ch == "(" else "]"
+        items = []
+        i += 1
+        while i < n:
+            while i < n and text[i].isspace():
+                i += 1
+            if i >= n:
+                break
+            if text[i] in ")]":
+                i += 1
+                break
+            item, i = _racket_read_form(text, i)
+            if item is not None:
+                items.append(item)
+        del close
+        return items, i
+    if ch == '"':
+        j = i + 1
+        while j < n and text[j] != '"':
+            if text[j] == "\\":
+                j += 1
+            j += 1
+        return text[i:j + 1], min(j + 1, n)
+    j = i
+    while j < n and not text[j].isspace() and text[j] not in "()[]":
+        j += 1
+    return text[i:j], j
+
+
+def _racket_specifier(node) -> Optional[str]:
+    """Reduce a require sub-form to its module path string, or None."""
+    if isinstance(node, str):
+        if node.startswith('"'):
+            return node[1:-1] or None
+        if node.startswith("#") or node in ("", "."):
+            return None
+        return node
+    if not node:
+        return None
+    head = node[0] if isinstance(node[0], str) else ""
+    if head == "submod":
+        # An intra-file reference, not a dependency edge.
+        return None
+    if head in ("file", "lib", "planet", "quote"):
+        return _racket_specifier(node[1]) if len(node) >= 2 else None
+    if head in _RACKET_REQUIRE_UNWRAP:
+        for sub in node[1:]:
+            spec = _racket_specifier(sub)
+            if spec:
+                return spec
+        return None
+    if head in ("only-in", "rename-in", "prefix-in", "except-in", "relative-in"):
+        idx = 2 if head == "prefix-in" else 1
+        return _racket_specifier(node[idx]) if len(node) > idx else None
+    return None
+
+
+def _racket_names(node) -> list[str]:
+    """Imported names, reduced to their SOURCE-side spelling.
+
+    `(rename-in m [f g])` yields `f`, not `g` -- the name at the definition
+    site, which is what makes the edge point at a real symbol. This is the same
+    reduction :func:`_clean_names` applies to `import {a as b}` and Gleam's
+    `X as Y` for every other language here.
+    """
+    if isinstance(node, str) or not node:
+        return []
+    head = node[0] if isinstance(node[0], str) else ""
+    if head == "only-in":
+        out = []
+        for item in node[2:]:
+            if isinstance(item, str):
+                out.append(item)
+            elif item and isinstance(item[0], str):
+                out.append(item[0])
+        return out
+    if head == "rename-in":
+        return [p[0] for p in node[2:] if isinstance(p, list) and p and isinstance(p[0], str)]
+    if head in _RACKET_REQUIRE_UNWRAP:
+        for sub in node[1:]:
+            names = _racket_names(sub)
+            if names:
+                return names
+    return []
+
+
+def _extract_racket_imports(content: str) -> list[dict]:
+    """Extract Racket `(require ...)` edges.
+
+    Handles bare collection paths, string paths, and the `only-in` /
+    `rename-in` / `prefix-in` / `except-in` / `for-syntax` wrappers.
+    `(submod "." test)` is deliberately skipped -- it names a submodule of the
+    same file, not another file.
+    """
+    text = _racket_strip_comments(content)
+    edges: list[dict] = []
+    seen: set[tuple] = set()
+    for m in _RACKET_REQUIRE_RE.finditer(text):
+        form, _ = _racket_read_form(text, m.start())
+        if not isinstance(form, list):
+            continue
+        for item in form[1:]:
+            spec = _racket_specifier(item)
+            if not spec:
+                continue
+            names = _racket_names(item)
+            key = (spec, tuple(names))
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append({"specifier": spec, "names": names})
+    return edges
+
+
 _LANGUAGE_EXTRACTORS = {
     "javascript": _extract_js_imports,
     "typescript": _extract_js_imports,
@@ -680,6 +867,7 @@ _LANGUAGE_EXTRACTORS = {
     "scala": _extract_scala_imports,
     "haskell": _extract_haskell_imports,
     "gleam": _extract_gleam_imports,
+    "racket": _extract_racket_imports,
     "dart": _extract_dart_imports,
     "sql": _extract_sql_dbt_imports,
     "asm": _extract_asm_imports,

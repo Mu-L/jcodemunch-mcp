@@ -1,0 +1,307 @@
+{
+  "_note": "Frozen output of benchmarks/racket_fidelity/oracle.rkt against tests/fixtures/racket/*.rkt. Regenerate with tests/fixtures/racket/REGENERATE.md when a fixture changes.",
+  "files": {
+    "basics.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "basics"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 8,
+          "name": "greet"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 10,
+          "name": "greeting"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 12,
+          "name": "handler"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 14,
+          "name": "adder"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "struct:point"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "point1"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "point?"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "point-x"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "point-y"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 16,
+          "name": "point"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 19,
+          "name": "struct:point3"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "point32"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 19,
+          "name": "point3?"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 19,
+          "name": "point3-z"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 19,
+          "name": "point3"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 21,
+          "name": "quotient-part"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 21,
+          "name": "remainder-part"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 23,
+          "name": "swap-in-place!"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 26,
+          "name": "shape%"
+        },
+        {
+          "from_source": true,
+          "kind": "module",
+          "line": 32,
+          "name": "test"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 33,
+          "name": "test-helper"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "adder",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "greet",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "greeting",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "handler",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "shape%",
+          "procedure": false
+        },
+        {
+          "kind": "syntax",
+          "name": "point",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "point3",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "swap-in-place!",
+          "procedure": null
+        }
+      ],
+      "file": "basics.rkt"
+    },
+    "guards.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "guards"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 6,
+          "name": "live-anchor"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 24,
+          "name": "outer-with-helper"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "live-anchor",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "outer-with-helper",
+          "procedure": true
+        }
+      ],
+      "file": "guards.rkt"
+    },
+    "macros.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "macros"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 13,
+          "name": "define-constants"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 21,
+          "name": "fasl-box-type"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 21,
+          "name": "fasl-char-type"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 21,
+          "name": "fasl-eof-type"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 23,
+          "name": "reachable-by-static-parsing"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "fasl-box-type",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "fasl-char-type",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "fasl-eof-type",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "reachable-by-static-parsing",
+          "procedure": true
+        }
+      ],
+      "file": "macros.rkt"
+    }
+  },
+  "racket_version": "Welcome to Racket v9.2 [cs]."
+}

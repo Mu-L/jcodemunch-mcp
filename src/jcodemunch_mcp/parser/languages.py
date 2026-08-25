@@ -203,6 +203,10 @@ LANGUAGE_EXTENSIONS = {
     ".edn": "clojure",
     # Emacs Lisp
     ".el": "elisp",
+    # Racket
+    ".rkt": "racket",
+    ".rktl": "racket",
+    ".rktd": "racket",
     # Nim
     ".nim": "nim",
     ".nims": "nim",
@@ -1949,6 +1953,25 @@ DLANG_SPEC = LanguageSpec(
 )
 
 
+# Racket: the grammar is fully HOMOIENIC -- there are no named `define` /
+# `struct` nodes. Every form is `list` -> [symbol("define"), ...], and `(...)`
+# and `[...]` share the node type `list`, so nothing here can be expressed as a
+# node-type map. Same shape as CLOJURE_SPEC / COMMONLISP_SPEC / ELISP_SPEC.
+# Custom parser in extractor.py via _parse_racket_symbols().
+RACKET_SPEC = LanguageSpec(
+    ts_language="racket",
+    symbol_node_types={},
+    name_fields={},
+    param_fields={},
+    return_type_fields={},
+    docstring_strategy="preceding_comment",
+    decorator_node_type=None,
+    container_node_types=[],
+    constant_patterns=[],
+    type_patterns=[],
+)
+
+
 # HTML: a text-searchable FILE class, deliberately emitting no symbols
 # (jcm#452 triage). Empty symbol_node_types means an indexed .html contributes
 # zero entries to index.symbols, so symbol-driven consumers (find_dead_code's
@@ -2050,6 +2073,7 @@ LANGUAGE_REGISTRY = {
     "nim": NIM_SPEC,
     "tcl": TCL_SPEC,
     "dlang": DLANG_SPEC,
+    "racket": RACKET_SPEC,
     "html": HTML_SPEC,
 }
 
