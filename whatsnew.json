@@ -1,23 +1,23 @@
 {
-  "current": "1.108.296",
+  "current": "1.108.297",
   "entries": [
+    {
+      "version": "1.108.297",
+      "date": "2026-08-25",
+      "title": "The counter that never moved",
+      "summary": "`PARSER_GENERATION` 1 -> 2. Ten commits touched `parser/` since it was pinned to 1 on 2026-08-05; four of them change what gets extracted \u2014 `.246` (class field initializers stop donating members), `.254` (Python package-relative import edges), `.267` (Kotlin/Bash constants), `#428` (Rust/Go/Java/PHP constants)."
+    },
     {
       "version": "1.108.296",
       "date": "2026-08-24",
       "title": "Four ways a guard can be present without working",
-      "summary": "A reuse-before-write audit that refuses to say \"nothing already implements this\" when it could not see synonyms, could not prove the index complete, or found only dead code. Not exposed as a tool \u2014 the catalog moratorium holds at 91. It imported clean and had **four defects on first execution**, three of them a check that could not observe the thing it claimed to check."
+      "summary": "`src/jcodemunch_mcp/investigator/reuse_audit.py`, in the idiom of `deletion_safety`: proof obligations, tri-state statuses, and one `_verdict` that is the only place a conclusion may be drawn. The claim under test is \"Nothing in <repo> already implements <intent>, so writing it new is"
     },
     {
       "version": "1.108.295",
       "date": "2026-08-24",
       "title": "What the guard could not see",
       "summary": "`build` and `.build` were both excluded from indexing. `_build` was not \u2014 and that is the spelling **Elixir/Mix, Sphinx and Dune** use. We index Elixir."
-    },
-    {
-      "version": "1.108.294",
-      "date": "2026-08-24",
-      "title": "The hook layer, and the three seconds behind it",
-      "summary": "Contributed by **@marcelruhf** in [#535](https://github.com/jgravelle/jcodemunch-mcp/pull/535) \u2014 the whole of this section is their work, including the write-up."
     }
   ]
 }

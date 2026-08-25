@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.297] - 2026-08-25 - The counter that never moved
+
 ### Fixed - PARSER_GENERATION was never bumped for four parser changes that altered which symbols exist
 
 `PARSER_GENERATION` 1 -> 2. Ten commits touched `parser/` since it was pinned to
@@ -37,6 +39,24 @@ exist must bump this line in the same commit.**
 
 ⚠ Costs one full re-parse per index. `refresh` is the paced vehicle.
 
+### Docs - the extraction-fingerprint spec ships, and a citation to a PRD that never existed is gone
+
+`docs/` is deliberately local ("Local docs notes"), and stays so — with one
+exception. `docs/prd-extraction-fingerprint.md` is cited by the
+`PARSER_GENERATION` comment as the thing that ends the manual-bump
+obligation, so a contributor bound by that rule has to be able to read it.
+⚠ The pattern is `docs/*`, NOT `docs/`: git cannot re-include a file whose
+parent DIRECTORY is excluded, so the negation is silently inert under the
+directory form.
+
+⚠⚠ Separately, CLAUDE.md cited `docs/prd-framework-routes-endpoint-impact.md`,
+which is **not on disk and never existed in git history** — a citation to a
+document nobody can open, which is worse than none because it sends a reader
+hunting. The design claim around it was real and is kept. Found by sweeping
+every path in the tracked docs rather than the one that was reported;
+`benchmarks/token_baselines/vX.json` is a template placeholder, not a break,
+and CHANGELOG entries citing other projects' example paths are history, not
+live pointers.
 
 ## [1.108.296] - 2026-08-24 - Four ways a guard can be present without working
 
