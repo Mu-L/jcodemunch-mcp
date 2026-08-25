@@ -1,25 +1,42 @@
 # Racket extraction fidelity
 
-**The question this answers is not "what percentage did we get".** It is:
-*when jCodeMunch's index differs from what Racket itself knows, is the
-difference an honest gap or a false statement?*
+This compares what jCodeMunch's index says about a Racket file against what
+Racket itself says the file defines. The point is not to produce a score. It is
+to separate two very different kinds of difference:
 
-An agent handed an incomplete index reads the file instead. An agent handed a
-**wrong** index repeats the error. So the buckets are asymmetric, and so are
-their bars.
+- **We missed something.** An agent falls back to reading the file. Annoying,
+  survivable.
+- **We said something false.** An agent believes it and acts on it.
 
-| Bucket | Meaning | Bar |
+Those deserve different treatment, so they get different bars.
+
+## What each number means
+
+| Bucket | Meaning | Required |
 |---|---|---|
-| `extra` | a name we assert that Racket does not know | **0** |
-| `wrong_span` | the definition is not inside the bytes we would return for that symbol | **0** |
-| `missing` | a name a human wrote that we did not find | reported |
-| `callable_unknowable` | we say `constant`, the value turns out to be a procedure | reported |
-| `generated_only` | macro-introduced; invisible by construction | reported |
-| `export_only` | reachable under a different name than we indexed (`rename-out`, `struct-out`) | reported |
+| `extra` | A name in our index that Racket says does not exist. An agent would trust it and chase something that is not there. | **0** |
+| `wrong_span` | We have the name, but the line range we report does not contain the definition — so "show me the source of X" returns the wrong code. | **0** |
+| `missing` | A definition a human wrote in the source that our index does not contain. You search for it, you do not find it. | reported |
+| `callable_unknowable` | We labelled it a constant, but it is a function you can call. | reported |
+| `generated_only` | A name a macro introduced. No static parser can reach it. | reported |
+| `export_only` | Reachable under a different name than we indexed, because of `rename-out` or `struct-out`. | reported |
 
-`callable_unknowable` is a **ceiling, not a bar**. `racket/function.rkt` writes
-`(define curry (make-curry #f))` — callable, and no syntactic test can know it.
-Driving that bucket to zero needs an evaluator, so a bar there would be a wish.
+`callable_unknowable` is reported rather than required to be zero because it
+cannot be fixed by parsing more carefully. `racket/function.rkt` writes
+`(define curry (make-curry #f))` — `curry` is callable, and nothing in the
+source text says so. Knowing would take running the program.
+
+`missing` is reported rather than required to be zero for the same reason: the
+bulk of it is names created by invoking a macro, which are not in the file's
+text at all.
+
+## Reading the result
+
+The corpus average is the least useful view. On the committed run — 3,526
+definitions across 211 files — 485 were not found, but **152 of the 211 files
+have nothing missing at all**, and the 10 worst files account for 311 of the
+485. The gap sits in a handful of heavily macro-driven files rather than
+spreading evenly, so "86.2%" understates how most files behave.
 
 ## The oracle
 
@@ -36,8 +53,8 @@ look several times worse than it is.
 `module->exports` answers the second, different question — what a *consumer*
 can call, post-`rename-out`. On a file exporting
 `(rename-out [greet say-hello])` it returns `say-hello`, not `greet`, which is
-the rename gap quantified rather than argued about. It also reports
-`procedure?` on the instantiated value, which is the only honest evidence for
+how the rename gap gets measured instead of estimated. It also reports
+`procedure?` on the instantiated value — the only way to tell for certain
 whether a binding is callable.
 
 ## What this harness does NOT measure
@@ -81,6 +98,6 @@ fabrication guards run everywhere. See `tests/fixtures/racket/REGENERATE.md`.
 
 ## Reading `results.json`
 
-`summary` carries the totals; `per_file` carries the attribution. The useful
-view is usually *how many files are clean*, not the corpus average — misses
-concentrate hard in macro-heavy files rather than spreading evenly.
+`summary` carries the totals. `per_file` carries the attribution — which file
+each miss came from, which is what tells you whether a gap is one macro-heavy
+file or a systematic problem.

@@ -45,72 +45,94 @@ reinstates the one-directional check and asserts the false certificate comes
 back. Without it the other five tests pass equally well against a guard that
 never fires.
 
-### Added - Racket language support, with its ceiling measured rather than asserted
+### Added - Racket language support (`.rkt`, `.rktl`, `.rktd`)
 
-`.rkt` / `.rktl` / `.rktd` are indexed. The tree-sitter grammar is fully
-homoiconic -- there are no named `define` or `struct` nodes, every form is
-`list` -> `symbol` -- so this is a custom walker like the three Lisps already
-here, dispatching on the head symbol.
+Racket files are now indexed. What gets extracted: `define` (a function when it
+has a parameter list or a `lambda` value, a constant otherwise), the
+`define/public` family as methods, `define-syntax` and `define-syntax-rule` as
+functions, the `struct` family as classes, `define-type` / `define-signature` /
+`define-generics` as types, `define-values`, and `module` / `module+` /
+`module*` plus `(define C (class ...))` as containers whose members get
+`::`-qualified names. `(require ...)` becomes import edges and call references
+are recorded -- the first Lisp here with either. A `;;` or `#| |#` comment block
+above a definition becomes its docstring.
 
-Extracts `define` (procedure vs value discriminated by the header shape or a
-lambda-valued RHS), the `define/*` method forms, `define-syntax` /
-`define-syntax-rule`, `struct` / `define-struct` / `struct/contract`,
-`define-type` / `define-signature` / `define-generics`, `define-values`, and
-`module` / `module+` / `module*` plus `(define C (class ...))` as nested scopes
-with `::`-qualified names. `(require ...)` becomes import edges, and
-`call_references` are populated -- the first Lisp in the tree with either.
-`;;` and `#| |#` blocks above a form become the docstring.
+`#lang at-exp racket/base` works. @-expressions inside definition bodies do not
+interfere, because the walker stops descending once it matches a definition.
 
-⚠⚠ **The limitation that matters, and it is not fixable by parsing harder:
-a macro that DEFINES is invisible.** `racket/list.rkt` writes
-`(define-lgetter second 2)` twelve times and `racket/fasl.rkt` generates 49
-constants from one macro. Those names are real, exported, and typed by a human,
-and no static parser can reach them. **Measured, not estimated: 86.2% of
-human-written module-level bindings across 211 files of the Racket collects
-tree, with 152 of 211 files completely clean** -- misses concentrate in
-macro-heavy files rather than spreading evenly. Numbers come from
-`benchmarks/racket_fidelity/results.json`; do not hand-type them.
+Using this needs no Racket installation. The parser uses the tree-sitter Racket
+grammar, which ships as a Python wheel.
 
-⚠⚠ **The bar that IS zero: `extra` and `wrong_span`.** Nothing we emit is a name
-Racket does not know, and every definition falls inside the bytes
-`get_symbol_source` would return for it. That asymmetry is deliberate -- an
-incomplete index makes an agent read the file, a wrong one makes it repeat a
-falsehood. `tests/test_racket_fidelity.py` gates both against a frozen copy of
-the expander's answer, so they are checked on machines with no Racket.
+#### What it will not find, and why
 
-⚠ **`rename-out` is not represented and cannot be.** The index has an import
-graph and no export graph, so `(provide (rename-out [greet say-hello]))` leaves
-`greet` indexed while consumers call `say-hello`. `(require (rename-in "m.rkt"
-[f g]))` records `f`, the definition-site name -- the same reduction
-`_clean_names` already applies to `import {a as b}` and Gleam's `X as Y`.
+⚠⚠ **A macro's own name is indexed. The names that *invoking* it creates are
+not.** `racket/list.rkt` writes `(define-lgetter second 2)` twelve times, so
+`second` through `thirteenth` are exported and callable and do not appear in the
+index -- while `define-lgetter` itself does. `racket/fasl.rkt` generates 49
+constants the same way. Reaching these requires expanding the program, which a
+static parser cannot do.
 
-⚠ **`callable_unknowable` is a ceiling, not a bar (212 occurrences).**
-`(define curry (make-curry #f))` is callable and no syntactic test can know it,
-so it is reported as `constant`. Driving that to zero needs an evaluator.
+⚠ **A `provide` rename is not represented.** The index has an import graph and
+no export graph, so `(provide (rename-out [greet say-hello]))` leaves `greet`
+indexed while callers write `say-hello`. On the import side,
+`(require (rename-in "m.rkt" [f g]))` records `f` -- the name at the definition
+site, which is what makes the edge point at real code, and the same reduction
+already applied to `import {a as b}` and Gleam's `X as Y`.
 
-⚠ **`.scrbl` is deliberately unsupported, on a measurement.** A Scribble file
-parses with `has_error: False` and yields garbage -- every prose word becomes a
-top-level `symbol` and `@defproc[(greet ...)]` extracts nothing. A green parse
-with an empty result and no error signal is worse than no support.
+⚠ **A value that turns out to be a function is labelled a constant.**
+`racket/function.rkt` writes `(define curry (make-curry #f))`. `curry` is
+callable; nothing in the source text says so. This cannot be fixed by parsing
+more carefully -- it would take running the program -- so it is reported rather
+than treated as a defect. 212 occurrences in the measurement below.
 
-⚠ Three guards exist because the grammar makes their absence invisible:
-`quote` / `quasiquote` / `syntax` / `sexp_comment` are NAMED WRAPPER nodes
-holding a real `list`, so without a skip `#;(define x 1)` -- how Racketeers
-disable code -- extracts as a live symbol. The head symbol is NOT lowercased
-(Common Lisp's reader upcases and ours does not). And descent is an ALLOW-LIST:
-a `define` inside a `when` body or a macro invocation's clause is an internal
-definition, and emitting it claimed importable bindings that do not exist.
+⚠ **`.scrbl` (Scribble) is deliberately not claimed.** A Scribble file parses
+without error and produces nonsense: every prose word becomes a symbol, and
+`@defproc[(greet ...)]` -- the actual documented API -- yields nothing. A clean
+parse with an empty result and no error signal is worse than no support at all.
+This does **not** apply to at-exp in ordinary `.rkt` files, which is a different
+situation and works.
 
-⚠ No `PARSER_GENERATION` bump. That counter is for files whose content is
-unchanged AND already in the index; `.rkt` files are absent from every existing
-index, so `detect_changes_with_mtimes` reports them as new.
+#### Measured against Racket's own expander
 
-⚠ **Known, pre-existing, NOT fixed here:** a config carrying an explicit
-`languages` list -- which `jcodemunch-mcp init` writes -- will not enable a
+`benchmarks/racket_fidelity/` compares the index against what Racket says a
+file defines, obtained by expanding it. Across 211 files of the Racket collects
+tree, 3,526 human-written definitions:
+
+- **485 not found (86.2% found).** 152 of the 211 files have nothing missing at
+  all, and the 10 worst files account for 311 of the 485. The gap is
+  concentrated in a few heavily macro-driven files, not spread across the
+  corpus.
+- **0 names in the index that Racket says do not exist.**
+- **0 cases where the line range we report fails to contain the definition** --
+  so "show me the source of X" never returns the wrong code.
+
+The last two are held at zero and the first is not, because an omission makes an
+agent read the file while a false statement makes it repeat the error. Numbers
+come from `benchmarks/racket_fidelity/results.json`; do not hand-type them.
+`tests/test_racket_fidelity.py` checks the two zero cases against a frozen copy
+of the expander's answer, so they are verified on machines with no Racket.
+
+#### Implementation notes
+
+⚠ Three guards exist because the grammar hides their absence. `quote`,
+`quasiquote`, `syntax` and `sexp_comment` are named wrapper nodes holding a real
+`list`, so without a skip `#;(define x 1)` -- how Racketeers comment out code --
+is extracted as a live definition. The head symbol is not lowercased, unlike the
+neighbouring Common Lisp extractor, because Racket is case-sensitive. And
+descent is an allow-list: a `define` inside a `when` body or a macro
+invocation's clause is an internal definition, and emitting it claimed
+importable bindings that do not exist.
+
+⚠ No `PARSER_GENERATION` bump. That counter exists for files whose content is
+unchanged and are already in an index; `.rkt` files are in no existing index, so
+`detect_changes_with_mtimes` reports them as new.
+
+⚠ **Known, pre-existing, not fixed here:** a config with an explicit
+`languages` list -- which `jcodemunch-mcp init` writes -- will not pick up a
 newly added language, and `config --upgrade` only injects entirely missing
-KEYS, so it does not repair the list. This affects every language ever added,
-not just Racket. Users on an explicit list must add `"racket"` by hand.
-
+*keys*, so it does not repair the list. This affects every language ever added,
+not only Racket. A fresh config enables Racket automatically; users on an
+explicit list must add `"racket"` by hand.
 
 ## [1.108.297] - 2026-08-25 - The counter that never moved
 
