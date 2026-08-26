@@ -500,3 +500,108 @@ def test_name_keywords_bind_a_type_not_a_callable(kw):
     syms = {s.name: s for s in _parse(f"#lang racket/base\n(struct posn (x y) {kw} posn-type)")}
     assert "posn-type" in syms
     assert syms["posn-type"].kind == "type"
+
+
+# ── project-declared defining forms ───────────────────────────────────────
+#
+# A Racket project routinely defines its own defining forms with
+# `define-syntax`, and what those bind is not recoverable from the text:
+# `(defstep (check-admin) ...)` is indistinguishable from a function call.
+#
+# ⚠ Two automatic guesses were measured against Racket's expander and both
+# invent names. Treating any `def*` head as a definition recovers 140 real
+# names across the collects tree and fabricates 225 -- `(default d ...)` and
+# `(definify map ...)` are calls. Restricting that to macros the repo defines
+# itself still fabricates 168, because `(define-logger enter!)` binds
+# `log-enter!-debug` rather than `enter!`. So the only sound source for the
+# claim is the user making it, which is what this key is.
+
+
+@pytest.fixture
+def declared(monkeypatch):
+    """Install racket_definition_forms without touching any real config file."""
+    def _install(forms):
+        monkeypatch.setattr(
+            "jcodemunch_mcp.config.get",
+            lambda key, default=None, repo=None: (
+                forms if key == "racket_definition_forms" else default
+            ),
+        )
+    return _install
+
+
+CONSCRIPT = {"defstep": "function", "defstudy": "constant", "defvar": "constant"}
+
+
+def _decl_names(src, repo="/proj"):
+    from jcodemunch_mcp.parser.extractor import _parse_racket_symbols
+    return {s.name: s for s in _parse_racket_symbols(
+        ("#lang racket/base\n" + src).encode("utf-8"), "p.rkt", repo=repo)}
+
+
+def test_declared_forms_are_inert_by_default(declared):
+    """The default is {}, and an unconfigured project must parse exactly as
+    before -- verified separately against the whole fidelity corpus."""
+    declared({})
+    assert _decl_names("(defstep (check-admin) (void))") == {}
+
+
+def test_declared_header_form_binds_the_head_of_its_parameter_list(declared):
+    declared(CONSCRIPT)
+    s = _decl_names("(defstep (check-admin) (void))")["check-admin"]
+    assert s.kind == "function"
+    assert s.line == 2
+
+
+def test_declared_symbol_form_binds_the_second_element(declared):
+    declared(CONSCRIPT)
+    names = _decl_names("(defstudy conscript-example (--> a b))\n(defvar current-matrix)")
+    assert names["conscript-example"].kind == "constant"
+    assert names["current-matrix"].kind == "constant"
+
+
+def test_no_repo_means_no_declarations(declared):
+    """Parsing outside a project cannot consult a project file."""
+    declared(CONSCRIPT)
+    assert _decl_names("(defstep (check-admin) (void))", repo=None) == {}
+
+
+def test_a_declaration_cannot_shadow_real_racket_syntax(declared):
+    """Declared forms are matched AFTER every built-in, so declaring `define`
+    or `struct` gets the built-in handling rather than the user's."""
+    declared({"define": "constant", "struct": "constant"})
+    names = _decl_names("(define (f x) x)\n(struct posn (a b))")
+    assert names["f"].kind == "function", "built-in define must win"
+    assert names["posn"].kind == "class", "built-in struct must win"
+    assert "posn-a" in names, "struct synthesis must still run"
+
+
+@pytest.mark.parametrize("bad", [
+    {"defstep": "wizard"},                    # kind not in the allow-list
+    {"defstep": "method"},                    # method belongs to a class body
+    {"defstep": {"kind": "function"}},        # object form is not accepted
+    {"defstep": None},
+    {"defstep": ["function"]},
+], ids=["bad-kind", "method-kind", "object-form", "null", "list"])
+def test_malformed_declarations_cost_one_form_not_the_file(declared, bad):
+    """A typo must not take the rest of the file with it."""
+    declared(bad)
+    names = _decl_names("(defstep (check-admin) (void))\n(define (ordinary x) x)")
+    assert "ordinary" in names, "the rest of the file must still parse"
+
+
+def test_one_form_may_appear_in_both_shapes(declared):
+    """⚠ The reason the name position is inferred rather than declared.
+    Measured on a real project, `defstep` appears 44 times as
+    `(defstep (name args) ...)` and once as `(defstep name ...)`. A declared
+    position would have missed one of them."""
+    declared({"defstep": "function"})
+    names = _decl_names("(defstep (header-shaped) (void))\n(defstep symbol-shaped)")
+    assert "header-shaped" in names
+    assert "symbol-shaped" in names
+
+
+def test_declared_form_inside_a_submodule_is_scoped(declared):
+    declared(CONSCRIPT)
+    names = _decl_names("(module+ test\n  (defstep (t-helper) (void)))")
+    assert names["t-helper"].qualified_name == "test::t-helper"
