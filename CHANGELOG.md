@@ -34,6 +34,25 @@ calls, and one more symbol matching every query for the struct is ranking noise.
 form table entirely, so they produced no symbol at all -- not even the struct
 name. Both are now handled.
 
+### Fixed - the Racket coverage figure had three mirrors and only one was regenerated
+
+`benchmarks/racket_fidelity/results.json` is written by `run_fidelity.py`, but
+the numbers it carries are RESTATED in `LANGUAGE_SUPPORT.md` and in the
+harness's own README, and nothing bound the three together. The struct work
+above moved `source_coverage_pct` 86.2 -> 86.5 and `missing` 485 -> 475 in the
+artifact; both prose copies kept the older run, with a green suite either side.
+
+⚠ `tests/test_racket_fidelity_artifacts.py` now derives the figures from
+`results.json` and fails on any prose copy that disagrees. It checks the ROWS,
+not only the headline: a ratchet asserting the coverage percentage alone passes
+while `missing` and the clean-file count sit on an older run, which is how five
+of eight benchmark artifacts drifted 22 days apart in 1.108.298. `clean_files`
+and the 10-worst-file total are derived from `per_file` rather than read from a
+summary field -- that is the only reason the README may state them at all.
+
+⚠ Run against the stale tree first: five assertions failed and three passed,
+and the three that passed are the figures this change genuinely did not move.
+
 
 ## [1.108.298] - 2026-08-25 - A campaign that saw nothing
 

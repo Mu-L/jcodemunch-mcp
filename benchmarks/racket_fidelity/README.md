@@ -33,10 +33,10 @@ text at all.
 ## Reading the result
 
 The corpus average is the least useful view. On the committed run — 3,526
-definitions across 211 files — 485 were not found, but **152 of the 211 files
+definitions across 211 files — 475 were not found, but **153 of the 211 files
 have nothing missing at all**, and the 10 worst files account for 311 of the
-485. The gap sits in a handful of heavily macro-driven files rather than
-spreading evenly, so "86.2%" understates how most files behave.
+475. The gap sits in a handful of heavily macro-driven files rather than
+spreading evenly, so "86.5%" understates how most files behave.
 
 ## The oracle
 
