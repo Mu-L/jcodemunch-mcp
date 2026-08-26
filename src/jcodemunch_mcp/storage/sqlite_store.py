@@ -3226,6 +3226,7 @@ class SQLiteIndexStore:
             ext_map = {
                 ".py": "python", ".js": "javascript", ".ts": "typescript",
                 ".mjs": "javascript", ".cjs": "javascript",
+                ".mts": "typescript", ".cts": "typescript",
                 ".jsx": "javascript", ".tsx": "typescript", ".go": "go",
                 ".rs": "rust", ".java": "java", ".c": "c", ".cpp": "cpp",
                 ".h": "cpp", ".ino": "arduino", ".pde": "arduino",

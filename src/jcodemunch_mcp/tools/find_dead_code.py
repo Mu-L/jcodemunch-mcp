@@ -154,7 +154,8 @@ def _package_json_entries(index, store, owner: str, repo_name: str) -> set[str]:
             if joined in source_files:
                 entries.add(joined)
                 continue
-            for ext in ("", ".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx",
+            for ext in ("", ".js", ".ts", ".mjs", ".cjs", ".mts", ".cts",
+                        ".jsx", ".tsx",
                         "/index.js", "/index.ts", "/index.mjs",
                         "/index.cjs"):
                 trial = joined + ext

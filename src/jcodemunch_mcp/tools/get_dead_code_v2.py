@@ -261,7 +261,8 @@ def _package_json_entries(index, store, owner, repo_name) -> set[str]:
                 entries.add(joined)
                 continue
             # Try common JS/TS extensions if missing.
-            for ext in ("", ".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx",
+            for ext in ("", ".js", ".ts", ".mjs", ".cjs", ".mts", ".cts",
+                        ".jsx", ".tsx",
                         "/index.js", "/index.ts", "/index.mjs", "/index.cjs"):
                 trial = joined + ext
                 if trial in source_files:

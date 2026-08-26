@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+### Fixed - `.mts` and `.cts` indexed as nothing
+
+TypeScript's ESM and CommonJS module extensions were listed in the reindex
+hook's watched set (`cli/hooks/_common.py`) and in NO extension->language map.
+Editing a `.mts` file spawned `index-file`, which mapped no language and
+dropped the file as `wrong_extension`. The hook reported success. Nothing
+errored. The file was simply absent from every symbol, reference and blast
+query afterwards, indistinguishable from a file with no symbols in it.
+
+⚠ **The import half is inseparable from the language half, and shipping the
+language map alone would have been worse than the defect.** TypeScript's ESM
+rules require the specifier to name the EMITTED file, so a `.mts` source is
+imported as `./foo.mjs` -- an extension that is never on disk. Indexing `.mts`
+without the rewrite makes the file visible and its importers invisible, which
+reads downstream as a file nobody imports: the #550 shape, one release later.
+`_JS_SPECIFIER_REWRITES` now maps `.mjs -> .mts` and `.cjs -> .cts` beside the
+existing `.js -> .ts/.tsx` rule, which is unchanged and has a test saying so.
+
+⚠ Six sites, not the two the extension map suggested: `LANGUAGE_EXTENSIONS`,
+`sqlite_store`'s fallback language map, `_JS_EXTENSIONS` and the specifier
+rewrite in `imports.py`, and the module-resolution candidate tuples in
+`find_dead_code`, `get_dead_code_v2` and `index_folder`.
+
+⚠ **No `PARSER_GENERATION` bump, and the reasoning is .298's.** That counter
+re-parses files ALREADY in an index; `.mts` was `wrong_extension` everywhere,
+so the extension arrives through DISCOVERY. A file nobody parsed cannot hold a
+stale parse. Coverage, not extraction.
+
+⚠ `tests/test_ts_module_extensions.py` states outcomes, not spellings: a file
+on disk yields symbols, a `./foo.mjs` specifier offers `./foo.mts`, and the
+convention pair is enumerated as a unit in the hook set -- scoped to this
+family deliberately, because `_CODE_EXTENSIONS` diverges from the registry on
+both sides BY POLICY and a blanket equality would be wrong. **7 of its 10
+assertions fail against the pre-fix tree; the 3 that pass are the facts the
+change did not move.**
+
+⚠ Found by reading a competitor's commit titles, not a report. GitNexus shipped
+`fix(ingestion): index JavaScript module extensions` on 2026-08-24; the same
+probe against this tree took one query. [[a-competitors-fix-list-is-a-free-defect-probe]]
+
 ## [1.108.300] - 2026-08-26 - Wider than reported
 
 ### Fixed - `from . import <sibling>` built an edge to `__init__.py` (#550, @rknighton)

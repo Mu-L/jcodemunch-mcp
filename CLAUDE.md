@@ -32,7 +32,7 @@ src/jcodemunch_mcp/
   parser/
     languages.py       # LANGUAGE_REGISTRY, extension → language map, LanguageSpec
     extractor.py       # parse_file() dispatch; custom parsers for Erlang, Fortran, SQL, Razor
-    imports.py         # Regex import extraction (19 languages); extract_imports(), resolve_specifier(), build_psr4_map()
+    imports.py         # Regex import extraction (19 languages); extract_imports(), resolve_specifier(), build_psr4_map(). ⚠⚠ **`_JS_SPECIFIER_REWRITES` exists because a TS specifier names the EMITTED file, not the source**: `.mts` is imported as `./foo.mjs` and `.cts` as `./foo.cjs`, extensions that are NEVER on disk. Adding an extension to `LANGUAGE_EXTENSIONS` without its rewrite entry makes the file visible and its importers invisible -- which reads downstream as a file nobody imports, i.e. #550 in a new costume. The `.js -> .ts/.tsx` rule predates the table and is unchanged; `test_ts_module_extensions.py` asserts that byte-for-byte
     fqn.py             # PHP FQN ↔ symbol_id translation (PSR-4); symbol_to_fqn(), fqn_to_symbol()
   encoding/
     __init__.py          # Dispatcher: encode_response(tool, response, format) — auto/compact/json

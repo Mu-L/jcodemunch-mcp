@@ -964,11 +964,24 @@ def extract_imports(content: str, file_path: str, language: str) -> list[dict]:
         return []
 
 
-_JS_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".vue", ".astro", ".mjs", ".cjs", ".svelte")
+_JS_EXTENSIONS = (
+    ".js", ".ts", ".jsx", ".tsx", ".vue", ".astro",
+    ".mjs", ".cjs", ".mts", ".cts", ".svelte",
+)
 _PY_EXTENSIONS = (".py",)
 _RUBY_EXTENSIONS = (".rb",)
 _ALL_EXTENSIONS = _JS_EXTENSIONS + _PY_EXTENSIONS + _RUBY_EXTENSIONS + (".go",)
 _RACKET_EXTENSIONS = (".rkt", ".rktl", ".rktd")
+
+# TypeScript's ESM rules require the specifier to name the EMITTED file, so a
+# `.mts` source is imported as `./foo.mjs` and a `.cts` source as `./foo.cjs`.
+# The specifier therefore names an extension that is never on disk; without the
+# rewrite the edge resolves to nothing and the target reports as never imported.
+_JS_SPECIFIER_REWRITES = {
+    ".js": (".ts", ".tsx"),
+    ".mjs": (".mts",),
+    ".cjs": (".cts",),
+}
 
 # ---------------------------------------------------------------------------
 # PSR-4 namespace resolution (PHP / Composer)
@@ -1077,7 +1090,8 @@ def _candidates(base: str) -> list[str]:
     Cases:
     - No extension (`./foo`): try every known source extension and the
       barrel-index forms.
-    - JS extension (`./foo.js`): plus TS/TSX equivalents (TS-ESM convention).
+    - JS extension (`./foo.js`, `./foo.mjs`, `./foo.cjs`): plus the TS
+      equivalents the specifier stands in for (TS-ESM convention).
     - Recognized file extension other than .js: keep as-is.
     - Unrecognized "extension" (`./injectable.decorator`, `./foo.service`,
       `./order.spec` if treated as code): the dotted suffix is part of
@@ -1093,10 +1107,10 @@ def _candidates(base: str) -> list[str]:
         for e in _JS_EXTENSIONS:
             cands.append(posixpath.join(base, "index" + e))
         cands.append(posixpath.join(base, "__init__.py"))
-    elif ext == ".js":
-        stem = base[:-3]
-        cands.append(stem + ".ts")
-        cands.append(stem + ".tsx")
+    elif ext in _JS_SPECIFIER_REWRITES:
+        stem = base[: -len(ext)]
+        for e in _JS_SPECIFIER_REWRITES[ext]:
+            cands.append(stem + e)
     elif ext not in _ALL_EXTENSIONS:
         # Dotted basename: TS/JS convention (`*.service`, `*.decorator`,
         # `*.module`, `*.spec`, etc.). Treat the whole `base` as a stem.

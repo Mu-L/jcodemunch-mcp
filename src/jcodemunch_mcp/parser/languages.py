@@ -60,6 +60,8 @@ LANGUAGE_EXTENSIONS = {
     ".cjs": "javascript",
     ".jsx": "javascript",
     ".ts": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
     ".tsx": "tsx",
     ".go": "go",
     ".rs": "rust",

@@ -942,7 +942,8 @@ def _scan_package_json_forced_paths(folder_path: Path) -> set[str]:
                 if target.is_file():
                     forced.add(os.path.normcase(str(target)))
                     continue
-                for ext in (".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx"):
+                for ext in (".js", ".ts", ".mjs", ".cjs", ".mts", ".cts",
+                            ".jsx", ".tsx"):
                     trial = pkg_dir / f"{cand}{ext}"
                     if trial.is_file():
                         forced.add(os.path.normcase(str(trial.resolve())))
