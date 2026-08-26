@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.300] - 2026-08-26 - Wider than reported
+
 ### Fixed - `from . import <sibling>` built an edge to `__init__.py` (#550, @rknighton)
 
 `from . import receipts` in `evidence/producers.py` is a dependency on
@@ -40,6 +42,28 @@ specifier lifted out of prose was never the problem -- it resolves to `None` and
 is skipped. The crash was. ⚠ The swallow now logs at WARNING naming the file
 (Practice 2): the caller cannot tell `[]` from a genuine absence, so the log is
 the only signal that edges were lost.
+
+### Changed - `PARSER_GENERATION` 3 -> 4
+
+The sibling-import fix changes which IMPORT EDGES exist for a file whose content
+never changes, so an index that already holds those files will never re-read
+them and the edges that were never built stay never built. `.254` (Python
+package-relative import edges) was one of the four changes that justified gen 2,
+on the identical argument.
+
+⚠ **Two bumps in two releases, and that is the cost of the mechanism being
+manual rather than a reason to skip one.** The counter is a hand-maintained
+assertion about an automated thing (`docs/prd-extraction-fingerprint.md` specs
+the derivation); until it exists, the alternative to bumping is an index stamped
+EQUAL to the constant, which is indistinguishable from a current one and
+therefore unrepairable.
+
+⚠ Effect is the largest yet measured for this counter and is not a drift
+argument: **20 live files in this repo were being reported dead**, and the fix
+recovers 87 sibling edges across 62 importing files. Expect one full re-parse per
+repo on the next `index_folder` / `index_repo`, reported as
+`rebuild_reason="parser_generation_upgrade"`; `jcodemunch-mcp refresh` does it in
+bounded, resumable slices.
 
 ### Fixed - failed calls recorded `ok=1`, so a watched failure reported a 0% error rate (#551, @rknighton)
 

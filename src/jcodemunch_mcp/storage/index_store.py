@@ -115,7 +115,24 @@ INDEX_VERSION = 17
 #   and the window of affected indexes opened on 2026-08-24. It is bumped
 #   anyway because a stamp equal to the constant is unrepairable later, which
 #   makes the cheap decision now and the impossible one afterwards.
-PARSER_GENERATION = 3
+#
+# gen 4 (1.108.300, #550): `from . import <sibling>` now builds an edge to the
+#   SIBLING MODULE instead of to the package's `__init__.py`, and a Python file
+#   whose prose contains a line starting `import ` no longer loses every edge it
+#   has to an IndexError.
+#
+#   ⚠ Import EDGES, not symbols, and the counter covers them: `.254` (Python
+#   package-relative import edges) was one of the four changes that justified
+#   gen 2, on the identical argument. File content is unchanged, so incremental
+#   never re-reads, and the edges that were never built stay never built.
+#
+#   ⚠ Effect is the largest yet measured for this counter and is not a drift
+#   argument: 87 sibling edges on this repo's own `src/` that did not exist, 30
+#   modules made reachable, and the reporter measured `find_dead_code` going
+#   from 42 dead files to 22 -- i.e. 20 live files were being reported dead.
+#   Two bumps in two releases is the cost of the mechanism being manual, which
+#   is the standing complaint above, not a reason to skip one.
+PARSER_GENERATION = 4
 
 
 @dataclass(frozen=True)
