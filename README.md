@@ -226,6 +226,39 @@ Local-first by design: indexes live at `~/.code-index/`, and the base package's 
 
 ---
 
+## Per-project configuration
+
+Most settings live in the global `~/.code-index/config.jsonc`, but any of them can be overridden for a single repository by dropping a `.jcodemunch.jsonc` at its root. It is an **overlay**: keys it declares win, keys it omits fall through to global and then to the built-in default, so it only needs to contain what differs.
+
+```jsonc
+// <your-repo>/.jcodemunch.jsonc
+{
+  "max_file_size": 1048576,
+  "languages": ["python", "typescript", "racket"]
+}
+```
+
+### Declaring Racket defining forms
+
+Racket projects routinely define their own defining forms with `define-syntax`, and a static parser cannot know what those bind — `(defstep (check-admin) ...)` is indistinguishable from a function call. Declaring them makes their bindings searchable:
+
+```jsonc
+{
+  "racket_definition_forms": {
+    "defstep":  "function",
+    "defstudy": "constant",
+    "defvar":   "constant",
+    "define-schema": "class"
+  }
+}
+```
+
+Each entry maps a form name to what it binds: `function`, `constant`, `class` or `type`. Where the name sits is read from the source rather than declared — `(defstep (check-admin) ...)` takes the head of the parameter list, `(defstudy consent ...)` takes the bare symbol — so a form that appears in both shapes works either way.
+
+⚠ This is an assertion, not something jCodeMunch can verify. A wrong declaration puts a name in the index that Racket does not actually bind. Declarations are also matched only after every built-in form, so declaring `define` or `struct` has no effect — the built-in handling wins.
+
+---
+
 ## Documentation
 
 | Doc | What it covers |

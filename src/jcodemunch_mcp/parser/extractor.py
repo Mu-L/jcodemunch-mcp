@@ -401,7 +401,7 @@ def parse_file(content: str, filename: str, language: str, source_bytes: Optiona
     elif language == "dlang":
         symbols = _parse_dlang_symbols(source_bytes, filename)
     elif language == "racket":
-        symbols = _parse_racket_symbols(source_bytes, filename)
+        symbols = _parse_racket_symbols(source_bytes, filename, repo=repo)
     elif language in ("sass", "less", "styl"):
         symbols = []  # No tree-sitter grammar; files indexed for text search only
     elif language == "json":
@@ -11153,7 +11153,60 @@ def _racket_struct_derived(form: str, name: str, kids: list, text) -> list[tuple
     return out
 
 
-def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
+
+#: Kinds a declared form may claim. Deliberately narrower than VALID_KINDS:
+#: `method` belongs to a class body, and `template` / `import` describe things
+#: no Racket defining form produces.
+_RACKET_DECLARED_KINDS = frozenset({"function", "constant", "class", "type"})
+
+
+def _racket_declared_forms(repo: Optional[str]) -> dict[str, str]:
+    """User-declared defining forms for this project, as {head: kind}.
+
+    A Racket project routinely defines its own defining forms with
+    `define-syntax`, and what those bind cannot be recovered from the text --
+    `(defstep (check-admin) ...)` looks exactly like a function call. Two
+    automatic guesses were measured against Racket's expander and both invent
+    names: treating any `def*` head as a definition recovers 140 real names and
+    fabricates 225, and restricting that to macros the repo defines itself
+    still fabricates 168. So the only sound source is the user saying so.
+
+    ⚠ The declaration carries the KIND only. Where the name sits is read off
+    the source instead of declared, because it is visible there and because a
+    single form is not consistent: measured on one project, `defstep` appears
+    44 times as `(defstep (name args) ...)` and once as `(defstep name ...)`.
+    A declared position would have missed the odd one out.
+
+    ⚠ This is an ASSERTION, not an inference. A wrong declaration puts a name
+    in the index that Racket does not bind, and `benchmarks/racket_fidelity/`
+    cannot catch it -- the harness only knows forms it can see expanded.
+    Malformed entries are skipped individually, so a typo costs the one form
+    rather than the whole file.
+    """
+    if not repo:
+        return {}
+    try:
+        from ..config import get as _cfg_get
+        declared = _cfg_get("racket_definition_forms", {}, repo=repo) or {}
+    except Exception:
+        logger.debug("racket_definition_forms unavailable", exc_info=True)
+        return {}
+    if not isinstance(declared, dict):
+        return {}
+    out: dict[str, str] = {}
+    for head, kind in declared.items():
+        # `isinstance` first: a dict or list value is unhashable and a bare
+        # `in frozenset` on it raises rather than skipping the entry.
+        if isinstance(head, str) and isinstance(kind, str) and kind in _RACKET_DECLARED_KINDS:
+            out[head] = kind
+        else:
+            logger.debug("skipping racket_definition_forms entry %r: %r", head, kind)
+    return out
+
+
+def _parse_racket_symbols(
+    source_bytes: bytes, filename: str, repo: Optional[str] = None
+) -> list[Symbol]:
     """Extract symbols from Racket source using tree-sitter.
 
     ⚠ #414: every text read goes through ``node.text``, never
@@ -11172,6 +11225,7 @@ def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
     tree = parser.parse(source_bytes)
     symbols: list[Symbol] = []
     calls: list[tuple[int, str]] = []
+    declared = _racket_declared_forms(repo)
     # Last `(: name type)` seen -- the mutable-container idiom
     # _parse_clojure_symbols uses for `ns`.
     pending = {"name": "", "type": ""}
@@ -11398,11 +11452,43 @@ def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
                             _emit(node, _text(c), "constant", sig, scope)
                     return
 
+                # Project-declared forms, matched AFTER every built-in so a
+                # declaration can never shadow real Racket syntax.
+                #
+                # ⚠ The NAME POSITION is read off the source, not declared: a
+                # list second element is a header whose head is the name
+                # (`(defstep (check-admin) ...)`), a bare symbol is the name
+                # itself (`(defstudy consent ...)`). Measured on one project,
+                # `defstep` appears in BOTH shapes, so a declared position
+                # would have missed one of them.
+                if form in declared:
+                    if kids[1].type == "list":
+                        nn = _racket_head_name(kids[1])
+                    elif kids[1].type == "symbol":
+                        nn = kids[1]
+                    else:
+                        nn = None
+                    if nn is not None:
+                        parent_id = (make_symbol_id(filename, scope, "class")
+                                     if scope and in_class else None)
+                        _emit(node, _text(nn), declared[form],
+                              f"({form} {_text(kids[1])})", scope,
+                              parent_id=parent_id)
+                    return
+
             # Nothing matched. ⚠ Do NOT fall through into the body of an
             # unrecognised form: a `define` inside a macro invocation, a
             # contract combinator or a generics clause is an INTERNAL
             # definition, and emitting it claims an importable binding that
             # does not exist. Only splicing forms keep module scope.
+            #
+            # ⚠⚠ This guard was deleted once, by an edit that moved the
+            # declared-forms block and spliced this away with it. Every test
+            # over this path asserted PRESENCE -- that a splicing head IS
+            # descended into -- so all of them stayed green while the guard was
+            # gone, and only the fidelity corpus noticed: `extra` 0 -> 5,
+            # `wrong_span` 0 -> 26. `test_unrecognised_forms_are_not_descended`
+            # asserts the absence, which is the direction that was missing.
             if not (kids and kids[0].type == "symbol"
                     and _text(kids[0]) in _RACKET_SPLICING_HEADS):
                 return

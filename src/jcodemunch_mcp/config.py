@@ -353,6 +353,17 @@ DEFAULTS = {
     "exclude_secret_patterns": [],
     "exclude_skip_directories": [],
     "extra_extensions": {},
+    # Racket only, and deliberately NOT a generic `definition_forms` map. A
+    # Racket project routinely defines its own defining forms via
+    # `define-syntax` -- congame binds ~448 symbols through `defstep`,
+    # `defstudy` and `defvar` -- and no static parser can know what those bind.
+    # Declaring them here is the user ASSERTING it, which is the only safe
+    # source for that claim. Clojure, Elixir and Common Lisp have the same
+    # blindness, but none of them has been measured, so a shared key would be a
+    # general promise backed by one data point. If a second language earns one,
+    # `<lang>_definition_forms` appears beside this and unification becomes a
+    # decision with evidence behind it.
+    "racket_definition_forms": {},
     "context_providers": True,
     "meta_fields": [],  # [] = no _meta (token-efficient; set null in config for all fields)
     "languages": None,  # None = all languages
@@ -512,6 +523,7 @@ CONFIG_TYPES = {
     "exclude_secret_patterns": list,
     "exclude_skip_directories": list,
     "extra_extensions": dict,
+    "racket_definition_forms": dict,
     "context_providers": bool,
     "meta_fields": (list, type(None)),
     "languages": (list, type(None)),
@@ -2116,6 +2128,14 @@ def generate_template() -> str:
   // "extra_extensions": {{}},
   //   Map additional file extensions to languages.
   //   Example: {{".mpl": "cpp"}} to parse .mpl files as C++.
+
+  // "racket_definition_forms": {{}},
+  //   Racket only. Declare a project's own defining macros so what they bind
+  //   becomes searchable. Each value is what the form binds: function,
+  //   constant, class or type. Where the name sits is read from the source.
+  //   Example: {{"defstep": "function", "defstudy": "constant"}}
+  //   This is an assertion jCodeMunch cannot verify; a wrong entry indexes a
+  //   name Racket does not bind. Built-in forms always win over declarations.
 
   // "context_providers": true,
   //   Enable context providers for enhanced AI summarization.

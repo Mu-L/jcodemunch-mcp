@@ -26,3 +26,15 @@
   (nested-helper q))
 
 (provide live-anchor outer-with-helper)
+
+;; Shape from racket/set.rkt's contract combinators: a macro invocation whose
+;; body holds `define`s. Those are internal definitions and not importable, so
+;; the walker must not descend into a form it does not recognise. Losing that
+;; guard fabricated cmp/c, elem/c, equal-key/c, kind/c and lazy? on the real
+;; corpus while every test stayed green.
+(define-syntax-rule (with-locals body ...)
+  (let () body ... (void)))
+
+(with-locals
+  (define macro-body-local 1)
+  (define (macro-body-fn x) x))

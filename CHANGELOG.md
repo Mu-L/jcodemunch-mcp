@@ -70,6 +70,59 @@ RESPONSE -- the producer's truth, not a roster someone must remember to extend
 -- row COUNT is asserted, and a fixture holding no table now fails as
 near-vacuous. **That rewrite alone catches #553 with no other change.**
 
+### Added - declare a Racket project's own defining forms
+
+`racket_definition_forms`, settable per-project in `.jcodemunch.jsonc` or
+globally, maps a project's defining macros to what they bind:
+
+```jsonc
+"racket_definition_forms": {
+  "defstep":  "function",
+  "defstudy": "constant",
+  "define-schema": "class"
+}
+```
+
+Each value is what the form binds. ⚠ Where the NAME sits is read off the source
+rather than declared, because it is visible there and because a single form is
+not consistent: measured on one project, `defstep` appears 44 times as
+`(defstep (name args) ...)` and once as `(defstep name ...)`, so a declared
+position would have missed the odd one out. Measured on that same project: 1,935 -> 2,239 indexed symbols, with
+`consent`, `check-admin` and `current-matrix` going from unfindable to indexed
+at their real locations.
+
+⚠⚠ **Deliberately Racket-only, and deliberately not inferred.** Two automatic
+guesses were measured against Racket's expander and both invent names: treating
+any `def*` head as a definition recovers 140 real names across the collects tree
+and fabricates 225 -- `(default d ...)` and `(definify map ...)` are calls --
+and restricting that to macros the repo defines itself still fabricates 168,
+because `(define-logger enter!)` binds `log-enter!-debug` rather than `enter!`.
+The only sound source for the claim is the user making it.
+
+⚠ **A user assertion, not something we can verify.** A wrong declaration puts a
+name in the index Racket does not bind, and `benchmarks/racket_fidelity/` cannot
+catch it -- the harness only knows forms it can see expanded.
+
+⚠ Declarations are matched AFTER every built-in form, so declaring `define` or
+`struct` cannot shadow real Racket syntax. Malformed entries are skipped
+individually, so a typo costs one form rather than the file.
+
+⚠ **Inert by default.** The default is `{}` and an unconfigured project parses
+byte-identically -- verified by re-running the full fidelity corpus, which
+returns the same 3,438 symbols and the same zero `extra` / zero `wrong_span`.
+
+⚠ No generic `definition_forms` map. Clojure, Elixir and Common Lisp have the
+same blindness, but none of them has been measured, so a shared key would be a
+general promise backed by one data point. If a second language earns one,
+`<lang>_definition_forms` appears beside this and unification becomes a decision
+with evidence behind it.
+
+### Docs - `.jcodemunch.jsonc` is documented for users
+
+The per-project overlay has been read since v1.108.197 and appeared in no
+user-facing document. README now describes it, what overlay semantics mean, and
+the Racket key above.
+
 
 ### Fixed - `.mts` and `.cts` indexed as nothing
 
