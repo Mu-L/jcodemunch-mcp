@@ -141,12 +141,26 @@ class TestChokepointCoverage:
 
         The dispatcher has more than a dozen return sites across the MUNCH,
         JSON, in-band-error and front-door paths.
+
+        ⚠ This counted the SUBSTRING "return" in the source and asserted it
+        equalled 1. That is a restatement of the mechanism, not the property:
+        adding a comment containing the word "returned" turned it red while the
+        wrapper still had exactly one exit (#551, 2026-08-26). Counting `Return`
+        NODES asks the question the docstring actually poses, and is immune to
+        prose.
         """
+        import ast
         import inspect
+        import textwrap
         src = inspect.getsource(S.call_tool)
         assert "_enforce_response_cap" in src
         assert "_call_tool_impl" in src
-        assert src.count("return") == 1, "the wrapper must have exactly one exit"
+        fn = ast.parse(textwrap.dedent(src)).body[0]
+        returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return)]
+        assert len(returns) == 1, (
+            f"the wrapper must have exactly one exit; found {len(returns)}. A "
+            f"second return skips the cap for whatever path takes it."
+        )
 
     def test_dispatcher_itself_does_not_apply_the_cap(self):
         """Belt-and-braces inside the dispatcher would hide a missing wrapper."""

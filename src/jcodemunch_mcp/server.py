@@ -5135,7 +5135,7 @@ def _delivery_entries(name: str, result):
                 yield got
 
 
-async def _handle_counter_tool(name: str, arguments: dict) -> list[TextContent]:
+async def _handle_counter_tool(name: str, arguments: dict) -> list[TextContent] | CallToolResult:
     """Dispatch the Counter front door (order / menu / route)."""
     if name == "order":
         return await _handle_order(arguments)
@@ -5143,7 +5143,7 @@ async def _handle_counter_tool(name: str, arguments: dict) -> list[TextContent]:
         return _handle_menu(arguments)
     if name == "route":
         return await _handle_route(arguments)
-    return [TextContent(type="text", text=json.dumps({"error": f"Unknown front-door tool '{name}'"}))]
+    return _error_call_result(json.dumps({"error": f"Unknown front-door tool '{name}'"}))
 
 
 # Common arg-name aliases agents reach for when ordering an action without the
@@ -5249,11 +5249,11 @@ async def _handle_order(arguments: dict) -> list[TextContent] | CallToolResult:
     action = arguments.get("action")
     args = arguments.get("args") or {}
     if not isinstance(args, dict):
-        return [TextContent(type="text", text=json.dumps({"error": "order 'args' must be an object."}, indent=2))]
+        return _error_call_result(json.dumps({"error": "order 'args' must be an object."}, indent=2))
     allow = bool(arguments.get("allow_state_change", False))
     err = _counter.order_gate(action, _catalog_names(), allow)
     if err is not None:
-        return [TextContent(type="text", text=json.dumps({"error": err, "tool": "order"}, indent=2))]
+        return _error_call_result(json.dumps({"error": err, "tool": "order"}, indent=2))
     return await call_tool(action, _normalize_order_args(action, dict(args)))
 
 
@@ -5283,7 +5283,7 @@ async def _handle_route(arguments: dict) -> list[TextContent] | CallToolResult:
     optionally dispatching the top one in the same call."""
     task = arguments.get("task")
     if not task or not isinstance(task, str):
-        return [TextContent(type="text", text=json.dumps({"error": "route requires a 'task' string."}, indent=2))]
+        return _error_call_result(json.dumps({"error": "route requires a 'task' string."}, indent=2))
     repo = arguments.get("repo")
     execute = bool(arguments.get("execute", False))
     names = _catalog_names()
@@ -5440,9 +5440,47 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
     # `COUNT(DISTINCT call_uid)` counts dispatcher entries rather than client requests, and
     # the front-door row has no matching ranking event.
     call_token = begin_call_context()
+    # ⚠⚠ **The outcome is DERIVED from the result the client receives, never
+    # asserted by the frame that produced it** (#551, @rknighton). It used to be
+    # a local flag in `_call_tool_impl` initialised to True, and three of its
+    # four error exits never cleared it -- so schema-validation rejections,
+    # the `search_text` argument guard and a front-door relay of a child's
+    # refusal all returned `isError=True` to the client and wrote `ok=1` to
+    # `tool_calls`, i.e. a 0% error rate over calls the client watched fail.
+    #
+    # Every layer was truthful about ITSELF; `_call_ok` meant "did this frame
+    # hit trouble", which is a different question from "did the request
+    # succeed", and nothing in the name marked the difference. Patching the
+    # three exits would leave the mechanism: a fifth exit (project-level tool
+    # disabling) has the identical shape, and `_enforce_response_cap` refuses
+    # AFTER the frame's `finally` has already written its row, so it could not
+    # be reached from inside `_call_tool_impl` at all.
+    #
+    # `isError` on the returned value is the one fact that answers the question
+    # the column is read for. It is set in exactly one place
+    # (`_error_call_result`), it covers the cap and every future exit, and it
+    # cannot drift from what the client saw because it IS what the client saw.
+    _t0_dispatch = time.perf_counter()
+    _dispatch_ok = False
     try:
-        return _enforce_response_cap(name, await _call_tool_impl(name, arguments))
+        result = _enforce_response_cap(name, await _call_tool_impl(name, arguments))
+        _dispatch_ok = not bool(getattr(result, "isError", False))
+        return result
     finally:
+        try:
+            from .storage.token_tracker import record_tool_latency
+            _duration_ms = (time.perf_counter() - _t0_dispatch) * 1000.0
+            _repo_arg = arguments.get("repo") if isinstance(arguments, dict) else None
+            # v1.108.188: persist against the store the CALL named. analyze_perf
+            # reads tool_calls and ranking_events through one base path, so a row
+            # written to the default while the reader looks in a named store is
+            # invisible to the only thing that consumes it.
+            _store_arg = arguments.get("storage_path") if isinstance(arguments, dict) else None
+            record_tool_latency(
+                name, _duration_ms, ok=_dispatch_ok, repo=_repo_arg, base_path=_store_arg,
+            )
+        except Exception:
+            logger.debug("Latency recording failed for %s", name, exc_info=True)
         end_call_context(call_token)
 
 
@@ -5452,8 +5490,22 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
     storage_path = os.environ.get("CODE_INDEX_PATH")
     logger.info("tool_call: %s args=%s", name, {k: v for k, v in arguments.items() if k != "content"})
 
-    _t0_call = time.perf_counter()
-    _call_ok = True
+    _call_ok = True  # heartbeat label ONLY; the telemetry row is derived in call_tool
+
+    def _fail(text: str) -> CallToolResult:
+        """Every error exit in THIS frame, so the heartbeat cannot report
+        "ok" for a call the client was told failed (#551).
+
+        ⚠ `tests/test_call_outcome_contract.py` walks this function's AST and
+        fails on a bare `return _error_call_result(...)` left behind here. The
+        reported defect was three exits; the guard is over the PROPERTY,
+        because a fourth was added between the flag and its reader before
+        anyone noticed the first three.
+        """
+        nonlocal _call_ok
+        _call_ok = False
+        return _error_call_result(text)
+
     _reporter_ref = None  # progress reporter; drained in finally (#359)
     _deferred_watch = None  # folder to start watching AFTER dispatch (#384)
     try:   # main handler try starts here, before coerce
@@ -5483,7 +5535,7 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
             try:
                 jsonschema.validate(instance=arguments, schema=schema)
             except jsonschema.ValidationError as e:
-                return _error_call_result(json.dumps(
+                return _fail(json.dumps(
                     {"error": f"Input validation error: {e.message}"}, indent=2
                 ))
 
@@ -5491,7 +5543,12 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
         # strict-freshness/auto-watch (the front door isn't repo-scoped; order
         # re-enters call_tool for the real action, which then runs those hooks).
         if name in _COUNTER_FRONT_DOOR:
-            return await _handle_counter_tool(name, arguments)
+            _front = await _handle_counter_tool(name, arguments)
+            if getattr(_front, "isError", False):
+                # A relayed child refusal IS this call's outcome. The relay
+                # itself succeeded, which is exactly why this was missed.
+                _call_ok = False
+            return _front
 
         # Session yield tracking (v1.108.146): repeated identical calls +
         # follow-through/edit-through signals for get_session_stats' `yield`
@@ -5529,7 +5586,7 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
                 arguments.get("query", ""), bool(arguments.get("is_regex", False))
             )
             if _arg_err is not None:
-                return _error_call_result(json.dumps(_arg_err, indent=2))
+                return _fail(json.dumps(_arg_err, indent=2))
 
         # Strict freshness mode: wait for any in-progress reindex to complete
         # before serving query results (except for write/index tools).
@@ -5547,7 +5604,7 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
         allow_disable_tier = config_module.get("allow_disabling_tier_controls", False, repo=repo_arg)
         protected_at_call = frozenset() if allow_disable_tier else _UNDISABLEABLE_TOOLS
         if name not in protected_at_call and config_module.is_tool_disabled(name, repo=repo_arg):
-            return _error_call_result(json.dumps({
+            return _fail(json.dumps({
                 "error": (
                     f"Tool '{name}' is disabled in this project's configuration. "
                     f"Project-level tool disabling is set via the 'disabled_tools' key "
@@ -7127,8 +7184,7 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
             # In-band tool error (e.g. ambiguous/not-found repo, Unknown tool).
             # Carry the same JSON body but flag isError for clients that branch
             # on it (F-P01); the v1.108.30 passthrough already kept errors JSON.
-            _call_ok = False
-            return _error_call_result(_text)
+            return _fail(_text)
         _record_response_tokens(_text)
         return [TextContent(type="text", text=_text)]
 
@@ -7148,13 +7204,13 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
                 "error": f"Internal error processing {name}",
                 "summary": f"KeyError: {e}",
             }
-            return _error_call_result(json.dumps(payload, separators=(',', ':')))
+            return _fail(json.dumps(payload, separators=(',', ':')))
         _missing_msg = f"Missing required argument: {e}. Check the tool schema for correct parameter names."
         if str(e).strip("'\"") == "repo" and _steer_state["repos"]:
             # Informed retry (v1.108.158): agents ordering without resident
             # schemas omit repo — name what this session has already resolved.
             _missing_msg += " This session has resolved: " + ", ".join(_steer_state["repos"]) + ". Pass repo=<one of these>."
-        return _error_call_result(json.dumps({"error": _missing_msg}, separators=(',', ':')))
+        return _fail(json.dumps({"error": _missing_msg}, separators=(',', ':')))
     except Exception as exc:
         _call_ok = False
         logger.error("call_tool %s failed", name, exc_info=True)
@@ -7166,7 +7222,7 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
             "error": f"Internal error processing {name}",
             "summary": summary,
         }
-        return _error_call_result(json.dumps(payload, separators=(',', ':')))
+        return _fail(json.dumps(payload, separators=(',', ':')))
     finally:
         # Flush in-flight progress notifications BEFORE the response is
         # written (the SDK writes only after call_tool returns, and finally
@@ -7195,20 +7251,6 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
                 await _auto_watch_after_tool(_deferred_watch)
             except Exception:
                 logger.debug("Deferred auto-watch failed", exc_info=True)
-        try:
-            from .storage.token_tracker import record_tool_latency
-            duration_ms = (time.perf_counter() - _t0_call) * 1000.0
-            _repo_arg = arguments.get("repo") if isinstance(arguments, dict) else None
-            # v1.108.188: persist against the store the CALL named. analyze_perf
-            # reads tool_calls and ranking_events through one base path, so a row
-            # written to the default while the reader looks in a named store is
-            # invisible to the only thing that consumes it.
-            _store_arg = arguments.get("storage_path") if isinstance(arguments, dict) else None
-            record_tool_latency(
-                name, duration_ms, ok=_call_ok, repo=_repo_arg, base_path=_store_arg,
-            )
-        except Exception:
-            logger.debug("Latency recording failed for %s", name, exc_info=True)
 
 
 async def _run_server_with_watcher(

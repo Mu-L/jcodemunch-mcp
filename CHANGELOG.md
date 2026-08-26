@@ -2,6 +2,94 @@
 
 ## [Unreleased]
 
+### Fixed - `from . import <sibling>` built an edge to `__init__.py` (#550, @rknighton)
+
+`from . import receipts` in `evidence/producers.py` is a dependency on
+`evidence/receipts.py`. The specifier that reaches the resolver is a bare `.`,
+which names the PACKAGE, and `resolve_specifier` never sees the imported names
+-- so every such import resolved to the package's `__init__.py` and the edge to
+the sibling was never built. This repo uses the form 49 times across 16 files;
+the reporter measured it alone taking `find_dead_code(granularity="file")` from
+42 dead files to 22.
+
+⚠ **Fixed at EXTRACTION, not resolution, and that is what keeps it small.** A
+per-name specifier (`.receipts`) is now emitted ALONGSIDE the bare one, so the
+26 `resolve_specifier` call sites keep their single-target contract. `from .
+import x` is either the submodule `x` or an attribute of `__init__.py`, and the
+importing file cannot say which -- so both edges are offered. `.x` resolves when
+the module exists and resolves to `None` when it does not, which every consumer
+already skips. Measured on `src/`: **87 sibling edges that did not exist, 30
+modules made reachable, 62 importing files.**
+
+⚠ **The report named one half; the dedup was the other.** `seen` keys on the
+specifier, and every bare-dot import in a file shares the same one, so a second
+`from . import b` was dropped WHOLE -- names and all. The per-name loop runs
+even when the bare specifier was already recorded.
+
+### Fixed - a prose line beginning `import ` erased a file's entire import graph
+
+Found while scanning this repo for the above, not reported. `_PY_IMPORT` matches
+any line starting `import `, docstrings included. `watcher.py`'s docstring wraps
+to `import keeps the core watcher free of a hard dependency on the CLI package,`
+-- the trailing comma leaves an empty final part, `[0]` raised `IndexError`, and
+`extract_imports` swallows the exception and returns `[]`.
+
+⚠⚠ **One wrapped sentence cost that file EVERY import edge it had, and
+downstream that is indistinguishable from a file that imports nothing.** A bogus
+specifier lifted out of prose was never the problem -- it resolves to `None` and
+is skipped. The crash was. ⚠ The swallow now logs at WARNING naming the file
+(Practice 2): the caller cannot tell `[]` from a genuine absence, so the log is
+the only signal that edges were lost.
+
+### Fixed - failed calls recorded `ok=1`, so a watched failure reported a 0% error rate (#551, @rknighton)
+
+`_call_tool_impl` tracked its outcome in a local flag initialised to `True`, and
+three of its four error exits never cleared it. Schema-validation rejections,
+the `search_text` argument guard and a front-door relay of a child's refusal all
+returned `isError=True` to the client and wrote `ok=1` to `tool_calls`.
+
+⚠⚠ **Every layer was truthful about ITSELF, which is why this survived.**
+`_call_ok` meant "did this frame hit trouble" -- the front door really did relay
+the refusal without incident, the validator really did return cleanly -- and the
+value is read downstream as "did the request succeed". Nothing in the name
+marked the difference, and the flag and its reader sit 1,700 lines apart in one
+function.
+
+⚠⚠ **Patching the three exits would have left the mechanism, and two of them
+were unreachable from inside that frame anyway.** A fifth exit (project-level
+tool disabling) has the identical shape and could not be made to fire in the
+reporter's harness; `_enforce_response_cap` refuses AFTER the frame's `finally`
+has already written its row, so **no flag inside `_call_tool_impl` could ever
+describe a capped call**. The row is now derived in `call_tool` from `isError`
+on the value it returns -- the one fact that cannot drift from what the client
+saw, because it IS what the client saw. The in-frame flag survives for the
+heartbeat's end-of-run label only, and every exit routes through a `_fail`
+helper that clears it.
+
+### Fixed - Counter `order` gate refusals carried no `isError` (#552, @rknighton)
+
+`order` refuses a call two ways -- unknown action, or a state-changing action
+without `allow_state_change` -- and both returned a JSON body whose only key was
+`error`, with the flag unset. A client branching on `isError`, which is exactly
+what v1.108.74 added it for, read a refusal as a success whose result happens to
+contain an `error` key.
+
+⚠ **Two reported, four found**: the same shape sat in `order`'s args-type guard,
+`route`'s missing-`task` guard and the front door's unknown-tool fallback. All
+four now go through `_error_call_result`.
+
+⚠ `tests/test_call_outcome_contract.py` guards both #551 and #552 as
+PROPERTIES: `_error_call_result` is unreachable as a direct return from
+`_call_tool_impl`, the row is derived in `call_tool` and nowhere else, and no
+front-door handler may return an `error` body without it. Every predicate was
+run against the pre-fix tree and every one fires.
+
+⚠ `tests/test_response_cap.py::test_call_tool_is_the_wrapper_not_the_dispatcher`
+asserted `src.count("return") == 1` -- a restatement of the mechanism that a
+comment containing the word "returned" turned red while the property it names
+still held. It counts `Return` NODES now (Practice 9).
+
+
 ## [1.108.299] - 2026-08-25 - A name the file never spells
 
 ### Added - Racket struct forms now contribute the bindings they generate

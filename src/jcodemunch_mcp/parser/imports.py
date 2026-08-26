@@ -1,6 +1,7 @@
 """Extract import statements from source files using language-specific regex patterns."""
 
 import json
+import logging
 import posixpath
 import re
 import threading
@@ -76,6 +77,8 @@ _JS_DYNAMIC_IMPORT = re.compile(r"""import\s*\(\s*['"]([^'"]+)['"]\s*\)""", re.M
 # Python: from .module import A, B  /  import os
 # Allow optional leading whitespace so function-local imports inside def/class
 # bodies are also captured (common pattern for breaking circular imports).
+logger = logging.getLogger(__name__)
+
 _PY_FROM = re.compile(
     r"""^[ \t]*from\s+(\.{0,4}[\w.]*)\s+import\s+(.+)$""", re.MULTILINE
 )
@@ -267,9 +270,51 @@ def _extract_python_imports(content: str) -> list[dict]:
             seen.add(specifier)
             edges.append({"specifier": specifier, "names": names})
 
+        # ⚠⚠ `from . import receipts` is a dependency on the SIBLING MODULE
+        # `receipts`, not on the package's `__init__.py` (#550, @rknighton).
+        # The specifier is a bare `.`, which names the package, so the resolver
+        # -- which only ever sees the specifier -- had no way to reach the
+        # sibling and every such edge pointed at `__init__.py`. This repo uses
+        # the form 49 times across 16 files, and it alone reported 20 live files
+        # as dead.
+        #
+        # ⚠ Emitted ALONGSIDE the bare specifier, never instead of it, and that
+        # is what makes this safe without touching the 26 `resolve_specifier`
+        # call sites. `from . import x` is `x` the submodule OR `x` an
+        # attribute of `__init__.py`, and which one cannot be known from the
+        # importing file. So both edges are offered: `.x` resolves when the
+        # submodule exists, resolves to None (harmless, skipped by every
+        # consumer) when it does not, and the `__init__.py` edge that already
+        # worked is left exactly as it was.
+        #
+        # ⚠ The per-name loop runs even when the bare specifier was already
+        # seen. `from . import a` followed by `from . import b` in one file
+        # otherwise loses `b` entirely -- the dedup keys on the specifier, and
+        # every bare-dot import in a file shares the same one.
+        if names and set(specifier) == {"."}:
+            for _name in names:
+                _sub = f"{specifier}{_name}"
+                if _sub not in seen:
+                    seen.add(_sub)
+                    edges.append({"specifier": _sub, "names": [_name]})
+
     for m in _PY_IMPORT.finditer(content):
         for mod in m.group(1).split(","):
-            mod = mod.strip().split()[0]  # handle 'import os as operating_system'
+            # ⚠⚠ `[0]` on an empty split raised IndexError, and `extract_imports`
+            # swallows it and returns [], so ONE bad line cost the file EVERY
+            # import edge it had. Found 2026-08-26 on this repo's own
+            # `watcher.py`, whose docstring wraps to a line reading
+            # "import keeps the core watcher free of a hard dependency ...," --
+            # `_PY_IMPORT` matches any line starting `import `, prose included,
+            # and a trailing comma leaves an empty final part.
+            #
+            # ⚠ A bogus specifier lifted out of prose is harmless: it resolves
+            # to None and every consumer skips it. The CRASH was the defect,
+            # and it was invisible because the file simply had no edges.
+            parts = mod.strip().split()
+            if not parts:
+                continue
+            mod = parts[0]  # handle 'import os as operating_system'
             if mod and mod not in seen:
                 seen.add(mod)
                 edges.append({"specifier": mod, "names": []})
@@ -910,6 +955,12 @@ def extract_imports(content: str, file_path: str, language: str) -> list[dict]:
     try:
         return extractor(content)
     except Exception:
+        # Practice 2: an extractor that raises loses EVERY edge for this file,
+        # and the caller cannot tell that from a file with no imports. Say so.
+        logger.warning(
+            "import extraction failed for %s (%s); the file will have no import edges",
+            file_path, language, exc_info=True,
+        )
         return []
 
 
