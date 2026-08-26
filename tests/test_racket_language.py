@@ -352,3 +352,151 @@ def test_an_unresolvable_collection_require_yields_no_edge():
     than having none."""
     assert resolve_specifier("racket/base", "app/main.rkt",
                              frozenset({"app/main.rkt"})) is None
+
+
+# ── synthesised struct bindings ───────────────────────────────────────────
+#
+# `(struct posn (x y))` binds `posn?`, `posn-x` and `posn-y` in addition to
+# `posn`, and those are the names callers actually write -- but none of them
+# occur anywhere in the file, so they exist only if synthesised.
+#
+# ⚠ Every expectation below was read off Racket's own expander for that exact
+# variant, not from the documentation. The rules differ in ways that are easy
+# to get backwards, and one of them (constructor-name) shipped as a fabricated
+# name until the fidelity harness caught it.
+
+
+def _names(src: str) -> set:
+    return {s.name for s in _parse("#lang racket/base\n" + src)}
+
+
+def test_plain_struct_binds_predicate_and_accessors():
+    assert _names("(struct posn (x y))") == {"posn", "posn?", "posn-x", "posn-y"}
+
+
+def test_struct_does_not_bind_a_make_constructor():
+    """`(struct posn ...)` binds `posn` as the constructor; only the
+    `define-struct` family binds `make-posn`."""
+    assert "make-posn" not in _names("(struct posn (x y))")
+
+
+def test_define_struct_binds_a_make_constructor():
+    assert "make-posn" in _names("(define-struct posn (x y))")
+
+
+def test_struct_type_descriptor_is_deliberately_not_emitted():
+    """`struct:posn` is a descriptor almost nobody calls, and one more symbol
+    matching every query for the struct is pure ranking noise."""
+    assert "struct:posn" not in _names("(struct posn (x y))")
+
+
+def test_struct_level_mutable_binds_a_setter_per_field():
+    assert _names("(struct posn (x y) #:mutable)") == {
+        "posn", "posn?", "posn-x", "posn-y", "set-posn-x!", "set-posn-y!"}
+
+
+def test_per_field_mutable_binds_only_that_setter():
+    n = _names("(struct posn (x [y #:mutable]))")
+    assert "set-posn-y!" in n
+    assert "set-posn-x!" not in n
+
+
+def test_inherited_fields_keep_the_supertypes_accessors():
+    """⚠ `(struct derived base (c))` binds `derived-c` and NOT `derived-a`.
+    Synthesising accessors for inherited fields would invent names."""
+    n = _names("(struct base (a b))\n(struct derived base (c))")
+    assert {"base-a", "base-b", "derived-c", "derived?"} <= n
+    assert "derived-a" not in n and "derived-b" not in n
+
+
+def test_constructor_name_replaces_rather_than_adds():
+    """⚠ Regression. `#:constructor-name` REPLACES the default constructor, so
+    `make-<name>` is not bound. Emitting it anyway invented
+    `make-base-object/c` in racket/private/object-c.rkt, which the fidelity
+    harness caught as the only fabricated name in 211 files."""
+    n = _names("(define-struct posn (x y) #:constructor-name NEVER_CALL_THIS)")
+    assert "NEVER_CALL_THIS" in n
+    assert "make-posn" not in n
+
+
+def test_extra_constructor_name_adds_alongside_the_default():
+    n = _names("(define-struct posn (x y) #:extra-constructor-name build-posn)")
+    assert {"make-posn", "build-posn"} <= n
+
+
+def test_serializable_struct_binds_the_same_accessor_set():
+    assert {"posn", "posn?", "posn-x", "posn-y"} <= _names(
+        "(serializable-struct posn (x y))")
+
+
+def test_serializable_struct_versions_finds_the_real_field_list():
+    """The version number sits between the name and the fields, and a trailing
+    `()` follows them -- the field list is the FIRST list, not a fixed index."""
+    assert {"posn-x", "posn-y"} <= _names(
+        "(serializable-struct/versions posn 1 (x y) ())")
+
+
+def test_contracted_struct_field_names_drop_the_contract():
+    """`(struct/contract posn ([x number?] ...))` -- the field is `x`, not the
+    whole `[x number?]` clause."""
+    assert {"posn-x", "posn-y"} <= _names(
+        "(struct/contract posn ([x number?] [y number?]))")
+
+
+def test_synthesised_names_point_at_the_struct_form():
+    """They share the struct's byte range, so `get_symbol_source("posn-x")`
+    returns the form that generates it -- the honest answer to "where does this
+    come from"."""
+    syms = {s.name: s for s in _parse("#lang racket/base\n(struct posn (x y))")}
+    struct, accessor = syms["posn"], syms["posn-x"]
+    assert accessor.line == struct.line
+    assert accessor.byte_offset == struct.byte_offset
+    assert accessor.parent == syms["posn"].id
+    assert accessor.kind == "function"
+    assert "posn-x" in accessor.signature
+
+
+@pytest.mark.parametrize("opts", [
+    "#:transparent", "#:prefab", "#:authentic", "#:sealed", "#:inspector #f",
+    "#:guard (lambda (a b n) (values a b))",
+    "#:property prop:procedure (lambda (s) 1)",
+    "#:reflection-name (quote other)",
+    "#:transparent #:authentic",
+], ids=["transparent", "prefab", "authentic", "sealed", "inspector",
+        "guard", "property", "reflection-name", "combined"])
+def test_struct_options_do_not_disturb_the_derived_names(opts):
+    """Options follow the field list, so none of them may displace it.
+
+    `#:guard` and `#:property` in particular take a `(lambda ...)` argument --
+    another list node -- so a field-list rule that took the LAST list, or a
+    fixed index, would read the guard as the fields.
+    """
+    assert _names(f"(struct posn (x y) {opts})") == {
+        "posn", "posn?", "posn-x", "posn-y"}
+
+
+def test_methods_clause_does_not_leak_its_internal_defines():
+    """`#:methods gen:x [(define (f ...) ...)]` holds real `define` forms; they
+    are class members, not module-level bindings."""
+    n = _names("(require racket/generic)\n"
+               "(struct posn (x y) #:methods gen:custom-write "
+               "[(define (write-proc s p m) (void))])")
+    assert {"posn", "posn?", "posn-x", "posn-y"} <= n
+    assert "write-proc" not in n
+
+
+def test_auto_fields_get_an_accessor():
+    assert "posn-z" in _names("(struct posn (x y [z #:auto]) #:auto-value 0)")
+
+
+def test_a_struct_with_no_fields_still_binds_a_predicate():
+    assert _names("(struct posn ())") == {"posn", "posn?"}
+
+
+@pytest.mark.parametrize("kw", ["#:name", "#:extra-name"])
+def test_name_keywords_bind_a_type_not_a_callable(kw):
+    """Both bind their argument as a struct-type transformer. Emitting it as a
+    function would claim you can call it."""
+    syms = {s.name: s for s in _parse(f"#lang racket/base\n(struct posn (x y) {kw} posn-type)")}
+    assert "posn-type" in syms
+    assert syms["posn-type"].kind == "type"

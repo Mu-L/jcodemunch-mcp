@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Added - Racket struct forms now contribute the bindings they generate
+
+`(struct posn (x y))` binds `posn?`, `posn-x` and `posn-y` as well as `posn`,
+and those are the names callers actually write -- but none of them occur
+anywhere in the file, so they exist in the index only if synthesised. They now
+are, sharing the struct form's byte range, so `get_symbol_source("posn-x")`
+returns the form that generates it. On a real Racket project this moved 1,754
+indexed symbols to 1,935; across the collects tree, +377.
+
+⚠⚠ **Every rule was read off Racket's expander per variant, not from the
+documentation, and one of them shipped wrong until the fidelity harness caught
+it.** `#:constructor-name` REPLACES the default constructor where
+`#:extra-constructor-name` ADDS one, so emitting `make-<name>` regardless
+invented `make-base-object/c` for
+`(define-struct base-object/c (...) #:constructor-name NEVER_CALL_THIS)` in
+`racket/private/object-c.rkt` -- the single fabricated name in 211 files, and
+exactly what the `extra` bucket exists to stop.
+
+⚠ **Own fields only.** `(struct derived base (c))` binds `derived-c` and not
+`derived-a`; inherited fields keep the supertype's accessors. The supertype
+occupies the slot before the field list, so the field list is the FIRST list
+child after the name rather than a fixed index -- which is also what makes
+`(serializable-struct/versions posn 1 (x y) ())` resolve to `(x y)`.
+
+⚠ Setters follow struct-level `#:mutable` or a per-field `[f #:mutable]`.
+`struct:<name>` is deliberately NOT emitted: it is a descriptor almost nobody
+calls, and one more symbol matching every query for the struct is ranking noise.
+
+⚠ `serializable-struct` and `serializable-struct/versions` were missing from the
+form table entirely, so they produced no symbol at all -- not even the struct
+name. Both are now handled.
+
+
 ## [1.108.298] - 2026-08-25 - A campaign that saw nothing
 
 ### Fixed - `refresh` certified indexes it re-parsed zero files of

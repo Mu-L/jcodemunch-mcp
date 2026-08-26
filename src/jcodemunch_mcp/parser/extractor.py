@@ -10933,6 +10933,10 @@ _RACKET_NAMED_FORMS = {
     "define-struct": "class",
     "struct/contract": "class",
     "define-struct/contract": "class",
+    # racket/serialize. Binds the same accessor set as `struct` plus a
+    # `deserialize-info:<name>-v<n>` the expander confirms we do not model.
+    "serializable-struct": "class",
+    "serializable-struct/versions": "class",
     "define-type": "type",
     "define-signature": "type",
     "define-generics": "type",
@@ -11042,6 +11046,113 @@ def _racket_head_name(node):
     return None
 
 
+
+#: Struct forms that bind a `make-<name>` constructor. Plain `struct` does NOT
+#: -- it binds `<name>` itself -- and getting this backwards invents a name.
+_RACKET_MAKE_CONSTRUCTOR_FORMS = frozenset({"define-struct", "define-struct/contract"})
+
+
+def _racket_struct_derived(form: str, name: str, kids: list, text) -> list[tuple[str, str, str, str]]:
+    """Names a Racket struct form binds that appear NOWHERE in the source text.
+
+    `(struct posn (x y))` binds `posn?`, `posn-x`, `posn-y` and `struct:posn` in
+    addition to `posn`, and those are the names callers actually write. None of
+    them occur in the file, so they can only be reached by synthesis.
+
+    Returns (name, signature, role, kind) tuples. Grounded on Racket's own expander
+    rather than on the documentation -- every rule below was checked against
+    `expand` output for that variant:
+
+      * ``<name>?`` and one ``<name>-<field>`` per field: bound by EVERY variant
+        (`struct`, `define-struct`, `struct/contract`, `define-struct/contract`,
+        `serializable-struct`), and unaffected by `#:omit-define-syntaxes`,
+        `#:constructor-name` or `#:name`.
+      * ⚠ **Own fields only.** `(struct derived base (c))` binds `derived-c` and
+        NOT `derived-a` -- inherited fields keep the supertype's accessors. The
+        supertype occupies the slot before the field list, so the field list is
+        the FIRST list child after the name, never a fixed index.
+      * ``set-<name>-<field>!`` only under struct-level ``#:mutable`` or a
+        per-field ``[f #:mutable]``.
+      * ``make-<name>`` only for the `define-struct` family; plain `struct`
+        binds `<name>` as the constructor instead.
+      * ``#:constructor-name`` / ``#:extra-constructor-name`` bind the name that
+        FOLLOWS the keyword, and `<name>` stays bound either way.
+      * ``#:name`` / ``#:extra-name`` likewise bind their argument, as a struct
+        TYPE name rather than a callable -- verified against `expand`, which
+        keeps `struct:<name>` bound alongside it in both cases.
+
+    ``struct:<name>`` is deliberately NOT emitted. It is a struct-type
+    descriptor almost nobody calls directly, and one more symbol matching every
+    query for the struct is pure ranking noise.
+    """
+    rest = kids[2:]
+    field_list = next((c for c in rest if c.type == "list"), None)
+    if field_list is None:
+        return []
+
+    struct_mutable = any(c.type == "keyword" and text(c) == "#:mutable" for c in kids)
+    out: list[tuple[str, str, str, str]] = [
+        (f"{name}?", f"({name}? v)", "predicate", "function")
+    ]
+
+    field_names: list[str] = []
+    for f in _racket_named(field_list):
+        if f.type == "symbol":
+            fname, fmut = text(f), struct_mutable
+        elif f.type == "list":
+            fk = _racket_named(f)
+            if not fk or fk[0].type != "symbol":
+                continue
+            fname = text(fk[0])
+            fmut = struct_mutable or any(
+                c.type == "keyword" and text(c) == "#:mutable" for c in fk
+            )
+        else:
+            continue
+        field_names.append(fname)
+        out.append((f"{name}-{fname}", f"({name}-{fname} v)",
+                    f"accessor for field {fname}", "function"))
+        if fmut:
+            out.append((
+                f"set-{name}-{fname}!",
+                f"(set-{name}-{fname}! v x)",
+                f"setter for field {fname}",
+                "function",
+            ))
+
+    args = " ".join(field_names)
+    # ⚠ `#:constructor-name` REPLACES the default constructor; only
+    # `#:extra-constructor-name` ADDS one alongside it. Emitting `make-<name>`
+    # regardless invented `make-base-object/c` for
+    # `(define-struct base-object/c (...) #:constructor-name NEVER_CALL_THIS)`
+    # in racket/private/object-c.rkt -- a name the expander says is not bound.
+    replaced = any(
+        c.type == "keyword" and text(c) == "#:constructor-name" for c in kids
+    )
+    if form in _RACKET_MAKE_CONSTRUCTOR_FORMS and not replaced:
+        out.append((f"make-{name}", f"(make-{name} {args})".replace(" )", ")"),
+                    "constructor", "function"))
+    #: keyword -> (role, kind, is_callable). `#:name`/`#:extra-name` bind a
+    #: struct TYPE transformer, not something you call, so they are not emitted
+    #: as functions.
+    _named_by_keyword = {
+        "#:constructor-name": ("constructor", "function", True),
+        "#:extra-constructor-name": ("constructor", "function", True),
+        "#:name": ("type name", "type", False),
+        "#:extra-name": ("type name", "type", False),
+    }
+    for i, c in enumerate(kids):
+        if c.type != "keyword":
+            continue
+        spec = _named_by_keyword.get(text(c))
+        if spec and i + 1 < len(kids) and kids[i + 1].type == "symbol":
+            role, kind, callable_ = spec
+            cname = text(kids[i + 1])
+            sig = f"({cname} {args})".replace(" )", ")") if callable_ else cname
+            out.append((cname, sig, role, kind))
+    return out
+
+
 def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
     """Extract symbols from Racket source using tree-sitter.
 
@@ -11094,7 +11205,7 @@ def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
             prev = prev.prev_named_sibling
         return "\n".join(p for p in parts if p).strip()
 
-    def _emit(node, name, kind, sig, scope, parent_id=None) -> None:
+    def _emit(node, name, kind, sig, scope, parent_id=None, docstring=None) -> None:
         qualified = f"{scope}::{name}" if scope else name
         if pending["name"] == name and pending["type"]:
             sig = f"{sig} : {pending['type']}"
@@ -11106,7 +11217,7 @@ def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
             file=filename, name=name, qualified_name=qualified,
             kind=kind, language="racket",
             signature=_squash(sig)[:120],
-            docstring=_preceding_comment(node),
+            docstring=_preceding_comment(node) if docstring is None else docstring,
             parent=parent_id,
             line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
@@ -11259,6 +11370,22 @@ def _parse_racket_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
                     elif len(kids) >= 3:
                         extra = " " + _text(kids[2])
                     _emit(node, name, kind, f"({form} {name}{extra})", scope)
+                    if kind == "class":
+                        # Racket's struct macros bind accessors, a predicate and
+                        # sometimes setters that occur NOWHERE in the file. They
+                        # are what callers actually write, so they are
+                        # synthesised here and share the struct form's byte
+                        # range -- `get_symbol_source("posn-x")` returns the
+                        # struct that generates it, which is the honest answer
+                        # to "where does this come from".
+                        qual = f"{scope}::{name}" if scope else name
+                        struct_id = make_symbol_id(filename, qual, "class")
+                        for dname, dsig, role, dkind in _racket_struct_derived(
+                            form, name, kids, _text
+                        ):
+                            _emit(node, dname, dkind, dsig, scope,
+                                  parent_id=struct_id,
+                                  docstring=f"{role} of ({form} {name})")
                     return
 
                 if form in _RACKET_VALUES_FORMS and kids[1].type == "list":
