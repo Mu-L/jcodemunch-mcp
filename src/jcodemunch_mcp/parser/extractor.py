@@ -11476,6 +11476,23 @@ def _parse_racket_symbols(
                               parent_id=parent_id)
                     return
 
+            # Nothing matched. ⚠ Do NOT fall through into the body of an
+            # unrecognised form: a `define` inside a macro invocation, a
+            # contract combinator or a generics clause is an INTERNAL
+            # definition, and emitting it claims an importable binding that
+            # does not exist. Only splicing forms keep module scope.
+            #
+            # ⚠⚠ This guard was deleted once, by an edit that moved the
+            # declared-forms block and spliced this away with it. Every test
+            # over this path asserted PRESENCE -- that a splicing head IS
+            # descended into -- so all of them stayed green while the guard was
+            # gone, and only the fidelity corpus noticed: `extra` 0 -> 5,
+            # `wrong_span` 0 -> 26. `test_unrecognised_forms_are_not_descended`
+            # asserts the absence, which is the direction that was missing.
+            if not (kids and kids[0].type == "symbol"
+                    and _text(kids[0]) in _RACKET_SPLICING_HEADS):
+                return
+
         for child in node.children:
             _walk(child, scope, in_class)
 

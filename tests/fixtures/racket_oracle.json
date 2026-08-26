@@ -217,6 +217,12 @@
           "kind": "value",
           "line": 24,
           "name": "outer-with-helper"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 35,
+          "name": "with-locals"
         }
       ],
       "exports": [

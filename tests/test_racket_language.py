@@ -605,3 +605,47 @@ def test_declared_form_inside_a_submodule_is_scoped(declared):
     declared(CONSCRIPT)
     names = _decl_names("(module+ test\n  (defstep (t-helper) (void)))")
     assert names["t-helper"].qualified_name == "test::t-helper"
+
+
+# ── the descent allow-list, asserted in BOTH directions ───────────────────
+#
+# ⚠⚠ This guard was deleted once and nothing noticed. An edit that moved the
+# declared-forms block spliced away the `Nothing matched` return with it, so
+# `_walk` recursed into every unrecognised form. All eight CI jobs and the full
+# local suite stayed green, because every test over this path asserted
+# PRESENCE -- that a splicing head IS descended into -- and descending into
+# everything satisfies that too. Only the fidelity corpus saw it: `extra` went
+# 0 -> 5 and `wrong_span` 0 -> 26, re-emitting the very names #548 added the
+# guard to suppress.
+#
+# So both directions are pinned here. The absence test fails if the guard is
+# removed; the presence test fails if a future early return over-suppresses.
+
+
+def test_unrecognised_forms_are_not_descended(declared):
+    """A `define` inside a form we do not recognise is an INTERNAL definition.
+
+    `(some-unknown-macro (define hidden 42))` binds nothing importable, so
+    emitting `hidden` claims a binding Racket does not create. Measured on the
+    real corpus, losing this guard fabricated `cmp/c`, `elem/c`, `equal-key/c`,
+    `kind/c` and `lazy?` from contract combinators in racket/set.rkt.
+    """
+    declared({})
+    names = _decl_names(
+        "(define (real-fn x) (+ x 1))\n"
+        "(some-unknown-macro\n"
+        "  (define hidden-internal 42)\n"
+        "  (define (hidden-fn y) y))"
+    )
+    assert "real-fn" in names, "non-vacuity: the file must still parse"
+    assert "hidden-internal" not in names
+    assert "hidden-fn" not in names
+
+
+def test_splicing_forms_are_still_descended(declared):
+    """The other direction. `begin` SPLICES, so `(begin (define a 1))` really
+    does define `a` at module level -- a guard that returned on everything
+    would silently drop it."""
+    declared({})
+    names = _decl_names("(begin (define spliced-in 1))")
+    assert "spliced-in" in names
