@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.299] - 2026-08-25 - A name the file never spells
+
 ### Added - Racket struct forms now contribute the bindings they generate
 
 `(struct posn (x y))` binds `posn?`, `posn-x` and `posn-y` as well as `posn`,
@@ -33,6 +35,27 @@ calls, and one more symbol matching every query for the struct is ranking noise.
 ⚠ `serializable-struct` and `serializable-struct/versions` were missing from the
 form table entirely, so they produced no symbol at all -- not even the struct
 name. Both are now handled.
+
+### Changed - `PARSER_GENERATION` 2 -> 3
+
+The struct bindings above change WHICH SYMBOLS EXIST for a file whose content
+never changes, so an index that already holds `.rkt` files will never re-read
+them and the accessors will never appear. That is the one shape this counter
+is for.
+
+⚠ **#548 shipped Racket itself WITHOUT a bump and that was correct.** `.rkt`
+was `wrong_extension` in every index that existed, so the language arrived
+through DISCOVERY -- a file nobody had parsed cannot hold a stale parse. This
+release is the opposite case: 1.108.297 and 1.108.298 both parse Racket, so an
+index built by either holds `.rkt` at generation 2 with the old symbol set.
+**Coverage does not need a bump; extraction does**, and the two arriving one
+release apart is the clearest statement of that line we are likely to get.
+
+⚠ **Scope is NARROW and is not being oversold.** Three extensions, and the
+window of affected indexes opened 2026-08-24. The bump is not proportionate to
+the damage -- it is proportionate to the fact that the damage is unrepairable
+if we skip it. A stamp EQUAL to the constant is indistinguishable from a
+genuine one, so this decision is cheap today and impossible next week.
 
 ### Fixed - the Racket coverage figure had three mirrors and only one was regenerated
 

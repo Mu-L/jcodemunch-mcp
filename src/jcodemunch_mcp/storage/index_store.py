@@ -98,7 +98,24 @@ INDEX_VERSION = 17
 #   versions is specced in docs/prd-extraction-fingerprint.md; until that
 #   exists, ANY parser change that alters which symbols exist must bump this
 #   line in the same commit.
-PARSER_GENERATION = 2
+#
+# gen 3 (1.108.299, #549): Racket `struct` forms now contribute the accessors,
+#   predicate, setters and constructors the macro generates — names that occur
+#   NOWHERE in the file text, so they exist in an index only if synthesised.
+#
+#   ⚠ #548 shipped Racket itself WITHOUT a bump and that was correct: `.rkt`
+#   was `wrong_extension` in every existing index, so the language arrived
+#   through DISCOVERY. This one is the opposite case and the distinction is
+#   the whole test — 1.108.297 and 1.108.298 both parse `.rkt`, so an index
+#   built by either holds Racket files at generation 2 with the old symbol
+#   set, the content is unchanged, and the incremental path will never re-read
+#   them. Coverage does not need a bump; extraction does.
+#
+#   ⚠ Scope is NARROW and should not be oversold: `.rkt`/`.rktl`/`.rktd` only,
+#   and the window of affected indexes opened on 2026-08-24. It is bumped
+#   anyway because a stamp equal to the constant is unrepairable later, which
+#   makes the cheap decision now and the impossible one afterwards.
+PARSER_GENERATION = 3
 
 
 @dataclass(frozen=True)

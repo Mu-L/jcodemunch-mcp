@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
+- **[v1.108.299](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.299)** (2026-08-25) — A name the file never spells
 - **[v1.108.298](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.298)** (2026-08-25) — A campaign that saw nothing
 - **[v1.108.297](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.297)** (2026-08-25) — The counter that never moved
-- **[v1.108.296](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.296)** (2026-08-24) — Four ways a guard can be present without working
 <!-- WHATSNEW:END -->
 
 ---
