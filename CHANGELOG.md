@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.301] - 2026-08-26 - Green on a defect, three times
+
 ### Fixed - `search_ast` encoded to an empty table for every language and preset (#553, @RascoApps)
 
 The compact encoder declared table key `results`, scalar `result_count` and
