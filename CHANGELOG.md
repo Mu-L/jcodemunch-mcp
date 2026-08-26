@@ -2,6 +2,75 @@
 
 ## [Unreleased]
 
+### Fixed - `search_ast` encoded to an empty table for every language and preset (#553, @RascoApps)
+
+The compact encoder declared table key `results`, scalar `result_count` and
+meta `files_searched`. The tool has always returned `matches`, `total_matches`
+and `files_scanned`. `response.get("results", [])` found nothing, so every
+`search_ast` call over the compact path produced a header, a scalar line and
+NO ROWS -- for every language, every preset and every custom DSL pattern.
+Reproduced on a clean index: 2 matches in, 0 rows out.
+
+⚠⚠ **The fail-closed guard could not see this class, and that is the finding
+worth keeping.** `schema_driven` raises when a table has rows but no declared
+column was populated (#354). A wrong table KEY produces no rows at all, so
+`out_rows` is empty and the guard never runs. It was built for a schema that
+disagrees with its producer about COLUMNS and is structurally blind to one
+that disagrees about the KEY.
+
+⚠ Checked whether the reported site was the only one instead of assuming:
+every encoder schema's declared table keys were cross-referenced against its
+producing tool. `search_ast` is the only one. The two `__rows__` keys are
+deliberate -- `_flatten()` populates them before `sd.encode` -- and
+`cross_repo_edges` is emitted by subscript assignment.
+
+⚠⚠ **The reported FIX would have been worse than the defect.** It proposed six
+columns inferred from two presets. The match dict is heterogeneous: across all
+ten detectors it carries SIXTEEN keys, eleven common and five
+pattern-specific (`marker`, `value`, `callee`, `loop_depth`, `nesting_depth`)
+-- and those five are the ones that say what the finding actually found. A
+`todo_fixme` row without `marker` cannot say whether it hit a TODO or a HACK.
+Dropping them still populates `file` and `line`, so `any_value` is true and the
+guard stays quiet: **a total, loud data loss becomes a partial, silent one.**
+Demonstrated, not argued -- with that column list the row test passes and the
+field test fails.
+
+The eleven common keys are columns; the five pattern-specific ones ride as one
+JSON `details` cell that `decode` re-expands, the shape `search_text` already
+uses for `before`/`after`. `ENCODING_ID` goes `sa1` -> `sa2` with
+`LEGACY_ENCODING_IDS = ("sa1",)`, because the table key and columns both
+change and that is a wire-format change -- the same call `search_text` made at
+`st1` -> `st2`.
+
+⚠ `tests/test_search_ast_encoder_contract.py` carries the regression AND the
+ratchet the reporter asked for: every encoder's declared table key must name
+something its tool emits. It is a text scan, weaker than executing every tool,
+and it is exactly what was missing. **Run against the reintroduced defect, not
+only the fixed tree: 4 of its 18 assertions fail there, the ratchet among
+them.**
+
+⚠⚠ **`search_ast` ALREADY HAD a green round-trip test, and finding out why it
+was green is the more useful half of this fix.** Two independent failures, both
+in `tests/encoding/test_tier1_roundtrip.py`:
+
+**Its fixture was fabricated in the SCHEMA's image.** It passed
+`result_count` / `results` / `match_type` / `symbol_id` / `files_searched` --
+not one of which search_ast has ever returned. Both sides were wrong the same
+way, so the round trip closed perfectly over a shape that does not exist. A
+hand-written fixture authored from the encoder tests the encoder against
+itself. The replacement is MEASURED from the live tool across its ten presets
+and carries two detectors, so the heterogeneous rows are exercised.
+
+**Its assertion looped over a HARDCODED list of five table keys** --
+`affected_symbols`, `chains`, `results`, `context_items`, `plates`. `matches`
+was not among them, so for search_ast the loop body ran ZERO times and the
+case asserted nothing whatsoever. It also checked key PRESENCE, so a key
+surviving with zero rows counted as a pass. The keys are now derived from the
+RESPONSE -- the producer's truth, not a roster someone must remember to extend
+-- row COUNT is asserted, and a fixture holding no table now fails as
+near-vacuous. **That rewrite alone catches #553 with no other change.**
+
+
 ### Fixed - `.mts` and `.cts` indexed as nothing
 
 TypeScript's ESM and CommonJS module extensions were listed in the reindex
