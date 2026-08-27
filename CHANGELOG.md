@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Fixed - `max_nesting` could not see Python's control flow (`PARSER_GENERATION` 5 -> 6)
+
+`_max_nesting_depth` counted BRACKETS, deliberately, to stay language-agnostic
+across 70+ languages. In a brace language `{` tracks blocks and that is roughly
+right. In Python, `if` / `for` / `while` open a block with a colon and an
+indent and contribute NO bracket depth -- so the field silently reported the
+deepest EXPRESSION instead: a different quantity wearing the same name.
+
+⚠⚠ **Measured on this repo's own `index_folder`: brackets said 3, Python's AST
+says 6.** An underreport by HALF, on the one axis that distinguishes a wide flat
+dispatcher from deeply tangled logic. **The number was not merely imprecise --
+it supported the opposite conclusion about the symbol**, which is how it was
+found: `max_nesting: 3` alongside `cyclomatic: 460` reads as "a big dispatcher,
+the complexity metric is overstating it". The function is 1,662 lines with 121
+conditionals nested six deep.
+
+⚠ **The fix takes the MAX of two channels rather than switching on language.**
+Taking the max can only RAISE a reported depth, so a language already measured
+correctly by brackets still is -- verified on Java (unchanged, bracket channel
+wins) and on minified JS, which has no indentation at all and would report 0
+from the new channel alone. That case is why brackets could not simply be
+replaced.
+
+⚠ **`max_nesting` is reported everywhere and scored NOWHERE** --
+`_complexity_assessment` and `hotspot_score` both use cyclomatic alone -- so
+this corrects a user-facing number without moving a single grade. Surfaced by
+`get_symbol_complexity`, `get_hotspots`, `get_extraction_candidates` and
+`get_pr_risk_profile`.
+
+⚠⚠ **A literal BACKSPACE character (0x08) got into the opener regex during
+editing, in place of ``, and it compiled, ran and passed `ruff`.** An
+invisible control character is not a lint problem, it is a correctness one:
+without the word boundary `iffy` matches `if` and `format` matches `for`.
+`tests/test_nesting_depth_channels.py` pins the boundary behaviourally AND
+scans the module for stray control characters.
+
+⚠ The `index_folder` test asserts against Python's own AST rather than a
+literal 6, because that symbol will change and a hard-coded number has to be
+edited every time it does -- at which point nobody checks whether the edit was
+correct. Two of its 14 assertions fail against the bracket-only tree.
+
+
 ## [1.108.302] - 2026-08-27 - Nothing we could say about Rust
 
 ### Fixed - three Rust definition classes that yielded no symbol at all (`PARSER_GENERATION` 4 -> 5)

@@ -153,7 +153,29 @@ INDEX_VERSION = 17
 #   95.0% -> 95.8%, and `missing_unexplained` went from three kinds to none.
 #   `benchmarks/rust_fidelity/` is the artifact; `extra` and `wrong_span` stay
 #   at 0 either side.
-PARSER_GENERATION = 5
+#
+# gen 6 (1.108.303-dev): max_nesting could not see Python's control flow.
+#
+#   `_max_nesting_depth` counted BRACKETS to stay language-agnostic. In a brace
+#   language `{` tracks blocks; in Python `if`/`for`/`while` open a block with a
+#   colon and an indent and contribute NO bracket depth, so the field reported
+#   the deepest EXPRESSION instead -- a different quantity under the same name.
+#
+#   ⚠⚠ Measured on this repo's `index_folder`: brackets 3, AST truth 6. An
+#   underreport by HALF on the one axis that separates a wide flat dispatcher
+#   from deeply tangled logic, i.e. it supported the opposite conclusion about
+#   the symbol. Now max(bracket, indentation), which can only raise a depth, so
+#   brace languages and minified bodies are unchanged.
+#
+#   ⚠ SYMBOLS on UNCHANGED CONTENT again, same argument as gen 5: max_nesting is
+#   stored per symbol, incremental never re-reads unchanged files, so without a
+#   bump every existing index keeps the wrong depth forever.
+#
+#   ⚠ Second bump in two releases. That is the cost of this counter being
+#   MANUAL, not a reason to skip one -- and the value is user-facing via
+#   get_symbol_complexity, get_hotspots, get_extraction_candidates and
+#   get_pr_risk_profile. It feeds NO score, so no grade moves.
+PARSER_GENERATION = 6
 
 
 @dataclass(frozen=True)

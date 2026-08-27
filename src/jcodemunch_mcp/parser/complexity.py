@@ -22,6 +22,21 @@ _BRANCH_RE = re.compile(
 _OPEN_BRACKETS = frozenset("{[(")
 _CLOSE_BRACKETS = frozenset("}])")
 
+#: Line-leading keywords that OPEN a control-flow block, across the language
+#: families this parser covers. Used for the indentation channel below.
+#:
+#: ⚠ Continuation-only keywords (`else`, `elif`, `except`, `finally`, `catch`)
+#: are deliberately INCLUDED: each opens a block at its own level, and omitting
+#: them under-counts an `else:` that itself contains nesting.
+_BLOCK_OPENERS = (
+    "if", "elif", "else", "for", "while", "do", "try", "except", "finally",
+    "catch", "switch", "case", "when", "match", "foreach", "unless", "loop",
+    "with", "guard", "repeat", "begin", "rescue", "ensure", "until", "async",
+)
+_BLOCK_OPENER_RE = re.compile(
+    r"^\s*(?:" + "|".join(_BLOCK_OPENERS) + r")\b"
+)
+
 
 def _count_params(signature: str) -> int:
     """Count parameters in the first parenthesised group of *signature*.
@@ -66,10 +81,9 @@ def _count_params(signature: str) -> int:
     return commas + 1
 
 
-def _max_nesting_depth(body: str) -> int:
-    """Approximate max bracket-nesting depth relative to the symbol start.
+def _bracket_nesting_depth(body: str) -> int:
+    """Max bracket-nesting depth relative to the symbol start.
 
-    Uses bracket counting rather than indentation to stay language-agnostic.
     The opening bracket on the first line is treated as depth 0; each
     additional ``{``, ``[``, or ``(`` increments depth.
     """
@@ -87,6 +101,47 @@ def _max_nesting_depth(body: str) -> int:
         elif ch in _CLOSE_BRACKETS:
             depth = max(0, depth - 1)
     return max_depth
+
+
+def _indent_nesting_depth(body: str) -> int:
+    """Max control-flow block depth inferred from INDENTATION.
+
+    ⚠⚠ Brackets cannot see Python's control flow. `if` / `for` / `while` open a
+    block with a colon and an indent, contributing NO bracket depth, so the
+    bracket channel silently reports the deepest EXPRESSION instead -- a
+    different quantity wearing the same field name. Measured on this repo's own
+    `index_folder`: brackets said 3, real control flow nests 6.
+
+    A stack of open block indents gives the depth directly, and it needs no
+    language parameter: a brace language that also indents lands on the same
+    answer, and one that does not still has the bracket channel.
+    """
+    stack: list[int] = []
+    max_depth = 0
+    for raw in body.split("\n"):
+        if not raw.strip() or not _BLOCK_OPENER_RE.match(raw):
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        # A sibling or outdented opener closes everything at or below it.
+        while stack and stack[-1] >= indent:
+            stack.pop()
+        stack.append(indent)
+        if len(stack) > max_depth:
+            max_depth = len(stack)
+    # The symbol's own `def`/`function` line is depth 0, so an opener directly
+    # inside the body is depth 1 -- which is what the stack length already is.
+    return max_depth
+
+
+def _max_nesting_depth(body: str) -> int:
+    """Deepest nesting the symbol reaches, by whichever channel can see it.
+
+    ⚠ The MAX of two channels, never one: brackets are the only signal in a
+    minified or brace-heavy body, and indentation is the only signal in an
+    indentation-scoped language. Taking the max can only raise the reported
+    depth, so a language that was measured correctly before still is.
+    """
+    return max(_bracket_nesting_depth(body), _indent_nesting_depth(body))
 
 
 def compute_complexity(body: str, signature: str = "") -> tuple[int, int, int]:
