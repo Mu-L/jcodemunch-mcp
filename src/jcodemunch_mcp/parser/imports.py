@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import posixpath
 import re
 import threading
@@ -905,6 +906,118 @@ def _extract_racket_imports(content: str) -> list[dict]:
                 seen.add(key)
                 edges.append({"specifier": spec, "names": names})
     return edges
+
+
+# `(define collection "name")` or `(define collection 'multi)` in an info.rkt.
+_RACKET_INFO_COLLECTION_RE = re.compile(
+    r"\(define\s+collection\s+(?:\"([^\"]+)\"|'multi\b|\(quote\s+multi\))"
+)
+_racket_collection_cache: dict[tuple, dict[str, list[str]]] = {}
+
+
+def build_racket_collection_map(source_root: str, source_files) -> dict[str, list[str]]:
+    """Collection name -> root-relative directories, from every `info.rkt`.
+
+    ⚠ A Racket collection path names a DIRECTORY that `info.rkt` declares,
+    not a path in the repo. In the layout the packaging docs prescribe --
+    `foo-lib/info.rkt` holding `(define collection "foo")` -- `(require
+    foo/bar)` means `foo-lib/bar.rkt`, and there is no way to know that
+    without reading the file. Measured before this existed: **splitflap, 0 of
+    70 require edges resolved**; congame, 147 own-collection specifiers
+    unresolved. Every library file read as dead. This is the PSR-4 shape
+    (:func:`build_psr4_map`), where `composer.json` maps a namespace prefix
+    to a directory.
+
+    A `'multi` package makes every subdirectory a collection named after
+    itself. ⚠ Several directories may declare the SAME collection -- Racket
+    splices them (`congame-cli`, `congame-core` and `congame-doc` all declare
+    `"congame"`) -- so the value is a LIST, in discovery order.
+
+    Cached per (source_root, info.rkt set); the set is part of the key so an
+    added package is seen without a restart.
+    """
+    infos = tuple(sorted(
+        p for p in source_files if p == "info.rkt" or p.endswith("/info.rkt")
+    ))
+    key = (source_root, infos)
+    cached = _racket_collection_cache.get(key)
+    if cached is not None:
+        return cached
+    mapping: dict[str, list[str]] = {}
+    for info in infos:
+        try:
+            with open(os.path.join(source_root, *info.split("/")), encoding="utf-8", errors="replace") as fh:
+                text = fh.read(65536)
+        except OSError:
+            logger.debug("info.rkt unreadable: %s", info, exc_info=True)
+            continue
+        m = _RACKET_INFO_COLLECTION_RE.search(text)
+        if not m:
+            continue
+        d = posixpath.dirname(info)
+        if m.group(1):
+            dirs = mapping.setdefault(m.group(1), [])
+            if d not in dirs:
+                dirs.append(d)
+        else:
+            prefix = d + "/" if d else ""
+            for f in source_files:
+                if not (f.startswith(prefix) and f.endswith(_RACKET_EXTENSIONS)):
+                    continue
+                rest = f[len(prefix):]
+                if "/" not in rest:
+                    continue
+                sub = rest.split("/", 1)[0]
+                sub_dir = posixpath.join(d, sub) if d else sub
+                dirs = mapping.setdefault(sub, [])
+                if sub_dir not in dirs:
+                    dirs.append(sub_dir)
+    _racket_collection_cache[key] = mapping
+    return mapping
+
+
+def augment_racket_collection_edges(imports: dict, source_root: str, source_files) -> int:
+    """Add a root-relative file edge beside each collection-path require.
+
+    `(require splitflap/constructs)` from `splitflap-lib/main.rkt` keeps its
+    edge to the specifier `splitflap/constructs` -- which resolves to nothing,
+    and every consumer already skips an unresolved edge -- and gains one to
+    `splitflap-lib/constructs.rkt`, which `resolve_specifier` matches
+    directly. A bare collection name (`(require splitflap)`) names the
+    collection's `main.rkt`. Same shape as #550: the edge is ADDED at the
+    index, so the 26 `resolve_specifier` call sites keep their single-target
+    contract and nothing threads a map through them.
+
+    Idempotent: an edge already present is not added twice, so running at
+    every `CodeIndex` construction (index time AND load time) is safe.
+    Returns the number of edges added.
+    """
+    if not imports:
+        return 0
+    cmap = build_racket_collection_map(source_root, source_files)
+    if not cmap:
+        return 0
+    added = 0
+    for importer, edges in imports.items():
+        if not importer.endswith(_RACKET_EXTENSIONS) or not edges:
+            continue
+        present = {e.get("specifier") for e in edges}
+        new: list[dict] = []
+        for e in edges:
+            spec = e.get("specifier") or ""
+            if not spec or spec.startswith((".", "/")) or spec.endswith(_RACKET_EXTENSIONS):
+                continue
+            head, _, rest = spec.partition("/")
+            for d in cmap.get(head, ()):
+                leaf = rest + ".rkt" if rest else "main.rkt"
+                target = posixpath.normpath(posixpath.join(d, leaf) if d else leaf)
+                if target in source_files and target not in present:
+                    new.append({"specifier": target, "names": list(e.get("names") or [])})
+                    present.add(target)
+                    added += 1
+        if new:
+            edges.extend(new)
+    return added
 
 
 _LANGUAGE_EXTRACTORS = {

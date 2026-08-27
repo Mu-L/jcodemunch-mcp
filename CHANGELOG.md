@@ -189,6 +189,42 @@ first argument is skipped. `(submod "other.rkt" sub)` is a dependency on
 `".."` name this file. `(require-syntax ...)` no longer matches the `require`
 scan (`\b` treats `-` as a boundary).
 
+### Fixed - Racket: a collection path resolves through `info.rkt`, the way PSR-4 does
+
+⚠⚠ **A Racket collection path names a DIRECTORY that `info.rkt` declares, not
+a path in the repo.** In the layout the packaging docs prescribe --
+`foo-lib/info.rkt` holding `(define collection "foo")` -- `(require foo/bar)`
+means `foo-lib/bar.rkt`, and nothing in the specifier says so. The resolver
+tried `foo/bar.rkt` at the repo root and importer-relative, both of which
+exist only when the repo IS a collects root, which is what the fidelity
+corpus is and what no package is. Measured on two real projects: **splitflap,
+0 of 70 require edges resolved; congame, 147 own-collection specifiers
+unresolved.** Every library file in both read as dead -- the #548 symptom
+(78% of the collects tree dead) on every package-layout repo, while
+`LANGUAGE_SUPPORT.md` said collection paths resolve.
+
+`build_racket_collection_map(source_root, source_files)` reads every
+`info.rkt` in the index: `(define collection "name")` maps `name` to that
+directory, `'multi` makes each subdirectory a collection named after itself.
+⚠ Several directories may declare ONE collection -- Racket splices them, and
+`congame-cli`, `congame-core` and `congame-doc` all declare `"congame"` -- so
+the value is a list. A bare `(require foo)` is the collection's `main.rkt`.
+
+⚠ **The edge is ADDED beside the collection-path edge, not threaded through
+the resolver** -- the #550 shape. `augment_racket_collection_edges` runs in
+`CodeIndex.__post_init__`, so an index built by the indexer carries the
+edges into its save and an older index gains them on load; it is idempotent,
+so both are safe; and the 26 `resolve_specifier` call sites keep their
+single-target contract. The original `foo/bar` edge still resolves to
+nothing and every consumer already skips it. An installed collection
+(`racket/list`) is not in any `info.rkt` and gains nothing: an edge to a
+file that is not the one Racket would load is worse than none.
+
+Measured after: splitflap **0 -> 13** resolved edges, 7 of 17 files gain an
+importer; congame **304 -> 624**. `tests/test_racket_collections.py` goes
+through `resolve_specifier` for every added edge, because an edge nothing
+downstream can resolve is indistinguishable from no edge.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

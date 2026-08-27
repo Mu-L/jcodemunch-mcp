@@ -302,6 +302,19 @@ class CodeIndex:
                     self.psr4_map = build_psr4_map(self.source_root)
             except Exception:
                 pass
+        # Racket: a collection path names a DIRECTORY declared by info.rkt,
+        # so `(require foo/bar)` from `foo-lib/` resolves through a map the
+        # way PHP's PSR-4 does. The map's edges are ADDED here, beside the
+        # collection-path edge, rather than threaded through the resolver's
+        # 26 call sites (the #550 shape). Runs at construction, so an index
+        # built by the indexer carries them into its save, and an older index
+        # gains them on load; idempotent, so both are safe.
+        if self.imports and self.source_root and "racket" in (self.languages or {}):
+            try:
+                from ..parser.imports import augment_racket_collection_edges
+                augment_racket_collection_edges(self.imports, self.source_root, self._source_file_set)
+            except Exception:
+                logger.debug("racket collection edges unavailable", exc_info=True)
 
     def get_callers_by_name(self) -> dict[tuple[str, str], list[str]]:
         """Lazy reverse lookup: (caller_file, called_name) -> [symbol IDs].
