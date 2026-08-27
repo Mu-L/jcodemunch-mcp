@@ -305,7 +305,9 @@ bodies** — `#[cfg]`-paired inner `fn`, 8× in one ripgrep file; stopping at it
 level calls them fabrications and **inverts the `extra` gate**. 35 -> 0. (3) Walk
 **nested** blocks too (`for` body, `match` arm) — now `syn::visit::Visit`, which
 recurses by default, because **a hand-rolled walk only sees where its author
-remembered to look**.
+remembered to look**. ⚠ `build_oracle()` also reused a STALE binary after a
+failed rebuild, reporting the numbers UNCHANGED — which reads as "the change had
+no effect" rather than "the change did not compile". It always rebuilds now.
 
 ⚠ CI runs `tests/test_rust_fidelity.py` off FROZEN oracle data (no toolchain, no
 network); regenerate per `tests/fixtures/rust/REGENERATE.md`.
