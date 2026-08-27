@@ -67,6 +67,14 @@ def by_file(oracle):
     return grouped
 
 
+# ⚠⚠ Read off disk, never written out as a literal. The three names that used
+# to sit in every `parametrize` below were a SECOND roster beside the frozen
+# artifact, and only the artifact had a test keeping it honest -- so a fixture
+# added and regenerated correctly still walked past `extra` and `wrong_span`.
+# `qualification.rs` was added on 2026-08-27 and was ungated on arrival.
+_FIXTURE_NAMES = sorted(p.name for p in _FIXTURES.glob("*.rs"))
+
+
 def _jcm(rel: str):
     path = _FIXTURES / rel
     content = path.read_text(encoding="utf-8")
@@ -99,7 +107,7 @@ def test_fixture_set_matches_the_frozen_oracle(by_file):
     )
 
 
-@pytest.mark.parametrize("rel", ["basics.rs", "guards.rs", "sample.rs"])
+@pytest.mark.parametrize("rel", _FIXTURE_NAMES)
 def test_no_fabricated_symbols(rel, by_file):
     """`extra` must be 0. This is the gate that matters most."""
     known = {d["name"] for d in by_file[rel]}
@@ -110,7 +118,7 @@ def test_no_fabricated_symbols(rel, by_file):
     )
 
 
-@pytest.mark.parametrize("rel", ["basics.rs", "guards.rs", "sample.rs"])
+@pytest.mark.parametrize("rel", _FIXTURE_NAMES)
 def test_no_wrong_spans(rel, by_file):
     """Every definition we DO find must fall inside the span we would return."""
     syms = _jcm(rel)
@@ -135,6 +143,51 @@ def test_no_wrong_spans(rel, by_file):
             continue
         wrong.append((name, sorted(lines), [[s.line, _end_line(s)] for s in candidates]))
     assert not wrong, f"{rel}: definition outside our span: {wrong}"
+
+
+@pytest.mark.parametrize("rel", _FIXTURE_NAMES)
+def test_no_undercount(rel, by_file):
+    """Every definition must be found as many times as Rust binds it.
+
+    ⚠⚠ The three gates above key on bare names in a SET, and a set cannot
+    count. Proven 2026-08-27 by deleting the second symbol of every duplicated
+    name in this fixture set: `extra` and `missing` did not move. ripgrep's
+    `crates/core/flags/defs.rs` binds `is_switch` 108 times, so a run that
+    extracted ONE of them scored identically to a perfect one.
+
+    Counted on the QUALIFIED name, because that is the only spelling under
+    which `Alpha.new` and `Beta.new` are two things rather than one.
+    """
+    want = collections.Counter(
+        d["qual"] for d in by_file[rel] if d["kind"] not in _KNOWN_UNEMITTED
+    )
+    got = collections.Counter(s.qualified_name for s in _jcm(rel))
+    short = {q: (n, got.get(q, 0)) for q, n in want.items() if got.get(q, 0) < n}
+    assert not short, f"{rel}: found fewer than Rust binds (want, got): {short}"
+
+
+@pytest.mark.parametrize("rel", _FIXTURE_NAMES)
+def test_qualification_matches_the_parser(rel, by_file):
+    """A definition we find must be filed under the owner Rust gives it.
+
+    ⚠ `impl Display for Foo` puts `fmt` on **Foo**, not on `Display`. Keying
+    on the trait is the same collision one level up: every type's `fmt` lands
+    in one bucket. This is a wrong answer where `test_no_undercount` is a
+    short one, so they are separate gates.
+    """
+    want: dict[str, set[str]] = collections.defaultdict(set)
+    for d in by_file[rel]:
+        if d["kind"] not in _KNOWN_UNEMITTED:
+            want[d["name"]].add(d["qual"])
+    by_name: dict[str, set[str]] = collections.defaultdict(set)
+    for s in _jcm(rel):
+        by_name[s.name].add(s.qualified_name)
+    wrong = {
+        name: {"rust": sorted(quals), "jcm": sorted(by_name[name])}
+        for name, quals in want.items()
+        if by_name.get(name) and by_name[name] != quals
+    }
+    assert not wrong, f"{rel}: filed under the wrong owner: {wrong}"
 
 
 def test_nested_cfg_functions_are_found(by_file):

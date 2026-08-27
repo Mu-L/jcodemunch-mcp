@@ -609,6 +609,18 @@ def _walk_tree(
                         _extract_python_class_fields(node, symbol, source_bytes, filename, language)
                     )
 
+    # ⚠⚠ A container becomes a parent above only if it EMITTED a symbol, and
+    # `impl_item` deliberately emits none -- so without this its methods walk
+    # out with no scope at all. Measured on ripgrep at the pinned fidelity SHA:
+    # 1,331 of 3,514 symbols (37.9%), across 44 of 110 files, shared a bare
+    # name with another symbol in the SAME file. `crates/core/flags/defs.rs`
+    # alone repeated `is_switch` 108 times, one per flag.
+    if language == "rust" and node.type == "impl_item":
+        impl_scope = _rust_impl_scope(node, source_bytes, filename)
+        if impl_scope is not None:
+            next_parent = impl_scope
+            next_is_container = True
+
     # Check for arrow/function-expression variable assignments in JS/TS
     if node.type == "variable_declarator" and language in ("javascript", "typescript", "tsx"):
         var_func = _extract_variable_function(
@@ -638,7 +650,21 @@ def _walk_tree(
         or (parent_is_container and language in _CLASS_SCOPED_CONSTANT_LANGUAGES)
         or language in _FUNCTION_SCOPED_CONSTANT_LANGUAGES
     ):
-        symbols.extend(_extract_constants(node, spec, source_bytes, filename, language))
+        consts = _extract_constants(node, spec, source_bytes, filename, language)
+        # ⚠⚠ `_constant_symbol` hardcodes `qualified_name = name` and takes no
+        # parent, so a `const` declared inside `impl HyperlinkFormat` came out
+        # as a bare `BORROWED`. Qualifying at the CALL SITE keeps this to Rust:
+        # threading a parent through `_extract_constants` reaches the Bash, Go,
+        # PHP and Java binders too, which is the blast radius the note above
+        # declines to take. Found by the fidelity harness only AFTER it learned
+        # to compare qualified names -- 35 constants on ripgrep, invisible to
+        # every bucket that shipped with it.
+        if language == "rust" and parent_symbol is not None:
+            for c in consts:
+                c.qualified_name = f"{parent_symbol.qualified_name}.{c.name}"
+                c.id = make_symbol_id(filename, c.qualified_name, "constant")
+                c.parent = parent_symbol.id
+        symbols.extend(consts)
 
     # A JS/TS class field INITIALIZER is not the class body. Everything the
     # initializer contains is attributed to the field, never to the class.
@@ -688,6 +714,74 @@ def _walk_tree(
 # TS/TSX grammars (`public_field_definition`). Both hold the initializer whose
 # contents must not be attributed to the enclosing class.
 _JS_CLASS_FIELD_NODE_TYPES = frozenset({"field_definition", "public_field_definition"})
+
+
+def _rust_impl_type_name(node, source_bytes: bytes) -> Optional[str]:
+    """The name of the type an `impl` block implements FOR.
+
+    ⚠⚠ The `type` field, never the `trait` field. In `impl Display for Foo`
+    the methods belong to `Foo` -- `Display` is which contract they satisfy,
+    not who owns them. Keying on the trait puts every type's `fmt` in one
+    bucket named `Display`, which is the same collision one level over.
+
+    Unwraps the four shapes tree-sitter produces for that field:
+    `Foo`, `Foo<'a, T>` (generic_type), `dyn Speak` (dynamic_type) and
+    `Mod::Nested` (scoped_type_identifier, kept whole -- it is how Rust
+    spells the name).
+    """
+    ty = node.child_by_field_name("type")
+    seen = 0
+    while ty is not None and seen < 8:
+        seen += 1
+        if ty.type == "generic_type":
+            ty = ty.child_by_field_name("type")
+        elif ty.type in ("reference_type", "dynamic_type"):
+            inner = ty.child_by_field_name("type")
+            if inner is None:
+                # `dyn Speak` exposes no `type` field in some grammar
+                # versions; fall back to the last named child.
+                inner = ty.named_children[-1] if ty.named_children else None
+            if inner is None or inner is ty:
+                break
+            ty = inner
+        else:
+            break
+    if ty is None:
+        return None
+    text = source_bytes[ty.start_byte:ty.end_byte].decode("utf-8", errors="replace")
+    # `impl Matcher for (u8, u8)` -> `(u8,u8)`. Whitespace inside a type is the
+    # author's formatting, not part of the name, and leaving it in makes the
+    # owner unquotable and unstable across reformatting.
+    return " ".join(text.split()).replace(" ", "") or None
+
+
+def _rust_impl_scope(node, source_bytes: bytes, filename: str) -> Optional[Symbol]:
+    """A naming scope for the inside of an `impl` block.
+
+    Returns a ``Symbol`` used ONLY as a `parent_symbol` while walking the
+    block -- it is never appended, so this adds no symbol and changes no
+    count. That is the whole reason it exists: `impl Foo` is a naming SCOPE,
+    not a definition. Rust has no `impl` you can import, `syn` does not treat
+    one as an item, and emitting it would both duplicate `struct Foo` and
+    register as a fabrication against the fidelity oracle.
+
+    ⚠ `id` is the id the TYPE symbol carries when it lives in this file, so a
+    method's `parent` edge points at the struct/enum it hangs off. Across
+    files the edge does not resolve, which is the ordinary condition for any
+    cross-file parent.
+    """
+    name = _rust_impl_type_name(node, source_bytes)
+    if not name:
+        return None
+    return Symbol(
+        id=make_symbol_id(filename, name, "type"),
+        file=filename,
+        name=name,
+        qualified_name=name,
+        kind="type",
+        language="rust",
+        signature="",
+    )
 
 
 def _js_field_scope(node, parent_symbol: Symbol, source_bytes: bytes, language: str):

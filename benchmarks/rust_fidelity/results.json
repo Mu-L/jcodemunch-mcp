@@ -3,9 +3,11 @@
     "files_parsed": 110,
     "files_failed": 0,
     "oracle_defs": 3684,
-    "jcm_symbols": 3514,
+    "jcm_symbols": 3517,
     "extra": 0,
     "wrong_span": 0,
+    "undercount": 0,
+    "qual_mismatch": 0,
     "missing": 156,
     "missing_by_kind": {
       "module": 126,
@@ -25,6 +27,8 @@
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -33,6 +37,8 @@
       "oracle_defs": 37,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -41,6 +47,8 @@
       "oracle_defs": 17,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -53,6 +61,8 @@
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -65,6 +75,8 @@
       "oracle_defs": 17,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -77,6 +89,8 @@
       "oracle_defs": 14,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "decompress",
@@ -95,6 +109,8 @@
       "oracle_defs": 12,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -107,6 +123,8 @@
       "oracle_defs": 22,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -115,6 +133,8 @@
       "oracle_defs": 13,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -123,6 +143,8 @@
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -131,6 +153,8 @@
       "oracle_defs": 3,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -139,6 +163,8 @@
       "oracle_defs": 5,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "bash",
@@ -154,6 +180,8 @@
       "oracle_defs": 3,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -162,6 +190,8 @@
       "oracle_defs": 1,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -170,6 +200,8 @@
       "oracle_defs": 7,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -182,6 +214,8 @@
       "oracle_defs": 1025,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "convert",
@@ -195,6 +229,8 @@
       "oracle_defs": 10,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "write"
@@ -207,6 +243,8 @@
       "oracle_defs": 5,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "write",
@@ -220,6 +258,8 @@
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "help",
@@ -234,6 +274,8 @@
       "oracle_defs": 8,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -242,6 +284,8 @@
       "oracle_defs": 53,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -250,6 +294,8 @@
       "oracle_defs": 44,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -258,6 +304,8 @@
       "oracle_defs": 27,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "complete",
@@ -276,6 +324,8 @@
       "oracle_defs": 26,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -284,6 +334,8 @@
       "oracle_defs": 11,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -292,6 +344,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -300,6 +354,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -308,6 +364,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "imp",
@@ -321,6 +379,8 @@
       "oracle_defs": 6,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -329,6 +389,8 @@
       "oracle_defs": 18,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "flags",
@@ -345,6 +407,8 @@
       "oracle_defs": 13,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "eprintln_locked",
@@ -360,6 +424,8 @@
       "oracle_defs": 28,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -368,6 +434,8 @@
       "oracle_defs": 19,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -376,6 +444,8 @@
       "oracle_defs": 7,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -384,6 +454,8 @@
       "oracle_defs": 91,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "baseliteral",
@@ -406,6 +478,8 @@
       "oracle_defs": 109,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "fnv",
@@ -421,6 +495,8 @@
       "oracle_defs": 8,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "ext",
@@ -438,6 +514,8 @@
       "oracle_defs": 17,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -450,6 +528,8 @@
       "oracle_defs": 3,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -458,6 +538,8 @@
       "oracle_defs": 3,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -466,6 +548,8 @@
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -478,6 +562,8 @@
       "oracle_defs": 81,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -490,6 +576,8 @@
       "oracle_defs": 54,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "ignored",
@@ -506,6 +594,8 @@
       "oracle_defs": 69,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -518,6 +608,8 @@
       "oracle_defs": 45,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "err"
@@ -541,6 +633,8 @@
       "oracle_defs": 28,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -553,6 +647,8 @@
       "oracle_defs": 14,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -561,6 +657,8 @@
       "oracle_defs": 33,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -573,6 +671,8 @@
       "oracle_defs": 181,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -585,6 +685,8 @@
       "oracle_defs": 7,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -593,6 +695,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -601,6 +705,8 @@
       "oracle_defs": 24,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -609,6 +715,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "index",
@@ -622,6 +730,8 @@
       "oracle_defs": 74,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "t"
@@ -637,6 +747,8 @@
       "oracle_defs": 12,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "c",
@@ -650,10 +762,12 @@
     },
     {
       "file": "crates/matcher/src/lib.rs",
-      "jcm_symbols": 102,
+      "jcm_symbols": 104,
       "oracle_defs": 105,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -662,6 +776,8 @@
       "oracle_defs": 15,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -670,6 +786,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "test_matcher",
@@ -683,6 +801,8 @@
       "oracle_defs": 18,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -691,6 +811,8 @@
       "oracle_defs": 6,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -699,6 +821,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "error",
@@ -712,6 +836,8 @@
       "oracle_defs": 40,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -724,6 +850,8 @@
       "oracle_defs": 28,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -732,6 +860,8 @@
       "oracle_defs": 15,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -740,6 +870,8 @@
       "oracle_defs": 3,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -748,6 +880,8 @@
       "oracle_defs": 69,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "aliases",
@@ -761,6 +895,8 @@
       "oracle_defs": 44,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -773,6 +909,8 @@
       "oracle_defs": 21,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -785,6 +923,8 @@
       "oracle_defs": 12,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "color",
@@ -807,6 +947,8 @@
       "oracle_defs": 1,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "assert_eq_printed"
@@ -819,6 +961,8 @@
       "oracle_defs": 12,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -827,6 +971,8 @@
       "oracle_defs": 181,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -839,6 +985,8 @@
       "oracle_defs": 23,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -847,6 +995,8 @@
       "oracle_defs": 66,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -859,6 +1009,8 @@
       "oracle_defs": 43,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -871,6 +1023,8 @@
       "oracle_defs": 14,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -883,6 +1037,8 @@
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -895,6 +1051,8 @@
       "oracle_defs": 17,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -903,6 +1061,8 @@
       "oracle_defs": 7,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -911,6 +1071,8 @@
       "oracle_defs": 8,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "ast",
@@ -930,6 +1092,8 @@
       "oracle_defs": 69,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -942,6 +1106,8 @@
       "oracle_defs": 52,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -954,6 +1120,8 @@
       "oracle_defs": 9,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -966,6 +1134,8 @@
       "oracle_defs": 8,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -978,6 +1148,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -986,6 +1158,8 @@
       "oracle_defs": 6,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "line_buffer",
@@ -1003,6 +1177,8 @@
       "oracle_defs": 63,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -1015,6 +1191,8 @@
       "oracle_defs": 31,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -1027,6 +1205,8 @@
       "oracle_defs": 1,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "assert_eq_printed"
@@ -1039,6 +1219,8 @@
       "oracle_defs": 34,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -1047,6 +1229,8 @@
       "oracle_defs": 61,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -1059,6 +1243,8 @@
       "oracle_defs": 7,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -1067,6 +1253,8 @@
       "oracle_defs": 64,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "core",
@@ -1078,10 +1266,12 @@
     },
     {
       "file": "crates/searcher/src/sink.rs",
-      "jcm_symbols": 54,
+      "jcm_symbols": 55,
       "oracle_defs": 56,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "sinks"
@@ -1094,6 +1284,8 @@
       "oracle_defs": 50,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "tests"
@@ -1106,6 +1298,8 @@
       "oracle_defs": 1,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -1114,6 +1308,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -1122,6 +1318,8 @@
       "oracle_defs": 2,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "basic",
@@ -1135,6 +1333,8 @@
       "oracle_defs": 18,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -1143,6 +1343,8 @@
       "oracle_defs": 3,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "macro": [
           "eqnice",
@@ -1157,6 +1359,8 @@
       "oracle_defs": 1,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     },
     {
@@ -1165,6 +1369,8 @@
       "oracle_defs": 10,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {
         "module": [
           "binary",
@@ -1186,6 +1392,8 @@
       "oracle_defs": 44,
       "extra": [],
       "wrong_span": [],
+      "undercount": [],
+      "qual_mismatch": [],
       "missing": {}
     }
   ]

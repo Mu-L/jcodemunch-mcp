@@ -46,7 +46,12 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 #: Buckets whose only acceptable value is zero. A non-zero entry means the index
 #: would state something untrue, which is the failure this exists to catch.
-HARD_FAIL = ("extra", "wrong_span")
+# ⚠ `undercount` and `qual_mismatch` gate at 0 alongside the original two.
+# They were added 2026-08-27 after a name-keyed SET comparison scored a 37.9%
+# collision rate on ripgrep as a perfect run -- 1,331 of 3,514 symbols sharing
+# a bare name with a sibling in the same file, none of it visible to any bucket
+# that existed. A measurement that cannot fail on a defect is not a gate.
+HARD_FAIL = ("extra", "wrong_span", "undercount", "qual_mismatch")
 
 #: Oracle kinds jCodeMunch deliberately does not emit. Each carries a REASON,
 #: never a blanket category -- an exemption covering a class hides the next
@@ -175,6 +180,38 @@ def classify(root: Path, oracle_doc: dict) -> dict:
             if d["name"] not in jcm_by_name:
                 missing[d["kind"]].append(d["name"])
 
+        # ⚠⚠ Everything above keys on a bare name in a SET, and a set cannot
+        # count. Proven 2026-08-27 by deleting the second symbol of every
+        # duplicated name in the fixtures: `extra` and `missing` did not move.
+        # `crates/core/flags/defs.rs` defines `is_switch` 108 times, so a run
+        # that extracted ONE of them scored identically to a perfect one.
+        # These two buckets are the part that can count.
+        oracle_quals: collections.Counter = collections.Counter(
+            d["qual"] for d in oracle_defs if d["kind"] not in KNOWN_UNEMITTED
+        )
+        jcm_quals: collections.Counter = collections.Counter(
+            s.qualified_name for s in syms
+        )
+        undercount = [
+            {"qual": q, "oracle": n, "jcm": jcm_quals.get(q, 0)}
+            for q, n in sorted(oracle_quals.items())
+            if jcm_quals.get(q, 0) < n
+        ]
+        # A name we DO find, filed under an owner the parser disagrees with.
+        # Reported apart from `undercount` because the causes differ: this is
+        # a wrong answer, that one is a short answer.
+        oracle_names = collections.defaultdict(set)
+        for d in oracle_defs:
+            if d["kind"] not in KNOWN_UNEMITTED:
+                oracle_names[d["name"]].add(d["qual"])
+        qual_mismatch = []
+        for name, want in sorted(oracle_names.items()):
+            got = {s.qualified_name for s in jcm_by_name.get(name, [])}
+            if got and got != want:
+                qual_mismatch.append(
+                    {"name": name, "oracle": sorted(want), "jcm": sorted(got)}
+                )
+
         per_file.append(
             {
                 "file": rel,
@@ -182,6 +219,8 @@ def classify(root: Path, oracle_doc: dict) -> dict:
                 "oracle_defs": len(oracle_defs),
                 "extra": extra,
                 "wrong_span": wrong_span,
+                "undercount": undercount,
+                "qual_mismatch": qual_mismatch,
                 "missing": {k: sorted(v) for k, v in sorted(missing.items())},
             }
         )
@@ -204,6 +243,8 @@ def summarize(result: dict, oracle_doc: dict) -> dict:
         "jcm_symbols": sum(f["jcm_symbols"] for f in pf),
         "extra": sum(len(f["extra"]) for f in pf),
         "wrong_span": sum(len(f["wrong_span"]) for f in pf),
+        "undercount": sum(len(f["undercount"]) for f in pf),
+        "qual_mismatch": sum(len(f["qual_mismatch"]) for f in pf),
         "missing": total_missing,
         "missing_by_kind": dict(missing_by_kind.most_common()),
         "missing_unexplained": dict(sorted(unexplained.items())),

@@ -26,6 +26,13 @@ catches a fixture added without regenerating, but it cannot catch a fixture
 *edited* without regenerating — the file set still matches while the definitions
 no longer do. Regenerate on every edit, not only on every addition.
 
+⚠⚠ **The oracle emits `qual` as well as `name`, and the gates that read it are
+the ones a set could not provide.** `test_no_undercount` counts qualified names,
+`test_qualification_matches_the_parser` compares owners. Regenerating with an
+oracle built before 2026-08-27 writes an artifact with no `qual` field and both
+gates raise `KeyError` rather than passing quietly — which is the intended
+failure, not a bug to work around.
+
 ## Adding a fixture
 
 Fixtures cover **grammar shapes**, deliberately including ones real code rarely
@@ -33,6 +40,10 @@ uses. That is not redundant with the pinned corpus in
 `benchmarks/rust_fidelity/corpus.json`: ripgrep contains no `union`, so a
 110-file run over real code scored the `union` gap as absent. The fixtures found
 it in sixty lines.
+
+The `parametrize` roster is read off disk, so a new fixture is gated the moment
+it lands. ⚠ It used to be three literal filenames — a SECOND roster beside this
+artifact, and only the artifact had a test keeping it honest.
 
 If a new fixture surfaces a gap, add its oracle **kind** to `_KNOWN_GAPS` in
 `tests/test_rust_fidelity.py` with a one-line reason, or fix the extractor. Do

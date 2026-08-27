@@ -439,7 +439,20 @@ RUST_SPEC = LanguageSpec(
         # It yielded NO symbol at all -- not even the name.
         "union_item": "type",
         "trait_item": "type",
-        "impl_item": "class",
+        # ⚠ A trait's ASSOCIATED TYPE (`type Captures;`) is `associated_type`,
+        # a different node from the `type_item` an impl writes. Same shape as
+        # `function_signature_item` one line up, and the same consequence: the
+        # half of a trait's contract an implementor MUST supply was the half
+        # we could not find. `Matcher::Captures` and `Sink::Error` in ripgrep.
+        "associated_type": "type",
+        # ⚠⚠ `impl_item` is a CONTAINER but NOT a symbol, and the two lists
+        # below say so separately. It sat here mapped to "class" for the
+        # extractor's whole life and never produced one symbol, because no
+        # `name_fields` entry could name it -- so removing it changes no
+        # output. It must stay absent: `impl Foo` is a naming scope, there is
+        # no `impl` a caller can import, and emitting one would duplicate
+        # `struct Foo` and score as a fabrication against `syn`, which does
+        # not treat an impl block as a definition either.
         "type_item": "type",
     },
     name_fields={
@@ -449,6 +462,7 @@ RUST_SPEC = LanguageSpec(
         "enum_item": "name",
         "union_item": "name",
         "trait_item": "name",
+        "associated_type": "name",
         "type_item": "name",
     },
     param_fields={

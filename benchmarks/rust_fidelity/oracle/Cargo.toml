@@ -5,6 +5,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# Only for impl_owner's fallback: a self type with no path
+# (&[u8], (u8, u8)) must be rendered from its tokens.
+quote = "1"
 syn = { version = "2", features = ["full", "extra-traits", "parsing", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 serde_json = "1"

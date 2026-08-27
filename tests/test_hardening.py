@@ -257,24 +257,39 @@ class TestPerLanguageExtraction:
     # Special / negative / inline-source tests (keep separate)
     # ------------------------------------------------------------------
 
-    def test_rust_impl_block_not_extracted(self):
-        """impl_item is in symbol_node_types but has no name_fields entry,
-        so the extractor skips it (returns None from _extract_name).
-        Functions inside impl are still extracted as top-level functions."""
+    def test_rust_impl_block_is_not_a_symbol(self):
+        """An `impl` block binds no name a caller can reach.
+
+        ⚠ The assertion is unchanged; the REASON is not. This used to read
+        "impl_item is in symbol_node_types but has no name_fields entry, so
+        the extractor skips it" -- a description of the mechanism, and of a
+        defect: nothing was naming the block, so nothing could qualify its
+        members either. `impl_item` is a container now and emits no symbol
+        deliberately, which is also what `syn` says an impl block is.
+        """
         content, fname = _fixture("rust", "sample.rs")
         symbols = parse_file(content, fname, "rust")
         grouped = _kinds(symbols)
         impl_syms = grouped.get("class", [])
         assert len(impl_syms) == 0
 
-    def test_rust_fn_in_impl(self):
-        """Without the impl parent being extracted, 'new' appears as a
-        top-level function rather than a method."""
+    def test_rust_fn_in_impl_belongs_to_its_type(self):
+        """A method in `impl User` is `User.new`, not a free-floating `new`.
+
+        ⚠⚠ This test asserted the OPPOSITE until 2026-08-27 -- `kind ==
+        "function"` and `parent is None`, under the docstring "Without the
+        impl parent being extracted, 'new' appears as a top-level function
+        rather than a method." That is the defect written down as intended
+        behaviour, so the test could only pass while the defect existed
+        (Practice 9). Measured on ripgrep, it cost 37.9% of symbols a
+        distinguishable name.
+        """
         content, fname = _fixture("rust", "sample.rs")
         symbols = parse_file(content, fname, "rust")
         new_sym = _by_name(symbols, "new")
-        assert new_sym.kind == "function"
-        assert new_sym.parent is None
+        assert new_sym.kind == "method"
+        assert new_sym.qualified_name == "User.new"
+        assert new_sym.parent is not None
 
     def test_cpp_overload_disambiguation(self):
         content, fname = _fixture("cpp", "sample.cpp")

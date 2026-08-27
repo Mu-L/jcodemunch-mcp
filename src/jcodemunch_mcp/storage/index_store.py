@@ -175,7 +175,35 @@ INDEX_VERSION = 17
 #   MANUAL, not a reason to skip one -- and the value is user-facing via
 #   get_symbol_complexity, get_hotspots, get_extraction_candidates and
 #   get_pr_risk_profile. It feeds NO score, so no grade moves.
-PARSER_GENERATION = 6
+# gen 7 (1.108.303-dev): Rust impl methods had no owner.
+#
+#   `impl Foo { fn new }` and `impl Bar { fn new }` both emitted a bare `new`,
+#   kind `function`, parent None -- distinguished only by a `~1`/`~2` suffix on
+#   the id. The trait's own declaration qualified correctly (`T.go`), so traits
+#   had an owner and impls did not. `impl_item` sat in `symbol_node_types`
+#   mapped to "class" for the extractor's whole life and never produced one
+#   symbol, because no `name_fields` entry could name it -- and a container
+#   becomes a parent only if it EMITTED one.
+#
+#   ⚠⚠ Measured on ripgrep @ 3fce3b5b: 1,331 of 3,514 symbols (37.9%) shared a
+#   bare name with a sibling in the SAME file, across 44 of 110 files.
+#   `crates/core/flags/defs.rs` alone repeated `is_switch` 108 times, one per
+#   flag. After: 55 (1.6%). Also +3 symbols -- `associated_type` (a trait's
+#   `type Carried;`) was absent from the spec, the same shape as gen 5's
+#   `function_signature_item`.
+#
+#   ⚠⚠ The fidelity harness scored all of this as a PERFECT run and could not
+#   have done otherwise: it keyed bare names in a SET, and a set cannot count.
+#   Proven by deleting the second symbol of every duplicated name in the
+#   fixtures -- `extra` and `missing` did not move. `undercount` and
+#   `qual_mismatch` now gate at 0 beside them, and the oracle emits `qual`.
+#
+#   ⚠ SYMBOLS on UNCHANGED CONTENT, third time running: `qualified_name`,
+#   `kind` (2,199 Rust symbols promoted `function` -> `method`) and `parent`
+#   are all stored per symbol. `search_symbols`, `find_references` and
+#   `check_rename_safe` all read them, so an unbumped index keeps answering
+#   `Foo::new` and `Bar::new` as one name forever.
+PARSER_GENERATION = 7
 
 
 @dataclass(frozen=True)

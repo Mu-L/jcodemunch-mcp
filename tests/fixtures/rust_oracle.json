@@ -4,214 +4,389 @@
       "file": "basics.rs",
       "kind": "struct",
       "line": 9,
-      "name": "Config"
+      "name": "Config",
+      "qual": "Config"
     },
     {
       "file": "basics.rs",
       "kind": "struct",
       "line": 25,
-      "name": "Error"
+      "name": "Error",
+      "qual": "Error"
     },
     {
       "file": "basics.rs",
       "kind": "constant",
       "line": 7,
-      "name": "GREETING"
+      "name": "GREETING",
+      "qual": "GREETING"
     },
     {
       "file": "basics.rs",
       "kind": "constant",
       "line": 6,
-      "name": "MAX_DEPTH"
+      "name": "MAX_DEPTH",
+      "qual": "MAX_DEPTH"
     },
     {
       "file": "basics.rs",
       "kind": "enum",
       "line": 13,
-      "name": "Mode"
+      "name": "Mode",
+      "qual": "Mode"
     },
     {
       "file": "basics.rs",
       "kind": "trait",
       "line": 67,
-      "name": "Probe"
+      "name": "Probe",
+      "qual": "Probe"
     },
     {
       "file": "basics.rs",
       "kind": "union",
       "line": 18,
-      "name": "Raw"
+      "name": "Raw",
+      "qual": "Raw"
     },
     {
       "file": "basics.rs",
       "kind": "trait",
       "line": 27,
-      "name": "Render"
+      "name": "Render",
+      "qual": "Render"
     },
     {
       "file": "basics.rs",
       "kind": "type",
       "line": 23,
-      "name": "Result2"
+      "name": "Result2",
+      "qual": "Result2"
     },
     {
       "file": "basics.rs",
       "kind": "method",
       "line": 49,
-      "name": "clamp"
+      "name": "clamp",
+      "qual": "Config.clamp"
     },
     {
       "file": "basics.rs",
       "kind": "method",
       "line": 55,
-      "name": "fmt"
+      "name": "fmt",
+      "qual": "Error.fmt"
     },
     {
       "file": "basics.rs",
       "kind": "module",
       "line": 75,
-      "name": "inner"
+      "name": "inner",
+      "qual": "inner"
     },
     {
       "file": "basics.rs",
       "kind": "function",
       "line": 76,
-      "name": "nested_in_module"
+      "name": "nested_in_module",
+      "qual": "nested_in_module"
     },
     {
       "file": "basics.rs",
       "kind": "method",
       "line": 45,
-      "name": "new"
+      "name": "new",
+      "qual": "Config.new"
     },
     {
       "file": "basics.rs",
       "kind": "method",
       "line": 68,
-      "name": "probe_signature_only"
-    },
-    {
-      "file": "basics.rs",
-      "kind": "method",
-      "line": 29,
-      "name": "render"
+      "name": "probe_signature_only",
+      "qual": "Probe.probe_signature_only"
     },
     {
       "file": "basics.rs",
       "kind": "method",
       "line": 39,
-      "name": "render"
+      "name": "render",
+      "qual": "Config.render"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 29,
+      "name": "render",
+      "qual": "Render.render"
     },
     {
       "file": "basics.rs",
       "kind": "method",
       "line": 32,
-      "name": "render_twice"
+      "name": "render_twice",
+      "qual": "Render.render_twice"
     },
     {
       "file": "basics.rs",
       "kind": "function",
       "line": 71,
-      "name": "top_level"
+      "name": "top_level",
+      "qual": "top_level"
     },
     {
       "file": "guards.rs",
       "kind": "struct",
       "line": 59,
-      "name": "HasFields"
+      "name": "HasFields",
+      "qual": "HasFields"
     },
     {
       "file": "guards.rs",
       "kind": "enum",
       "line": 63,
-      "name": "HasVariants"
+      "name": "HasVariants",
+      "qual": "HasVariants"
     },
     {
       "file": "guards.rs",
       "kind": "constant",
       "line": 81,
-      "name": "LOCAL_LIMIT"
+      "name": "LOCAL_LIMIT",
+      "qual": "holds_consts.LOCAL_LIMIT"
     },
     {
       "file": "guards.rs",
       "kind": "type",
       "line": 70,
-      "name": "Output"
+      "name": "Output",
+      "qual": "HasFields.Output"
     },
     {
       "file": "guards.rs",
       "kind": "method",
       "line": 72,
-      "name": "add"
+      "name": "add",
+      "qual": "HasFields.add"
     },
     {
       "file": "guards.rs",
       "kind": "function",
       "line": 30,
-      "name": "calls_macros"
+      "name": "calls_macros",
+      "qual": "calls_macros"
     },
     {
       "file": "guards.rs",
       "kind": "function",
       "line": 52,
-      "name": "holds_a_closure"
+      "name": "holds_a_closure",
+      "qual": "holds_a_closure"
     },
     {
       "file": "guards.rs",
       "kind": "function",
       "line": 80,
-      "name": "holds_consts"
+      "name": "holds_consts",
+      "qual": "holds_consts"
     },
     {
       "file": "guards.rs",
       "kind": "function",
       "line": 16,
-      "name": "imp"
+      "name": "imp",
+      "qual": "platform_dependent.imp"
     },
     {
       "file": "guards.rs",
       "kind": "function",
       "line": 21,
-      "name": "imp"
+      "name": "imp",
+      "qual": "platform_dependent.imp"
     },
     {
       "file": "guards.rs",
       "kind": "function",
       "line": 14,
-      "name": "platform_dependent"
+      "name": "platform_dependent",
+      "qual": "platform_dependent"
     },
     {
       "file": "guards.rs",
       "kind": "macro",
       "line": 40,
-      "name": "shout"
+      "name": "shout",
+      "qual": "shout"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "struct",
+      "line": 10,
+      "name": "Alpha",
+      "qual": "Alpha"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "struct",
+      "line": 11,
+      "name": "Beta",
+      "qual": "Beta"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "type",
+      "line": 70,
+      "name": "Carried",
+      "qual": "(u8,u8).Carried"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "type",
+      "line": 41,
+      "name": "Carried",
+      "qual": "Alpha.Carried"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "type",
+      "line": 48,
+      "name": "Carried",
+      "qual": "Beta.Carried"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "type",
+      "line": 35,
+      "name": "Carried",
+      "qual": "Carrier.Carried"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "trait",
+      "line": 31,
+      "name": "Carrier",
+      "qual": "Carrier"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "struct",
+      "line": 56,
+      "name": "Holder",
+      "qual": "Holder"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "constant",
+      "line": 21,
+      "name": "LIMIT",
+      "qual": "Alpha.LIMIT"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "constant",
+      "line": 28,
+      "name": "LIMIT",
+      "qual": "Beta.LIMIT"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "constant",
+      "line": 83,
+      "name": "SCALE",
+      "qual": "outer_helper.SCALE"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 71,
+      "name": "carry",
+      "qual": "(u8,u8).carry"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 42,
+      "name": "carry",
+      "qual": "Alpha.carry"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 49,
+      "name": "carry",
+      "qual": "Beta.carry"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 37,
+      "name": "carry",
+      "qual": "Carrier.carry"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 61,
+      "name": "get",
+      "qual": "Holder.get"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "function",
+      "line": 80,
+      "name": "helper",
+      "qual": "outer_helper.helper"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 15,
+      "name": "new",
+      "qual": "Alpha.new"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "method",
+      "line": 25,
+      "name": "new",
+      "qual": "Beta.new"
+    },
+    {
+      "file": "qualification.rs",
+      "kind": "function",
+      "line": 79,
+      "name": "outer_helper",
+      "qual": "outer_helper"
     },
     {
       "file": "sample.rs",
       "kind": "constant",
       "line": 1,
-      "name": "MAX_RETRIES"
+      "name": "MAX_RETRIES",
+      "qual": "MAX_RETRIES"
     },
     {
       "file": "sample.rs",
       "kind": "struct",
       "line": 4,
-      "name": "User"
+      "name": "User",
+      "qual": "User"
     },
     {
       "file": "sample.rs",
       "kind": "function",
       "line": 17,
-      "name": "authenticate"
+      "name": "authenticate",
+      "qual": "authenticate"
     },
     {
       "file": "sample.rs",
       "kind": "method",
       "line": 11,
-      "name": "new"
+      "name": "new",
+      "qual": "User.new"
     }
   ],
   "failed_files": [],
   "files_failed": 0,
-  "files_parsed": 3
+  "files_parsed": 4
 }

@@ -2,6 +2,60 @@
 
 ## [Unreleased]
 
+### Fixed - Rust impl methods had no owner, and the harness could not tell
+
+`impl Foo { fn new }` and `impl Bar { fn new }` both emitted a bare `new`, kind
+`function`, parent `None` -- separated only by a `~1`/`~2` suffix on the id. The
+trait's own declaration qualified correctly (`T.go`), so **traits had an owner
+and impls did not**. `impl_item` sat in `symbol_node_types` mapped to `"class"`
+for the extractor's whole life and never produced a single symbol, because no
+`name_fields` entry could name it -- and a container becomes a parent only if it
+EMITTED one. It is a naming scope now (`_rust_impl_scope`), emitting nothing,
+which is also what `syn` says an impl block is.
+
+⚠⚠ **Measured on ripgrep @ `3fce3b5b`: 1,331 of 3,514 symbols (37.9%), across 44
+of 110 files, shared a bare name with a sibling in the SAME file.**
+`crates/core/flags/defs.rs` alone repeated `is_switch` 108 times, one per flag,
+so `search_symbols("is_switch")` returned 108 indistinguishable rows. After:
+**55 (1.6%)**, and 0 once qualified. 2,199 symbols also move `function` ->
+`method`, which they always were.
+
+⚠⚠ **`benchmarks/rust_fidelity/` scored every bit of this as a PERFECT run and
+could not have done otherwise: it keyed bare names in a SET, and a set cannot
+count.** Proven by deleting the second symbol of every duplicated name in the
+fixtures -- `extra` and `missing` did not move, so a run that extracted ONE of
+those 108 graded identically to a complete one. The oracle emits `qual` now and
+tracks the scopes it is inside; `undercount` and `qual_mismatch` gate at 0
+beside the original two, and all four are 0 at the pinned SHA. ⚠ **The owner is
+`self_ty`, never the trait** -- in `impl Display for Foo` the methods belong to
+`Foo`, and keying on `Display` is the same collision one level up.
+
+⚠ Two smaller gaps fell out of the new buckets, invisible to everything that
+shipped six days ago: a `const` inside an `impl` came out bare (35 in ripgrep)
+because `_constant_symbol` hardcodes `qualified_name = name` and takes no
+parent -- qualified at the CALL SITE, Rust only, because threading a parent
+through `_extract_constants` reaches the Bash, Go, PHP and Java binders too. And
+`associated_type` (a trait's `type Carried;`) was absent from `RUST_SPEC`: the
+same shape as `.302`'s `function_signature_item`, and the same consequence, the
+half of a contract an implementor MUST supply.
+
+⚠ `tests/test_rust_fidelity.py` listed its three fixture names as a literal in
+every `parametrize` -- a SECOND roster beside the frozen artifact, where only
+the artifact had a test keeping it honest. `qualification.rs` was ungated on
+arrival. The roster is read off disk now, and all 8 new gates fail against the
+pre-fix tree.
+
+⚠ `PARSER_GENERATION` **6 -> 7**: `qualified_name`, `kind` and `parent` are
+stored per symbol and incremental never re-reads unchanged files, so without a
+bump every existing Rust index keeps answering `Foo::new` and `Bar::new` as one
+name forever. Third bump in three releases -- the cost of a MANUAL counter, not
+a reason to skip one.
+
+⚠ Found by reading CodeGraph's fix titles against our tree (`fix(rust): qualify
+generic/lifetime impl methods by the implementing type, not the trait`), which
+is the fourth time that probe has paid.
+
+
 ### Fixed - the observatory scored eleven repos on one commit of history
 
 `clone_or_update` used `--depth=1`, with the comment "shallow clone is

@@ -27,12 +27,14 @@
 //! direction, and no bucket should be read as covering them.
 use proc_macro2::Span;
 use std::collections::BTreeSet;
+use quote::ToTokens;
 use syn::visit::Visit;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct Def {
     file: String,
     name: String,
+    qual: String,
     kind: &'static str,
     line: usize,
 }
@@ -44,18 +46,74 @@ fn line_of(s: Span) -> usize {
 struct Collector {
     file: String,
     out: BTreeSet<Def>,
+    /// The enclosing scopes currently open: `impl` / `trait` owner types AND
+    /// the functions whose bodies we are inside.
+    ///
+    /// ⚠⚠ Name alone is not a definition's identity and a set of names cannot
+    /// count. `crates/core/flags/defs.rs` defines `is_switch` 108 times, once
+    /// per flag; a comparison keyed on bare names sees ONE `is_switch` on each
+    /// side and calls it a match. `qual` is what makes those 108 distinct, and
+    /// what lets the harness notice if 107 of them stop being extracted.
+    scope: Vec<String>,
 }
 
 impl Collector {
     fn push(&mut self, name: String, kind: &'static str, line: usize) {
-        self.out.insert(Def { file: self.file.clone(), name, kind, line });
+        let qual = if self.scope.is_empty() {
+            name.clone()
+        } else {
+            format!("{}.{}", self.scope.join("."), name)
+        };
+        self.out.insert(Def { file: self.file.clone(), name, qual, kind, line });
+    }
+}
+
+/// The type an `impl` block implements FOR.
+///
+/// ⚠⚠ `self_ty`, never the trait. In `impl Display for Foo` the methods belong
+/// to `Foo`; `Display` is which contract they satisfy, not who owns them.
+/// Keying on the trait puts every type's `fmt` in one bucket named `Display`,
+/// which is the same collision one level over.
+fn impl_owner(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Path(p) => {
+            let seg: Vec<String> =
+                p.path.segments.iter().map(|s| s.ident.to_string()).collect();
+            if seg.is_empty() { None } else { Some(seg.join("::")) }
+        }
+        syn::Type::Reference(r) => impl_owner(&r.elem),
+        syn::Type::Group(g) => impl_owner(&g.elem),
+        syn::Type::Paren(p) => impl_owner(&p.elem),
+        syn::Type::TraitObject(t) => t.bounds.iter().find_map(|b| match b {
+            syn::TypeParamBound::Trait(tb) => {
+                tb.path.segments.last().map(|s| s.ident.to_string())
+            }
+            _ => None,
+        }),
+        // ⚠ Everything else -- `&[u8]`, `(u8, u8)`, `[T; 4]` -- has no path to
+        // read, so it is rendered from its own tokens with the spaces removed.
+        // Returning None here instead would file every such impl's members
+        // under a bare name, which is the collision this whole field exists to
+        // remove, and would put the oracle BELOW the extractor it scores.
+        other => {
+            let s = other.to_token_stream().to_string();
+            let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+            if s.is_empty() { None } else { Some(s) }
+        }
     }
 }
 
 impl<'ast> Visit<'ast> for Collector {
+    /// ⚠ The function's own name is pushed before descending, so an item
+    /// defined INSIDE a body is qualified by the body that holds it. Rust
+    /// cannot name either one from outside, so neither spelling is "the"
+    /// path -- but `try_resolve_binary.is_exe` says where the helper lives
+    /// and a bare `is_exe` collides with every other one in the crate.
     fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
         self.push(i.sig.ident.to_string(), "function", line_of(i.sig.ident.span()));
+        self.scope.push(i.sig.ident.to_string());
         syn::visit::visit_item_fn(self, i);
+        self.scope.pop();
     }
 
     fn visit_item_struct(&mut self, i: &'ast syn::ItemStruct) {
@@ -75,7 +133,25 @@ impl<'ast> Visit<'ast> for Collector {
 
     fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
         self.push(i.ident.to_string(), "trait", line_of(i.ident.span()));
+        self.scope.push(i.ident.to_string());
         syn::visit::visit_item_trait(self, i);
+        self.scope.pop();
+    }
+
+    /// ⚠ The impl block itself is NOT pushed as a definition. There is no
+    /// `impl` a caller can name or import; it is a scope. jCodeMunch emits
+    /// none either, so both sides agree, and emitting one here would score
+    /// correct extraction as a miss.
+    fn visit_item_impl(&mut self, i: &'ast syn::ItemImpl) {
+        let owner = impl_owner(&i.self_ty);
+        let pushed = owner.is_some();
+        if let Some(o) = owner {
+            self.scope.push(o);
+        }
+        syn::visit::visit_item_impl(self, i);
+        if pushed {
+            self.scope.pop();
+        }
     }
 
     fn visit_item_type(&mut self, i: &'ast syn::ItemType) {
@@ -108,7 +184,9 @@ impl<'ast> Visit<'ast> for Collector {
 
     fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
         self.push(i.sig.ident.to_string(), "method", line_of(i.sig.ident.span()));
+        self.scope.push(i.sig.ident.to_string());
         syn::visit::visit_impl_item_fn(self, i);
+        self.scope.pop();
     }
 
     fn visit_impl_item_const(&mut self, i: &'ast syn::ImplItemConst) {
@@ -127,7 +205,9 @@ impl<'ast> Visit<'ast> for Collector {
     /// exactly the half jCodeMunch could not find.
     fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
         self.push(i.sig.ident.to_string(), "method", line_of(i.sig.ident.span()));
+        self.scope.push(i.sig.ident.to_string());
         syn::visit::visit_trait_item_fn(self, i);
+        self.scope.pop();
     }
 
     fn visit_trait_item_const(&mut self, i: &'ast syn::TraitItemConst) {
@@ -180,7 +260,8 @@ fn main() {
         match syn::parse_file(&src) {
             Ok(f) => {
                 parsed += 1;
-                let mut c = Collector { file: rel, out: BTreeSet::new() };
+                let mut c =
+                    Collector { file: rel, out: BTreeSet::new(), scope: Vec::new() };
                 c.visit_file(&f);
                 out.extend(c.out);
             }
@@ -194,7 +275,8 @@ fn main() {
         .iter()
         .map(|d| {
             serde_json::json!({
-                "file": d.file, "name": d.name, "kind": d.kind, "line": d.line
+                "file": d.file, "name": d.name, "qual": d.qual,
+                "kind": d.kind, "line": d.line
             })
         })
         .collect();
