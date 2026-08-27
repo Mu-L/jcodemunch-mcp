@@ -1,0 +1,11 @@
+[package]
+name = "rust-fidelity-oracle"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits", "parsing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+serde_json = "1"
+walkdir = "2"

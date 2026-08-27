@@ -2,6 +2,68 @@
 
 ## [Unreleased]
 
+### Added - `benchmarks/rust_fidelity/`: Rust extraction scored against Rust's own parser
+
+Rust had **20 tracker mentions and zero measurement**. Racket has had a fidelity
+harness since 1.108.298; the language people actually ask about had none, so we
+could not say how good our Rust extraction was while the README talked about
+70+ languages.
+
+Same asymmetric shape as the Racket harness -- `extra` and `wrong_span` gated at
+**0**, `missing` reported and broken out by kind so a gap has a NAME instead of
+being a shortfall. Target `ripgrep` pinned at
+`3fce3b5bb0236da2df6d99672afb8a719642eca7`: 110 files, 0 parse failures either
+side, **extra 0, wrong_span 0, 95.0% coverage, 41 fully clean files**.
+
+⚠ `missing` (185) is two DELIBERATE kinds and two GAPS. Deliberate: `module`
+(126 -- `mod foo;` declares the module graph, which the file tree already
+answers) and `macro` (30 -- we do not expand, so indexing the name implies a
+reach we do not have). **Gaps: `constant` (23) -- a `const`/`static` inside a
+function body; `method` (6) -- a trait method with a signature and no default
+body.** Both reported, neither gated, both now named in `_KNOWN_GAPS`.
+
+⚠⚠ **A third gap, `union`, is invisible in that table because ripgrep contains
+no `union`** -- a 110-file run over real code scored it as absent. The
+hand-written fixtures found it in sixty lines. **A fixture set covering the
+grammar is not redundant with a large corpus; it reaches shapes real code
+happens not to use.**
+
+⚠⚠ **THE CEILING IS LOWER THAN RACKET'S AND THE README SAYS SO.** `syn` PARSES;
+it does not EXPAND. Racket's oracle expands, so `syntax-original?` can separate
+macro-introduced names from human-typed ones. Nothing here can: an item produced
+by a `macro_rules!` invocation is invisible to the oracle AND to jCodeMunch, so
+it is unscored in BOTH directions. A green run is not evidence about
+macro-generated code.
+
+⚠⚠ **Two measurement traps, both hit while building this, both recorded.** The
+oracle must read the IDENTIFIER's span, not the item's -- `syn`'s `Item::span()`
+starts at the first doc comment, which scored jCodeMunch at **40.4%** when the
+real figure was **95.4%**. The tell was one-sidedness: jcm was NEVER earlier,
+and a real span defect scatters both ways. And the oracle must walk FUNCTION
+BODIES -- Rust allows items inside them and ripgrep's `pathutil.rs` uses the
+`#[cfg]`-paired inner `fn` eight times in one file; an oracle that stops at the
+item level calls all of them fabrications, **inverting the `extra` gate so
+correct code fails the build**. Before: 35 extras. After: 0.
+
+⚠ `tests/test_rust_fidelity.py` gates the same two buckets off FROZEN oracle
+data, so CI needs no Rust toolchain and no network -- the arrangement that let
+`guards.rkt` catch the #554 regression. Verified by injecting a real fabrication:
+all three `no_fabricated_symbols` cases fail against it. ⚠⚠ **The first
+non-vacuity attempt was ITSELF vacuous** -- the injected code was unreachable, so
+nothing was introduced and the green result meant nothing. Caught only by
+checking the injection changed the output first.
+
+⚠ `tests/test_rust_fidelity_artifacts.py` derives every summary figure from
+`per_file` and checks the README per FIELD, because `.298` passed a sync test
+with five of eight mirrored artifacts stale. Corrupting the artifact trips three
+independent assertions.
+
+⚠ SHAs are validated as 40 lowercase hex before use, and `--write` refuses on a
+drifted checkout. The first draft of `corpus.json` went through a shell heredoc
+and one digit arrived as **U+096B DEVANAGARI DIGIT FIVE** -- visually identical,
+and it would have pinned nothing.
+
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

@@ -279,6 +279,34 @@ touch a tool description:
 ⚠ The audit reports two frames. The paper's scanner never sees `inputSchema`, so
 schema-documented parameters score 1/5 by its rubric. Quote both frames or neither.
 
+### Rust fidelity (`benchmarks/rust_fidelity/`)
+
+Rust extraction scored against **Rust's own parser** (`syn`), same asymmetric
+shape as `racket_fidelity`: `extra`/`wrong_span` gated at **0**, `missing`
+reported by kind. ripgrep @ `3fce3b5b...`: 110 files, **95.0% coverage**.
+
+⚠⚠ **THE CEILING IS LOWER THAN RACKET'S. `syn` PARSES, it does not EXPAND.** A
+`macro_rules!`-generated item is invisible to the oracle AND to us, so it is
+unscored in BOTH directions — a green run is NOT evidence about macro-generated
+code. Racket's oracle expands and can make that claim; this one cannot.
+
+⚠ `missing` (185) = 2 deliberate kinds (`module` 126, `macro` 30) + 2 GAPS
+(`constant` 23, a `const` inside a fn body; `method` 6, a trait method with no
+default body). ⚠⚠ **A third gap, `union`, is ABSENT from that table because
+ripgrep has no `union`** — the fixtures found it in 60 lines. **A grammar-shaped
+fixture set is not redundant with a corpus.**
+
+⚠⚠ **Two oracle traps, and both make US look wrong when the harness is.** Read
+the **identifier's** span, not the item's — `syn`'s `Item::span()` starts at the
+first doc comment, scoring us **40.4%** when the truth was **95.4%**; the tell
+was that we were NEVER earlier, and a real span bug scatters both ways. And walk
+**function bodies** — Rust puts items there (`#[cfg]`-paired inner `fn`, 8× in
+one ripgrep file), so an oracle stopping at item level calls them fabrications,
+**inverting the `extra` gate**. 35 → 0.
+
+⚠ CI runs `tests/test_rust_fidelity.py` off FROZEN oracle data (no toolchain, no
+network); regenerate per `tests/fixtures/rust/REGENERATE.md`.
+
 ### Codex tool-surface benchmark (`benchmarks/codex_surface/`) — NEGATIVE result
 
 ⚠ Shipped in 1.108.271. Kept here rather than in the rotation because it is a
@@ -413,12 +441,6 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   byte mass 33.4% overall and up to 2.28x per file. Read their commit TITLES
   against whatever we built the same way; it is minutes, and it finds what our
   own tests were written not to see. See CHANGELOG `[Unreleased]`.
-
-### Open threads — verify, do not quote
-
-`#375` (Linux stall, needs a re-run not a patch) and `#377` (Phase 2 P3 edges)
-were the last two carried here. Both may have moved. The catalog moratorium is
-tracked in `Current State` and `ROADMAP.md`, which are the live surfaces.
 
 ## Issue + release policy (2026-07-28)
 
