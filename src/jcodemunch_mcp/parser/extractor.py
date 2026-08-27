@@ -25,6 +25,22 @@ logger = logging.getLogger(__name__)
 # tests/test_constant_extraction_guard.py is the failure that issue is about.
 _CLASS_SCOPED_CONSTANT_LANGUAGES = frozenset({"java"})
 
+#: Languages whose constants may be declared inside a FUNCTION body and are
+#: still worth indexing. Separate from the class-scoped set above because it
+#: widens a different half of the gate, and the reason does not transfer.
+#:
+#: ⚠⚠ Rust is here because we ALREADY index nested `fn`s. `fn outer() { fn
+#: inner() {} const LIMIT: usize = 7; }` yielded `inner` and not `LIMIT`, and
+#: neither is importable -- so the old behaviour was not "locals are excluded",
+#: it was "locals are excluded unless they are functions". A rule that splits a
+#: scope by node type is not a scope rule.
+#:
+#: ⚠ Deliberately NOT widened to Python or JS. A Python function's `X = 1` is a
+#: runtime local rebindable on every call; a Rust `const` is a compile-time
+#: binding the grammar marks as such. Same gate, different meaning, so the set
+#: is named per language with a sample in tests/test_constant_extraction_guard.py.
+_FUNCTION_SCOPED_CONSTANT_LANGUAGES = frozenset({"rust"})
+
 
 class ByteSlicedSource:
     """A text view indexed by BYTE offsets, not character offsets.
@@ -620,6 +636,7 @@ def _walk_tree(
     if node.type in spec.constant_patterns and (
         parent_symbol is None
         or (parent_is_container and language in _CLASS_SCOPED_CONSTANT_LANGUAGES)
+        or language in _FUNCTION_SCOPED_CONSTANT_LANGUAGES
     ):
         symbols.extend(_extract_constants(node, spec, source_bytes, filename, language))
 

@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Fixed - `max_nesting` could not see Python's control flow (`PARSER_GENERATION` 5 -> 6)
+
+`_max_nesting_depth` counted BRACKETS, deliberately, to stay language-agnostic
+across 70+ languages. In a brace language `{` tracks blocks and that is roughly
+right. In Python, `if` / `for` / `while` open a block with a colon and an
+indent and contribute NO bracket depth -- so the field silently reported the
+deepest EXPRESSION instead: a different quantity wearing the same name.
+
+⚠⚠ **Measured on this repo's own `index_folder`: brackets said 3, Python's AST
+says 6.** An underreport by HALF, on the one axis that distinguishes a wide flat
+dispatcher from deeply tangled logic. **The number was not merely imprecise --
+it supported the opposite conclusion about the symbol**, which is how it was
+found: `max_nesting: 3` alongside `cyclomatic: 460` reads as "a big dispatcher,
+the complexity metric is overstating it". The function is 1,662 lines with 121
+conditionals nested six deep.
+
+⚠ **The fix takes the MAX of two channels rather than switching on language.**
+Taking the max can only RAISE a reported depth, so a language already measured
+correctly by brackets still is -- verified on Java (unchanged, bracket channel
+wins) and on minified JS, which has no indentation at all and would report 0
+from the new channel alone. That case is why brackets could not simply be
+replaced.
+
+⚠ **`max_nesting` is reported everywhere and scored NOWHERE** --
+`_complexity_assessment` and `hotspot_score` both use cyclomatic alone -- so
+this corrects a user-facing number without moving a single grade. Surfaced by
+`get_symbol_complexity`, `get_hotspots`, `get_extraction_candidates` and
+`get_pr_risk_profile`.
+
+⚠⚠ **A literal BACKSPACE character (0x08) got into the opener regex during
+editing, in place of ``, and it compiled, ran and passed `ruff`.** An
+invisible control character is not a lint problem, it is a correctness one:
+without the word boundary `iffy` matches `if` and `format` matches `for`.
+`tests/test_nesting_depth_channels.py` pins the boundary behaviourally AND
+scans the module for stray control characters.
+
+⚠ The `index_folder` test asserts against Python's own AST rather than a
+literal 6, because that symbol will change and a hard-coded number has to be
+edited every time it does -- at which point nobody checks whether the edit was
+correct. Two of its 14 assertions fail against the bracket-only tree.
+
+
 ### Fixed - Racket: the `#lang` line is read before the grammar runs
 
 tree-sitter-racket parses S-expressions. A `#lang` line names a READER, and a
@@ -283,9 +325,10 @@ with no key, and `racket_config_changed` for a stamp that differs; either
 escalates to one full re-parse of that index with its own `rebuild_reason` and
 warning. That reaches exactly the indexes that need it, and unlike a skipped
 bump it stays repairable at any later date: an absent key is detectable
-forever, a stamp equal to the constant is not. Restoring the global bump is
-one line in `index_store.py`, noted beside the constant, if the maintainer
-prefers the rule. `tests/test_racket_config_reparse.py` deletes the meta key
+forever, a stamp equal to the constant is not. As it turned out, gens 5 and 6 were bumped the same day for Rust and for
+`max_nesting`, so every existing index takes the full re-parse anyway and
+carries these Racket changes with it; the stamp is what covers the NEXT
+Racket-only extraction change without a global bump. `tests/test_racket_config_reparse.py` deletes the meta key
 from a real store and asserts the single escalation; a non-Racket index with
 no key is left alone; a remote index never qualifies.
 
@@ -310,6 +353,124 @@ README restate the figures; `tests/test_racket_fidelity_artifacts.py` binds
 them. The harness README no longer says the bulk of `missing` is macro output
 -- 113 of the 475 were table entries -- and says which part of
 `callable_unknowable` is a labelling choice rather than an unknowable.
+## [1.108.302] - 2026-08-27 - Nothing we could say about Rust
+
+### Fixed - three Rust definition classes that yielded no symbol at all (`PARSER_GENERATION` 4 -> 5)
+
+Found by `benchmarks/rust_fidelity/` on its first run, all three reported as
+`missing_unexplained`:
+
+- **`union Foo { .. }`** was absent from `RUST_SPEC` entirely -- no symbol, not
+  even the name.
+- **A trait method with a signature and no default body** is a
+  `function_signature_item`, a DIFFERENT node type from `function_item`. So the
+  half of a trait an implementor MUST provide was exactly the half we could not
+  find.
+- **A `const`/`static` inside a function body** was excluded by the locals gate.
+
+⚠ The third carries a judgement and the reasoning is recorded at the gate. It
+exists to keep function-local names out, and it was ALREADY letting nested
+`fn`s through -- so the behaviour was not "locals are excluded", it was "locals
+are excluded unless they are functions". **A rule that splits a scope by node
+type is not a scope rule.** Rust is widened by name in
+`_FUNCTION_SCOPED_CONSTANT_LANGUAGES`; the gate is untouched for every other
+language, because a Python function's `X = 1` is a runtime local rebindable on
+every call while a Rust `const` is a compile-time binding the grammar marks as
+such.
+
+ripgrep @ `3fce3b5b`: **3474 -> 3514 symbols (+1.2%), coverage 95.0% -> 95.8%,
+clean files 41 -> 44, `missing_unexplained` three kinds -> NONE.** `extra` and
+`wrong_span` stay 0 either side.
+
+⚠⚠ **`PARSER_GENERATION` 4 -> 5, and this is the clearest case that counter has
+had.** Unlike `.mts`/`.cts` (an extension nobody had parsed, so coverage arrives
+through DISCOVERY) and unlike #548's Racket (same), every `.rs` file in an
+existing index was already parsed at gen 4 with the old symbol set. Incremental
+never re-reads unchanged content, so without a bump those definitions stay
+missing forever.
+
+⚠⚠ **The harness caught the fix twice, which is the part worth keeping.**
+`extra` went to 2 after the extraction change -- `UTF8_BOM` inside a `for` body
+and `HEX` inside a `match` arm, both real `const`s the hand-rolled oracle walker
+could not see because it only entered a function's OUTERMOST block. Third time
+an oracle blind spot scored as a jCodeMunch fabrication, so the walker was
+replaced with `syn::visit::Visit`, which recurses through expressions, arms and
+closures by default. **A hand-rolled walk only sees where its author remembered
+to look, and every omission scores as an extractor bug.**
+
+⚠ `build_oracle()` also returned an existing binary without rebuilding, so a
+failed recompile silently reused the previous oracle and reported the numbers
+UNCHANGED -- which reads as "the change had no effect" rather than "the change
+did not compile". It always rebuilds now.
+
+⚠⚠ **One gate was weak and it was not vacuity.** Reverting each fix
+individually, `function_signature_item` did not fire: `render` exists in
+`basics.rs` as BOTH a trait signature and an impl, so a name-keyed check saw it
+present and the missing signature was masked. A trait with no implementor was
+added so the case is unmasked. All three reverts now fail; all three restored
+pass. `_KNOWN_GAPS` is now EMPTY, so any gap appearing is a regression.
+
+### Added - `benchmarks/rust_fidelity/`: Rust extraction scored against Rust's own parser
+
+Rust had **20 tracker mentions and zero measurement**. Racket has had a fidelity
+harness since 1.108.298; the language people actually ask about had none, so we
+could not say how good our Rust extraction was while the README talked about
+70+ languages.
+
+Same asymmetric shape as the Racket harness -- `extra` and `wrong_span` gated at
+**0**, `missing` reported and broken out by kind so a gap has a NAME instead of
+being a shortfall. Target `ripgrep` pinned at
+`3fce3b5bb0236da2df6d99672afb8a719642eca7`: 110 files, 0 parse failures either
+side, **extra 0, wrong_span 0, 95.0% coverage, 41 fully clean files**.
+
+⚠ `missing` (185) is two DELIBERATE kinds and two GAPS. Deliberate: `module`
+(126 -- `mod foo;` declares the module graph, which the file tree already
+answers) and `macro` (30 -- we do not expand, so indexing the name implies a
+reach we do not have). **Gaps: `constant` (23) -- a `const`/`static` inside a
+function body; `method` (6) -- a trait method with a signature and no default
+body.** Both reported, neither gated, both now named in `_KNOWN_GAPS`.
+
+⚠⚠ **A third gap, `union`, is invisible in that table because ripgrep contains
+no `union`** -- a 110-file run over real code scored it as absent. The
+hand-written fixtures found it in sixty lines. **A fixture set covering the
+grammar is not redundant with a large corpus; it reaches shapes real code
+happens not to use.**
+
+⚠⚠ **THE CEILING IS LOWER THAN RACKET'S AND THE README SAYS SO.** `syn` PARSES;
+it does not EXPAND. Racket's oracle expands, so `syntax-original?` can separate
+macro-introduced names from human-typed ones. Nothing here can: an item produced
+by a `macro_rules!` invocation is invisible to the oracle AND to jCodeMunch, so
+it is unscored in BOTH directions. A green run is not evidence about
+macro-generated code.
+
+⚠⚠ **Two measurement traps, both hit while building this, both recorded.** The
+oracle must read the IDENTIFIER's span, not the item's -- `syn`'s `Item::span()`
+starts at the first doc comment, which scored jCodeMunch at **40.4%** when the
+real figure was **95.4%**. The tell was one-sidedness: jcm was NEVER earlier,
+and a real span defect scatters both ways. And the oracle must walk FUNCTION
+BODIES -- Rust allows items inside them and ripgrep's `pathutil.rs` uses the
+`#[cfg]`-paired inner `fn` eight times in one file; an oracle that stops at the
+item level calls all of them fabrications, **inverting the `extra` gate so
+correct code fails the build**. Before: 35 extras. After: 0.
+
+⚠ `tests/test_rust_fidelity.py` gates the same two buckets off FROZEN oracle
+data, so CI needs no Rust toolchain and no network -- the arrangement that let
+`guards.rkt` catch the #554 regression. Verified by injecting a real fabrication:
+all three `no_fabricated_symbols` cases fail against it. ⚠⚠ **The first
+non-vacuity attempt was ITSELF vacuous** -- the injected code was unreachable, so
+nothing was introduced and the green result meant nothing. Caught only by
+checking the injection changed the output first.
+
+⚠ `tests/test_rust_fidelity_artifacts.py` derives every summary figure from
+`per_file` and checks the README per FIELD, because `.298` passed a sync test
+with five of eight mirrored artifacts stale. Corrupting the artifact trips three
+independent assertions.
+
+⚠ SHAs are validated as 40 lowercase hex before use, and `--write` refuses on a
+drifted checkout. The first draft of `corpus.json` went through a shell heredoc
+and one digit arrived as **U+096B DEVANAGARI DIGIT FIVE** -- visually identical,
+and it would have pinned nothing.
+
 
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 

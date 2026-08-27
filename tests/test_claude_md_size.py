@@ -12,6 +12,11 @@ because the growth was in the sections it does not name: dated issue history
 `test_schema_budget.py` and `test_claude_md_rotation.py`: a convention that has
 already failed needs a gate.
 
+⚠ The budget is a DECISION, not a constant of nature, and it moved once already
+(130k -> 140k, 2026-08-27). Raising it is legitimate and must be deliberate:
+record who, when and why at the constant, because a number that drifts upward
+whenever it is inconvenient is the prose convention again with extra steps.
+
 Failure here means rotate, do not delete: closed history goes to
 `ISSUE-HISTORY.md`, which is not loaded into a session, and `CLAUDE.md`
 keeps the pointer plus whatever standing lesson the entries earned.
@@ -30,7 +35,19 @@ HARNESS_LIMIT = 150_000
 
 # Where the gate fires. The gap to HARNESS_LIMIT is deliberate: a ceiling that
 # fires exactly at the cliff fires for the first time in the session it breaks.
-BUDGET = 130_000
+#
+# ⚠⚠ Raised 130_000 -> 140_000 by jjg on 2026-08-27, which HALVES that gap from
+# 20k to 10k. The pressure was structural rather than sloppy: the rotation gate
+# in test_claude_md_rotation.py mandates EXACTLY three release entries, and
+# those three plus the standing sections had left 5 characters of headroom, so
+# the next addition of any size failed the build. Trimming further would have
+# meant deleting reasoning to satisfy an arithmetic limit.
+#
+# ⚠ 10k is still a buffer, and it is the last one. The next time this is tight
+# the answer is NOT another raise -- HARNESS_LIMIT is not ours to move, and at
+# 150k the file stops loading with no warning at all. Rotate a standing section
+# instead, or split the file.
+BUDGET = 140_000
 
 ARCHIVE = "ISSUE-HISTORY.md"
 

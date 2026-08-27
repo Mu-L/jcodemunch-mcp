@@ -105,3 +105,7 @@ mcpb/manifest.json
 # hold raw transcripts. Neither is ever committed.
 benchmarks/codex_surface/.codexhome/
 benchmarks/codex_surface/results/
+
+# Rust fidelity oracle build output (see benchmarks/rust_fidelity/README.md)
+benchmarks/rust_fidelity/oracle/target/
+benchmarks/rust_fidelity/oracle/Cargo.lock

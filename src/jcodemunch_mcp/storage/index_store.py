@@ -133,21 +133,65 @@ INDEX_VERSION = 17
 #   Two bumps in two releases is the cost of the mechanism being manual, which
 #   is the standing complaint above, not a reason to skip one.
 #
-# ⚠ NOT bumped for the Racket extraction changes of 2026-08-27 (the `#lang`
-#   gate, `define-struct` supertype headers, `define-generics`, docstring
-#   adjacency, call references ...), although every one alters what unchanged
-#   `.rkt` content yields, and the gate REMOVES fabricated symbols that a
-#   1.108.297-.301 index still holds. The counter is one integer for the
-#   whole tree, so a bump re-parses every language for everybody, and Racket
-#   support was three days old with (as far as anyone knows) one user. The
-#   narrower mechanism is `CodeIndex.racket_config_digest`: an index built
-#   before the stamp existed has NO such meta key, and a local index holding
-#   Racket files with no key re-parses once (`tools/_utils.racket_reparse_reason`).
-#   That reaches exactly the indexes that need it and, unlike a skipped bump,
-#   stays repairable later -- an absent key is detectable at any date, where a
-#   stamp equal to the constant is not. If the maintainer prefers the global
-#   rule, restoring the bump is one line here.
-PARSER_GENERATION = 4
+# ⚠ The Racket extraction changes of 2026-08-27 (the `#lang` gate,
+#   `define-struct` supertype headers, `define-generics`, docstring adjacency,
+#   call references ...) did NOT bump this counter, although every one alters
+#   what unchanged `.rkt` content yields and the gate REMOVES fabricated
+#   symbols that a 1.108.297-.301 index still holds. The counter is one
+#   integer for the whole tree, so a bump re-parses every language for
+#   everybody, and Racket support was three days old with (as far as anyone
+#   knows) one user. Gens 5 and 6 below, bumped the same day for other
+#   languages, carry every existing index through the full re-parse anyway;
+#   what remains is the narrower, forward-looking mechanism in
+#   `CodeIndex.racket_config_digest`: an index built before the stamp existed
+#   has NO such meta key, and a local index holding Racket files with no key
+#   re-parses once (`tools/_utils.racket_reparse_reason`). Unlike a skipped
+#   bump, that stays repairable later -- an absent key is detectable at any
+#   date, where a stamp equal to the constant is not.
+#
+# gen 5 (1.108.302-dev): RUST EXTRACTION -- three definition classes that
+#   yielded no symbol at all.
+#
+#   `union Foo { .. }` was absent from RUST_SPEC entirely; a trait method with
+#   a signature and no default body is a `function_signature_item`, a different
+#   node type from `function_item`, so the half of a trait an implementor MUST
+#   provide was the half we could not find; and a `const`/`static` inside a
+#   function body was excluded by the locals gate.
+#
+#   ⚠⚠ SYMBOLS on UNCHANGED CONTENT, which is the clearest case this counter
+#   has. Unlike `.mts`/`.cts` (an extension nobody had parsed, so coverage
+#   arriving through DISCOVERY) and unlike #548's Racket (same), every `.rs`
+#   file in an existing index was already parsed at gen 4 with the old symbol
+#   set. Incremental never re-reads unchanged content, so without a bump those
+#   definitions stay missing forever.
+#
+#   ⚠ Measured on ripgrep @ 3fce3b5b: 3474 -> 3514 symbols (+1.2%), coverage
+#   95.0% -> 95.8%, and `missing_unexplained` went from three kinds to none.
+#   `benchmarks/rust_fidelity/` is the artifact; `extra` and `wrong_span` stay
+#   at 0 either side.
+#
+# gen 6 (1.108.303-dev): max_nesting could not see Python's control flow.
+#
+#   `_max_nesting_depth` counted BRACKETS to stay language-agnostic. In a brace
+#   language `{` tracks blocks; in Python `if`/`for`/`while` open a block with a
+#   colon and an indent and contribute NO bracket depth, so the field reported
+#   the deepest EXPRESSION instead -- a different quantity under the same name.
+#
+#   ⚠⚠ Measured on this repo's `index_folder`: brackets 3, AST truth 6. An
+#   underreport by HALF on the one axis that separates a wide flat dispatcher
+#   from deeply tangled logic, i.e. it supported the opposite conclusion about
+#   the symbol. Now max(bracket, indentation), which can only raise a depth, so
+#   brace languages and minified bodies are unchanged.
+#
+#   ⚠ SYMBOLS on UNCHANGED CONTENT again, same argument as gen 5: max_nesting is
+#   stored per symbol, incremental never re-reads unchanged files, so without a
+#   bump every existing index keeps the wrong depth forever.
+#
+#   ⚠ Second bump in two releases. That is the cost of this counter being
+#   MANUAL, not a reason to skip one -- and the value is user-facing via
+#   get_symbol_complexity, get_hotspots, get_extraction_candidates and
+#   get_pr_risk_profile. It feeds NO score, so no grade moves.
+PARSER_GENERATION = 6
 
 
 @dataclass(frozen=True)

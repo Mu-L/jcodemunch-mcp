@@ -1,0 +1,217 @@
+{
+  "defs": [
+    {
+      "file": "basics.rs",
+      "kind": "struct",
+      "line": 9,
+      "name": "Config"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "struct",
+      "line": 25,
+      "name": "Error"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "constant",
+      "line": 7,
+      "name": "GREETING"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "constant",
+      "line": 6,
+      "name": "MAX_DEPTH"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "enum",
+      "line": 13,
+      "name": "Mode"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "trait",
+      "line": 67,
+      "name": "Probe"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "union",
+      "line": 18,
+      "name": "Raw"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "trait",
+      "line": 27,
+      "name": "Render"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "type",
+      "line": 23,
+      "name": "Result2"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 49,
+      "name": "clamp"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 55,
+      "name": "fmt"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "module",
+      "line": 75,
+      "name": "inner"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "function",
+      "line": 76,
+      "name": "nested_in_module"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 45,
+      "name": "new"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 68,
+      "name": "probe_signature_only"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 29,
+      "name": "render"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 39,
+      "name": "render"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 32,
+      "name": "render_twice"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "function",
+      "line": 71,
+      "name": "top_level"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "struct",
+      "line": 59,
+      "name": "HasFields"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "enum",
+      "line": 63,
+      "name": "HasVariants"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "constant",
+      "line": 81,
+      "name": "LOCAL_LIMIT"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "type",
+      "line": 70,
+      "name": "Output"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "method",
+      "line": 72,
+      "name": "add"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "function",
+      "line": 30,
+      "name": "calls_macros"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "function",
+      "line": 52,
+      "name": "holds_a_closure"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "function",
+      "line": 80,
+      "name": "holds_consts"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "function",
+      "line": 16,
+      "name": "imp"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "function",
+      "line": 21,
+      "name": "imp"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "function",
+      "line": 14,
+      "name": "platform_dependent"
+    },
+    {
+      "file": "guards.rs",
+      "kind": "macro",
+      "line": 40,
+      "name": "shout"
+    },
+    {
+      "file": "sample.rs",
+      "kind": "constant",
+      "line": 1,
+      "name": "MAX_RETRIES"
+    },
+    {
+      "file": "sample.rs",
+      "kind": "struct",
+      "line": 4,
+      "name": "User"
+    },
+    {
+      "file": "sample.rs",
+      "kind": "function",
+      "line": 17,
+      "name": "authenticate"
+    },
+    {
+      "file": "sample.rs",
+      "kind": "method",
+      "line": 11,
+      "name": "new"
+    }
+  ],
+  "failed_files": [],
+  "files_failed": 0,
+  "files_parsed": 3
+}

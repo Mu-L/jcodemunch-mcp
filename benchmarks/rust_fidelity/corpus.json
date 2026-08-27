@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "description": "Rust extraction-fidelity corpus. Ground truth is Rust's own parser (see oracle/), so every target must be a crate that `syn::parse_file` accepts.",
+  "pinning": {
+    "policy": "Pinned by upstream COMMIT SHA, not by toolchain version. Racket's corpus ships with the interpreter so its version identifies the corpus; Rust crates come from git and drift independently of rustc. results.json records the SHA each target was measured at, and run_fidelity.py refuses to publish a reference measured against an unpinned or drifted checkout.",
+    "ceiling": "syn PARSES, it does not EXPAND. An item produced by a macro_rules! invocation is invisible to the oracle AND to jCodeMunch, so it is unscored in both directions. This harness cannot make the claim Racket's makes about macro-introduced names -- see README.md.",
+    "sha_integrity": "Every sha is validated as 40 lowercase hex before use. The first draft of this file was written through a shell heredoc and one digit arrived as U+096B DEVANAGARI DIGIT FIVE, which is visually identical at small sizes and would have pinned nothing."
+  },
+  "targets": [
+    {
+      "id": "ripgrep",
+      "repo": "https://github.com/BurntSushi/ripgrep.git",
+      "sha": "3fce3b5bb0236da2df6d99672afb8a719642eca7",
+      "stresses": "Idiomatic, well-documented application code. Heavy use of items nested inside function bodies via #[cfg] pairs -- pathutil.rs alone defines `imp` eight times that way."
+    }
+  ]
+}
