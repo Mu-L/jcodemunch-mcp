@@ -73,9 +73,14 @@ def oracle_binary() -> Path | None:
 
 
 def build_oracle() -> Path:
-    binary = oracle_binary()
-    if binary:
-        return binary
+    """Always rebuild, then return the binary.
+
+    ⚠⚠ This used to short-circuit on an existing binary, and that silently
+    reused a STALE oracle after a failed rebuild -- the run reported the same
+    numbers as before the source change, which reads as "the change had no
+    effect" rather than "the change did not compile". A measurement tool that
+    falls back to its previous self is worse than one that refuses.
+    """
     proc = subprocess.run(
         ["cargo", "build", "--release"], cwd=ORACLE_DIR, capture_output=True,
         text=True, encoding="utf-8", errors="replace",

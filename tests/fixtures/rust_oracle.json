@@ -32,6 +32,12 @@
     },
     {
       "file": "basics.rs",
+      "kind": "trait",
+      "line": 67,
+      "name": "Probe"
+    },
+    {
+      "file": "basics.rs",
       "kind": "union",
       "line": 18,
       "name": "Raw"
@@ -63,13 +69,13 @@
     {
       "file": "basics.rs",
       "kind": "module",
-      "line": 64,
+      "line": 75,
       "name": "inner"
     },
     {
       "file": "basics.rs",
       "kind": "function",
-      "line": 65,
+      "line": 76,
       "name": "nested_in_module"
     },
     {
@@ -77,6 +83,12 @@
       "kind": "method",
       "line": 45,
       "name": "new"
+    },
+    {
+      "file": "basics.rs",
+      "kind": "method",
+      "line": 68,
+      "name": "probe_signature_only"
     },
     {
       "file": "basics.rs",
@@ -99,7 +111,7 @@
     {
       "file": "basics.rs",
       "kind": "function",
-      "line": 60,
+      "line": 71,
       "name": "top_level"
     },
     {

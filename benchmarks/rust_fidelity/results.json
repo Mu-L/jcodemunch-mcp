@@ -2,23 +2,18 @@
   "summary": {
     "files_parsed": 110,
     "files_failed": 0,
-    "oracle_defs": 3682,
-    "jcm_symbols": 3474,
+    "oracle_defs": 3684,
+    "jcm_symbols": 3514,
     "extra": 0,
     "wrong_span": 0,
-    "missing": 185,
+    "missing": 156,
     "missing_by_kind": {
       "module": 126,
-      "macro": 30,
-      "constant": 23,
-      "method": 6
+      "macro": 30
     },
-    "missing_unexplained": {
-      "constant": 23,
-      "method": 6
-    },
-    "coverage_pct": 95.0,
-    "clean_files": 41,
+    "missing_unexplained": {},
+    "coverage_pct": 95.8,
+    "clean_files": 44,
     "target": "ripgrep",
     "sha": "3fce3b5bb0236da2df6d99672afb8a719642eca7",
     "sha_matches_corpus": true
@@ -26,34 +21,19 @@
   "per_file": [
     {
       "file": "build.rs",
-      "jcm_symbols": 3,
+      "jcm_symbols": 4,
       "oracle_defs": 4,
       "extra": [],
       "wrong_span": [],
-      "missing": {
-        "constant": [
-          "MANIFEST"
-        ]
-      }
+      "missing": {}
     },
     {
       "file": "crates/cli/src/decompress.rs",
-      "jcm_symbols": 29,
+      "jcm_symbols": 37,
       "oracle_defs": 37,
       "extra": [],
       "wrong_span": [],
-      "missing": {
-        "constant": [
-          "ARGS_BROTLI",
-          "ARGS_BZIP",
-          "ARGS_GZIP",
-          "ARGS_LZ4",
-          "ARGS_LZMA",
-          "ARGS_UNCOMPRESS",
-          "ARGS_XZ",
-          "ARGS_ZSTD"
-        ]
-      }
+      "missing": {}
     },
     {
       "file": "crates/cli/src/escape.rs",
@@ -198,16 +178,11 @@
     },
     {
       "file": "crates/core/flags/defs.rs",
-      "jcm_symbols": 1020,
+      "jcm_symbols": 1023,
       "oracle_defs": 1025,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "BORROWED",
-          "CHOICES",
-          "DOC"
-        ],
         "module": [
           "convert",
           "tests"
@@ -216,14 +191,11 @@
     },
     {
       "file": "crates/core/flags/doc/help.rs",
-      "jcm_symbols": 8,
+      "jcm_symbols": 9,
       "oracle_defs": 10,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "PAD"
-        ],
         "macro": [
           "write"
         ]
@@ -282,19 +254,11 @@
     },
     {
       "file": "crates/core/flags/mod.rs",
-      "jcm_symbols": 14,
+      "jcm_symbols": 20,
       "oracle_defs": 27,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "method": [
-          "doc_category",
-          "doc_long",
-          "doc_short",
-          "is_switch",
-          "name_long",
-          "update"
-        ],
         "module": [
           "complete",
           "config",
@@ -308,16 +272,11 @@
     },
     {
       "file": "crates/core/flags/parse.rs",
-      "jcm_symbols": 24,
+      "jcm_symbols": 26,
       "oracle_defs": 26,
       "extra": [],
       "wrong_span": [],
-      "missing": {
-        "constant": [
-          "P",
-          "THRESHOLD"
-        ]
-      }
+      "missing": {}
     },
     {
       "file": "crates/core/haystack.rs",
@@ -527,14 +486,11 @@
     },
     {
       "file": "crates/ignore/src/gitignore.rs",
-      "jcm_symbols": 49,
-      "oracle_defs": 53,
+      "jcm_symbols": 51,
+      "oracle_defs": 54,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "RE"
-        ],
         "macro": [
           "ignored",
           "not_ignored"
@@ -558,15 +514,11 @@
     },
     {
       "file": "crates/ignore/src/lib.rs",
-      "jcm_symbols": 33,
+      "jcm_symbols": 35,
       "oracle_defs": 45,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "COUNTER",
-          "TRIES"
-        ],
         "macro": [
           "err"
         ],
@@ -605,14 +557,11 @@
     },
     {
       "file": "crates/ignore/src/types.rs",
-      "jcm_symbols": 30,
+      "jcm_symbols": 31,
       "oracle_defs": 33,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "MSG"
-        ],
         "module": [
           "tests"
         ]
@@ -620,7 +569,7 @@
     },
     {
       "file": "crates/ignore/src/walk.rs",
-      "jcm_symbols": 178,
+      "jcm_symbols": 180,
       "oracle_defs": 181,
       "extra": [],
       "wrong_span": [],
@@ -701,7 +650,7 @@
     },
     {
       "file": "crates/matcher/src/lib.rs",
-      "jcm_symbols": 98,
+      "jcm_symbols": 102,
       "oracle_defs": 105,
       "extra": [],
       "wrong_span": [],
@@ -795,15 +744,11 @@
     },
     {
       "file": "crates/printer/src/hyperlink/mod.rs",
-      "jcm_symbols": 64,
-      "oracle_defs": 68,
+      "jcm_symbols": 67,
+      "oracle_defs": 69,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "UNC_PREFIX",
-          "WIN32_NAMESPACE_PREFIX"
-        ],
         "module": [
           "aliases",
           "tests"
@@ -812,14 +757,11 @@
     },
     {
       "file": "crates/printer/src/json.rs",
-      "jcm_symbols": 42,
+      "jcm_symbols": 43,
       "oracle_defs": 44,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "BINARY"
-        ],
         "module": [
           "tests"
         ]
@@ -827,14 +769,11 @@
     },
     {
       "file": "crates/printer/src/jsont.rs",
-      "jcm_symbols": 19,
+      "jcm_symbols": 20,
       "oracle_defs": 21,
       "extra": [],
       "wrong_span": [],
       "missing": {
-        "constant": [
-          "ALPHABET"
-        ],
         "module": [
           "tests"
         ]
@@ -1104,7 +1043,7 @@
     },
     {
       "file": "crates/searcher/src/searcher/glue.rs",
-      "jcm_symbols": 59,
+      "jcm_symbols": 60,
       "oracle_defs": 61,
       "extra": [],
       "wrong_span": [],
@@ -1139,7 +1078,7 @@
     },
     {
       "file": "crates/searcher/src/sink.rs",
-      "jcm_symbols": 52,
+      "jcm_symbols": 54,
       "oracle_defs": 56,
       "extra": [],
       "wrong_span": [],

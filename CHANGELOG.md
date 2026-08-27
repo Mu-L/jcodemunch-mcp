@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+### Fixed - three Rust definition classes that yielded no symbol at all (`PARSER_GENERATION` 4 -> 5)
+
+Found by `benchmarks/rust_fidelity/` on its first run, all three reported as
+`missing_unexplained`:
+
+- **`union Foo { .. }`** was absent from `RUST_SPEC` entirely -- no symbol, not
+  even the name.
+- **A trait method with a signature and no default body** is a
+  `function_signature_item`, a DIFFERENT node type from `function_item`. So the
+  half of a trait an implementor MUST provide was exactly the half we could not
+  find.
+- **A `const`/`static` inside a function body** was excluded by the locals gate.
+
+⚠ The third carries a judgement and the reasoning is recorded at the gate. It
+exists to keep function-local names out, and it was ALREADY letting nested
+`fn`s through -- so the behaviour was not "locals are excluded", it was "locals
+are excluded unless they are functions". **A rule that splits a scope by node
+type is not a scope rule.** Rust is widened by name in
+`_FUNCTION_SCOPED_CONSTANT_LANGUAGES`; the gate is untouched for every other
+language, because a Python function's `X = 1` is a runtime local rebindable on
+every call while a Rust `const` is a compile-time binding the grammar marks as
+such.
+
+ripgrep @ `3fce3b5b`: **3474 -> 3514 symbols (+1.2%), coverage 95.0% -> 95.8%,
+clean files 41 -> 44, `missing_unexplained` three kinds -> NONE.** `extra` and
+`wrong_span` stay 0 either side.
+
+⚠⚠ **`PARSER_GENERATION` 4 -> 5, and this is the clearest case that counter has
+had.** Unlike `.mts`/`.cts` (an extension nobody had parsed, so coverage arrives
+through DISCOVERY) and unlike #548's Racket (same), every `.rs` file in an
+existing index was already parsed at gen 4 with the old symbol set. Incremental
+never re-reads unchanged content, so without a bump those definitions stay
+missing forever.
+
+⚠⚠ **The harness caught the fix twice, which is the part worth keeping.**
+`extra` went to 2 after the extraction change -- `UTF8_BOM` inside a `for` body
+and `HEX` inside a `match` arm, both real `const`s the hand-rolled oracle walker
+could not see because it only entered a function's OUTERMOST block. Third time
+an oracle blind spot scored as a jCodeMunch fabrication, so the walker was
+replaced with `syn::visit::Visit`, which recurses through expressions, arms and
+closures by default. **A hand-rolled walk only sees where its author remembered
+to look, and every omission scores as an extractor bug.**
+
+⚠ `build_oracle()` also returned an existing binary without rebuilding, so a
+failed recompile silently reused the previous oracle and reported the numbers
+UNCHANGED -- which reads as "the change had no effect" rather than "the change
+did not compile". It always rebuilds now.
+
+⚠⚠ **One gate was weak and it was not vacuity.** Reverting each fix
+individually, `function_signature_item` did not fire: `render` exists in
+`basics.rs` as BOTH a trait signature and an impl, so a name-keyed check saw it
+present and the missing signature was masked. A trait with no implementor was
+added so the case is unmasked. All three reverts now fail; all three restored
+pass. `_KNOWN_GAPS` is now EMPTY, so any gap appearing is a regression.
+
 ### Added - `benchmarks/rust_fidelity/`: Rust extraction scored against Rust's own parser
 
 Rust had **20 tracker mentions and zero measurement**. Racket has had a fidelity

@@ -22,27 +22,35 @@ Target `ripgrep` at `3fce3b5bb0236da2df6d99672afb8a719642eca7`, 110 files,
 
 | | |
 |---|---|
-| oracle definitions | 3682 |
-| jcm symbols | 3474 |
+| oracle definitions | 3684 |
+| jcm symbols | 3514 |
 | **extra** | **0** |
 | **wrong_span** | **0** |
-| missing | 185 (95.0% coverage) |
-| clean files | 41 |
+| missing | 156 (95.8% coverage) |
+| clean files | 44 |
 
-`missing` decomposes into two **deliberate** kinds and two **gaps**:
+`missing` is **entirely** the two kinds we deliberately do not emit:
 
 - `module` (126) — `mod foo;` declares the module graph, not a callable or a
   type. The file tree already answers where a module lives.
 - `macro` (30) — `macro_rules! name` defines a macro. We do not expand macros,
   so indexing the name implies a reach we do not have.
-- `constant` (23) — **gap.** A `const` / `static` declared inside a function
-  body is missed. `ripgrep`'s `decompress.rs` declares eight that way.
-- `method` (6) — **gap.** A trait method with a signature and no default body
-  (`fn doc_category(&self) -> Category;`) is missed.
 
-A third gap, `union`, is not visible in this table because **ripgrep contains no
-`union`**. It was found by the hand-written fixtures instead, which is the
-argument for keeping both.
+**`missing_unexplained` is `{}`.** The harness shipped with three gaps and all
+three are now closed:
+
+| gap | was | fix |
+|---|---|---|
+| `union Foo { .. }` yielded no symbol at all | not in `RUST_SPEC` | `union_item` added |
+| a trait method with a signature and no body | a different node type, `function_signature_item` | added to `RUST_SPEC` |
+| a `const`/`static` inside a function body | excluded by the locals gate | `_FUNCTION_SCOPED_CONSTANT_LANGUAGES` |
+
+⚠ The third is the one with a judgement in it. The locals gate exists to keep
+function-local names out, and it was already letting nested `fn`s through — so
+the behaviour was not "locals are excluded", it was "locals are excluded unless
+they are functions". A rule that splits a scope by node type is not a scope
+rule. Rust is widened by name, in its own set, with the reasoning recorded; the
+gate is untouched for every other language.
 
 ## ⚠⚠ The ceiling, and it is lower than Racket's
 
@@ -56,7 +64,7 @@ directions.
 codebase that generates much of its surface through macros is measured here only
 on the part it wrote by hand.
 
-## ⚠ Two measurement traps, both hit while building this
+## ⚠ Three measurement traps, all hit while building this
 
 **The oracle must read the IDENTIFIER's span, not the item's.** `syn`'s
 `Item::span()` starts at the first doc comment or outer attribute, so an item's
@@ -72,6 +80,21 @@ bodies and real code leans on it: the `#[cfg(windows)] fn imp` /
 An oracle that stops at the item level reports every one as a **fabrication by
 the extractor**, which inverts the `extra` gate — correct code would fail the
 build. Before the fix: 35 "extras". After: 0.
+
+**And it must walk NESTED blocks, not just a function's top-level one.** After
+the three extraction gaps were closed the gate failed with 2 fresh "extras" —
+`UTF8_BOM` inside a `for` body and `HEX` inside a `match` arm. Both are real
+`const` definitions; the hand-rolled walker only entered a function's outermost
+block. ⚠⚠ **That is the same trap for the third time, so the walker was replaced
+with `syn::visit::Visit`**, which recurses through expressions, arms and
+closures by default. A hand-rolled walk only sees where its author remembered to
+look, and every omission scores as an extractor fabrication. Omissions are now
+overridden deliberately rather than arrived at by forgetting.
+
+⚠ `build_oracle()` also used to return an existing binary without rebuilding,
+so a failed recompile silently reused the previous oracle and reported the
+numbers unchanged — which reads as "the change had no effect" rather than "the
+change did not compile". It always rebuilds now.
 
 ## Running it
 

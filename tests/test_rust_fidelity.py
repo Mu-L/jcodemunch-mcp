@@ -36,18 +36,20 @@ _ORACLE = pathlib.Path(__file__).parent / "fixtures" / "rust_oracle.json"
 #: Mirrors KNOWN_UNEMITTED in benchmarks/rust_fidelity/run_fidelity.py.
 _KNOWN_UNEMITTED = {"module", "macro"}
 
-#: Gaps measured on the pinned corpus and reproduced by the fixtures. Listed so
-#: they are VISIBLE rather than absorbed into a percentage. Closing either one
-#: should make this set shrink, and the test says so when it does.
-_KNOWN_GAPS = {
-    "constant": "a `const` / `static` declared inside a function body",
-    "method": "a trait method with a signature but NO default body",
-    # ⚠ Found by the FIXTURES, not the corpus -- ripgrep contains no `union`,
-    # so a 110-file run over real code scored this gap as absent. A small
-    # hand-written fixture set covering the grammar is not redundant with a
-    # large corpus; it reaches shapes real code happens not to use.
-    "union": "`union Foo { .. }` yields no symbol at all",
-}
+#: Extraction gaps, by oracle kind. **Empty, and that is the assertion.**
+#:
+#: It held three entries when the harness was built -- `constant` (a `const` or
+#: `static` inside a function body), `method` (a trait method with a signature
+#: and no default body) and `union` (no symbol at all). All three are fixed, so
+#: the ratchet tightened from "these gaps are known" to "there are none".
+#:
+#: ⚠ Adding an entry here is allowed and is how a deliberate, reasoned omission
+#: gets recorded. It is NOT the way to make a red test green: a gap that arrives
+#: without a reason is a regression, and `_KNOWN_UNEMITTED` is not the place for
+#: it either -- that set is for kinds we never index at all, and moving a gap
+#: into it converts a bug into a policy.
+_KNOWN_GAPS: dict[str, str] = {}
+
 
 
 @pytest.fixture(scope="module")
@@ -190,5 +192,7 @@ def test_known_gaps_are_still_exactly_these(by_file):
     unexpected = observed - set(_KNOWN_GAPS)
     assert not unexpected, (
         f"new extraction gap kind(s): {sorted(unexpected)}. Either fix the "
-        f"extractor or add the kind to _KNOWN_GAPS with a reason."
+        f"extractor or add the kind to _KNOWN_GAPS with a reason. "
+        f"⚠ This set is currently EMPTY -- the fixtures have no unexplained "
+        f"gaps at all, so any entry appearing here is a regression."
     )

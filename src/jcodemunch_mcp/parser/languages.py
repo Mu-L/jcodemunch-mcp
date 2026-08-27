@@ -425,30 +425,45 @@ RUST_SPEC = LanguageSpec(
     ts_language="rust",
     symbol_node_types={
         "function_item": "function",
+        # ⚠ A trait method with a signature and NO default body
+        # (`fn required(&self) -> u32;`) is a `function_signature_item`, a
+        # different node type from `function_item`. Omitting it indexed only
+        # the trait methods that happen to carry a default -- i.e. the API
+        # surface a caller must implement was the half we could not find.
+        # Measured on ripgrep: 6 missing.
+        "function_signature_item": "function",
         "struct_item": "type",
         "enum_item": "type",
+        # ⚠ `union` is rare in application code and absent from ripgrep
+        # entirely, which is why a 110-file corpus run scored this gap as zero.
+        # It yielded NO symbol at all -- not even the name.
+        "union_item": "type",
         "trait_item": "type",
         "impl_item": "class",
         "type_item": "type",
     },
     name_fields={
         "function_item": "name",
+        "function_signature_item": "name",
         "struct_item": "name",
         "enum_item": "name",
+        "union_item": "name",
         "trait_item": "name",
         "type_item": "name",
     },
     param_fields={
         "function_item": "parameters",
+        "function_signature_item": "parameters",
     },
     return_type_fields={
         "function_item": "return_type",
+        "function_signature_item": "return_type",
     },
     docstring_strategy="preceding_comment",
     decorator_node_type="attribute_item",
     container_node_types=["impl_item", "trait_item"],
     constant_patterns=["const_item", "static_item"],
-    type_patterns=["struct_item", "enum_item", "trait_item", "type_item"],
+    type_patterns=["struct_item", "enum_item", "union_item", "trait_item", "type_item"],
 )
 
 

@@ -281,28 +281,31 @@ schema-documented parameters score 1/5 by its rubric. Quote both frames or neith
 
 ### Rust fidelity (`benchmarks/rust_fidelity/`)
 
-Rust extraction scored against **Rust's own parser** (`syn`), same asymmetric
-shape as `racket_fidelity`: `extra`/`wrong_span` gated at **0**, `missing`
-reported by kind. ripgrep @ `3fce3b5b...`: 110 files, **95.0% coverage**.
+Rust extraction vs **Rust's own parser** (`syn`), same asymmetric shape as
+`racket_fidelity`: `extra`/`wrong_span` gated at **0**. ripgrep @ `3fce3b5b...`,
+110 files: **95.8%**, `missing` (156) entirely `module`+`macro`, both deliberate.
 
-⚠⚠ **THE CEILING IS LOWER THAN RACKET'S. `syn` PARSES, it does not EXPAND.** A
-`macro_rules!`-generated item is invisible to the oracle AND to us, so it is
-unscored in BOTH directions — a green run is NOT evidence about macro-generated
-code. Racket's oracle expands and can make that claim; this one cannot.
+⚠⚠ **CEILING LOWER THAN RACKET'S: `syn` PARSES, it does not EXPAND.** A
+`macro_rules!`-generated item is invisible to the oracle AND to us, unscored in
+BOTH directions — a green run is NOT evidence about macro-generated code.
 
-⚠ `missing` (185) = 2 deliberate kinds (`module` 126, `macro` 30) + 2 GAPS
-(`constant` 23, a `const` inside a fn body; `method` 6, a trait method with no
-default body). ⚠⚠ **A third gap, `union`, is ABSENT from that table because
-ripgrep has no `union`** — the fixtures found it in 60 lines. **A grammar-shaped
-fixture set is not redundant with a corpus.**
+⚠ **All three gaps FIXED** (`PARSER_GENERATION` 4 -> 5): `union_item` and
+`function_signature_item` absent from `RUST_SPEC`; a `const` in a fn body
+excluded by the locals gate — **which already let nested `fn`s through, so it
+was a node-type rule, not a scope rule**. 3474 -> 3514 symbols.
+⚠⚠ **`union` was ABSENT from the corpus table because ripgrep has none** — the
+fixtures found it in 60 lines. **A grammar-shaped fixture set is not redundant
+with a corpus.**
 
-⚠⚠ **Two oracle traps, and both make US look wrong when the harness is.** Read
-the **identifier's** span, not the item's — `syn`'s `Item::span()` starts at the
-first doc comment, scoring us **40.4%** when the truth was **95.4%**; the tell
-was that we were NEVER earlier, and a real span bug scatters both ways. And walk
-**function bodies** — Rust puts items there (`#[cfg]`-paired inner `fn`, 8× in
-one ripgrep file), so an oracle stopping at item level calls them fabrications,
-**inverting the `extra` gate**. 35 → 0.
+⚠⚠ **THREE oracle traps, every one makes US look wrong when the HARNESS is.**
+(1) Read the **identifier's** span, not the item's — `Item::span()` starts at the
+first doc comment, scoring us **40.4%** vs a true **95.4%**; the tell was we were
+NEVER earlier, and a real span bug scatters both ways. (2) Walk **function
+bodies** — `#[cfg]`-paired inner `fn`, 8× in one ripgrep file; stopping at item
+level calls them fabrications and **inverts the `extra` gate**. 35 -> 0. (3) Walk
+**nested** blocks too (`for` body, `match` arm) — now `syn::visit::Visit`, which
+recurses by default, because **a hand-rolled walk only sees where its author
+remembered to look**.
 
 ⚠ CI runs `tests/test_rust_fidelity.py` off FROZEN oracle data (no toolchain, no
 network); regenerate per `tests/fixtures/rust/REGENERATE.md`.

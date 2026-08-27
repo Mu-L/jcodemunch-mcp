@@ -1189,4 +1189,3 @@ surfaces anyway, which is the rule it was restating.
 `#375` (Linux stall, needs a re-run not a patch) and `#377` (Phase 2 P3 edges)
 were the last two carried here. Both may have moved. The catalog moratorium is
 tracked in `Current State` and `ROADMAP.md`, which are the live surfaces.
-

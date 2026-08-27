@@ -132,7 +132,28 @@ INDEX_VERSION = 17
 #   from 42 dead files to 22 -- i.e. 20 live files were being reported dead.
 #   Two bumps in two releases is the cost of the mechanism being manual, which
 #   is the standing complaint above, not a reason to skip one.
-PARSER_GENERATION = 4
+#
+# gen 5 (1.108.302-dev): RUST EXTRACTION -- three definition classes that
+#   yielded no symbol at all.
+#
+#   `union Foo { .. }` was absent from RUST_SPEC entirely; a trait method with
+#   a signature and no default body is a `function_signature_item`, a different
+#   node type from `function_item`, so the half of a trait an implementor MUST
+#   provide was the half we could not find; and a `const`/`static` inside a
+#   function body was excluded by the locals gate.
+#
+#   ⚠⚠ SYMBOLS on UNCHANGED CONTENT, which is the clearest case this counter
+#   has. Unlike `.mts`/`.cts` (an extension nobody had parsed, so coverage
+#   arriving through DISCOVERY) and unlike #548's Racket (same), every `.rs`
+#   file in an existing index was already parsed at gen 4 with the old symbol
+#   set. Incremental never re-reads unchanged content, so without a bump those
+#   definitions stay missing forever.
+#
+#   ⚠ Measured on ripgrep @ 3fce3b5b: 3474 -> 3514 symbols (+1.2%), coverage
+#   95.0% -> 95.8%, and `missing_unexplained` went from three kinds to none.
+#   `benchmarks/rust_fidelity/` is the artifact; `extra` and `wrong_span` stay
+#   at 0 either side.
+PARSER_GENERATION = 5
 
 
 @dataclass(frozen=True)

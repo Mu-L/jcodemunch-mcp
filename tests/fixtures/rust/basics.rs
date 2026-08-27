@@ -57,6 +57,17 @@ impl fmt::Display for Error {
     }
 }
 
+/// ⚠ A trait with a required method and NO implementor in this file.
+///
+/// Deliberate: `Render::render` is a required method too, but an `impl Render
+/// for Config` below defines the SAME NAME, so a name-keyed gap check sees
+/// `render` present and the missing signature is masked. This trait has no
+/// impl, so `probe_signature_only` appears exactly once -- as a signature --
+/// and its absence is detectable.
+pub trait Probe {
+    fn probe_signature_only(&self) -> u32;
+}
+
 pub fn top_level(x: u32) -> u32 {
     x + 1
 }
