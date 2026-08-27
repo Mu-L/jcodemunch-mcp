@@ -76,6 +76,37 @@ wrong, and this repository said exactly that before measuring. The fixed-cost
 term is real and much cheaper than the raw number implies, which makes it a
 WEAKER explanation for the r/codex result, not a stronger one.
 
+### The cache-rate cut does not rescue it either
+
+Tried 2026-08-27, prompted by CacheRouter (arXiv 2608.22708), which reports
+cache-hit rate rather than input totals. The saved run already carries
+`cached_input_tokens`, so this needed no new API spend. It does not help.
+
+| arm | schema | hit% (all steps) | step-1 input, each repeat | step-1 uncached |
+|---|---|---|---|---|
+| A baseline | 0 | 89.8% | 49,769 / 64,351 / 65,480 | 8,553-16,072 |
+| B full | 24,007 | 89.9% | 64,662 / 66,855 / 91,861 | 15,254-31,445 |
+| C full+policy | 24,007 | 90.4% | 77,497 / 107,574 / 171,065 | 12,985-33,081 |
+| D counter | 1,030 | 92.3% | 78,978 / 80,522 / 85,646 | 16,014-17,034 |
+
+Step 1 is the turn where the schema block is the largest share of the prompt and
+nothing has accumulated yet, so it is the best case for the cut. `full` sits
+2,504 tokens above baseline while carrying 24,007 tokens of schema, and
+`counter` sits 16,171 ABOVE baseline while carrying 1,030. Same incoherence as
+the totals, at a tenth of the magnitude. Within-arm spread (15k-27k on the
+step-1 medians) still swamps the effect.
+
+⚠ **Hit RATE cannot separate these arms by construction.** It is a ratio, and
+adding a stable prefix raises numerator and denominator together — a bigger
+cached block makes the rate go UP, so `counter` scoring highest at 92.3% says
+nothing about which arm is cheaper. Any future paper reporting hit rate invites
+this same cut; the answer is that the arms are still the arms.
+
+⚠ One thing is real and is about variance, not level: `counter`'s step-1
+uncached input spans **1,020 tokens across three repeats**, against 7,519 for
+baseline and 16,191 for `full`. A small fixed surface is more PREDICTABLE per
+turn. n=3 makes that an observation, not a result.
+
 ### What it would take
 
 More repeats (n=3 against 50% variance resolves nothing), or a task flow with a
