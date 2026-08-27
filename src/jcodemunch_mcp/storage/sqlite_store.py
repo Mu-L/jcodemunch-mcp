@@ -275,6 +275,23 @@ _META_KEYS = [
 # fires raises TypeError("'>' not supported between 'NoneType' and 'int'").
 _INDEX_VERSION: Optional[int] = None
 _PARSER_GENERATION: Optional[int] = None
+
+
+def _racket_config_digest_for(source_root: str, languages: Optional[dict]) -> str:
+    """The Racket config fingerprint to stamp on a freshly built index.
+
+    Only a local index holding Racket files carries one; anything else is
+    `""`, which is also what an unconfigured project produces, so nothing
+    differs for the common case.
+    """
+    if not source_root or "racket" not in (languages or {}):
+        return ""
+    try:
+        from .. import config as _config
+        return _config.racket_config_digest(source_root)
+    except Exception:
+        logger.debug("racket config digest unavailable", exc_info=True)
+        return ""
 _file_hash: Callable[[str], str] = lambda x: ""
 
 
@@ -1290,6 +1307,7 @@ class SQLiteIndexStore:
             symbols=composed_symbols,
             index_version=base_index.index_version,
             parser_generation=getattr(base_index, "parser_generation", 0),
+            racket_config_digest=getattr(base_index, "racket_config_digest", "") or "",
             file_hashes=composed_hashes,
             git_head=delta.get("git_head", base_index.git_head),
             file_summaries=composed_summaries,
@@ -1405,6 +1423,7 @@ class SQLiteIndexStore:
             symbols=serialized_symbols,
             index_version=cast(int, _INDEX_VERSION),
             parser_generation=cast(int, _PARSER_GENERATION),
+            racket_config_digest=_racket_config_digest_for(source_root, languages),
             file_hashes=file_hashes,
             git_head=git_head,
             file_summaries=file_summaries or {},
@@ -3054,6 +3073,7 @@ class SQLiteIndexStore:
             symbols=patched_symbols,
             index_version=old.index_version,
             parser_generation=getattr(old, "parser_generation", 0),
+            racket_config_digest=getattr(old, "racket_config_digest", "") or "",
             file_hashes=new_file_hashes,
             git_head=meta.get("git_head", old.git_head),
             file_summaries=new_file_summaries,
@@ -3153,6 +3173,7 @@ class SQLiteIndexStore:
             symbols=symbols,
             index_version=int(meta.get("index_version", "0")),
             parser_generation=int(meta.get("parser_generation", "0") or 0),
+            racket_config_digest=meta.get("racket_config_digest", "") or "",
             file_hashes=file_hashes,
             git_head=meta.get("git_head", ""),
             file_summaries=file_summaries,
@@ -3181,6 +3202,7 @@ class SQLiteIndexStore:
             "indexed_at": index.indexed_at,
             "index_version": str(index.index_version),
             "parser_generation": str(getattr(index, "parser_generation", 0)),
+            "racket_config_digest": getattr(index, "racket_config_digest", "") or "",
             "git_head": index.git_head,
             "source_root": index.source_root,
             "git_root": getattr(index, "git_root", "") or "",

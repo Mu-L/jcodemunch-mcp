@@ -1008,6 +1008,33 @@ def _ensure_loaded() -> None:
         logger.debug("Lazy config load failed; answering from defaults", exc_info=True)
 
 
+def racket_config_digest(repo: str | None) -> str:
+    """Fingerprint of the config that changes what the Racket parser EMITS.
+
+    `racket_definition_forms` and `racket_langs` alter extraction for
+    unchanged file content, and the incremental indexer skips unchanged
+    content by design. So a declaration added after an index exists applied
+    to nothing until each file was edited -- measured: `check-admin ABSENT`
+    across an incremental reindex, present only after a full one -- which is
+    the "parameter present and doing nothing" defect (#508). The digest is
+    stamped on the index at save; a mismatch at the next index forces one
+    full re-parse, the way `PARSER_GENERATION` does for a code change.
+    Empty when neither key is set, so an unconfigured project never differs.
+    """
+    forms = get("racket_definition_forms", {}, repo=repo) or {}
+    langs = get("racket_langs", {}, repo=repo) or {}
+    if not isinstance(forms, dict):
+        forms = {}
+    if not isinstance(langs, dict):
+        langs = {}
+    if not forms and not langs:
+        return ""
+    import hashlib
+    import json as _json
+    payload = _json.dumps({"forms": forms, "langs": langs}, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def get(key: str, default: Any = None, repo: str | None = None) -> Any:
     """Get config value, resolving project -> global -> default.
 

@@ -237,6 +237,33 @@ declarations before their defines kept only the last and then cleared it
 against the wrong define; they are keyed by name now, and the infix spelling
 `(: g : Integer -> Integer)` renders its type instead of `: :`.
 
+### Fixed - Racket: a config change re-parses unchanged files, once
+
+⚠⚠ **`racket_definition_forms` (1.108.301) applied to nothing on an existing
+index.** It changes what the parser emits for IDENTICAL bytes, and the
+incremental indexer skips identical bytes by design, so a declaration added
+after the index was built took effect only for files edited afterwards.
+Measured end to end: index, add `{"defstep": "function"}`, reindex --
+`check-admin ABSENT`; present only after a full reindex or a touch. A user
+following the README saw nothing change and had every reason to conclude the
+key was broken -- the "parameter present and doing nothing" defect (#508)
+wearing a config key's name. `racket_langs` (above) had the same hole from
+birth, and so did the shared parse cache, whose key is content + language +
+filename and nothing about config.
+
+The fix is the `PARSER_GENERATION` mechanism scoped to one project's config.
+`config.racket_config_digest(repo)` fingerprints both keys (empty when neither
+is set, so an unconfigured project never differs); `save_index` stamps it on
+a local index holding Racket files; `racket_config_changed(index)` beside
+`needs_parser_upgrade` compares it at the next index and, on a mismatch,
+escalates to one full re-parse with its own `rebuild_reason`
+(`racket_config_changed`) and warning, exempting a bounded `refresh` slice
+exactly as the generation bump does. The digest also enters the parse-cache
+key for Racket files. `tests/test_racket_config_reparse.py` goes through
+`index_folder` for every case -- add, remove, `racket_langs`, once-not-every-
+run, and a project without Racket never escalating -- because the defect was
+never in the parser.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

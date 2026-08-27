@@ -270,6 +270,7 @@ class CodeIndex:
     branch: str = ""                 # Git branch name at index time (empty = base/default branch or non-git)
     file_cap_status: dict = field(default_factory=dict)  # v1.108.126: {truncated, files_discovered, files_indexed, files_skipped_cap, max_folder_files} when the max_folder_files walk cap dropped files; {"truncated": False} otherwise. Empty = pre-v1.108.126 index (unknown).
     parser_generation: int = 0  # v1.108.244: extraction-semantics generation this index's symbols were produced by. ⚠ Defaults to 0 (= unknown/legacy) deliberately: a construction site that forgets to carry it costs one re-parse, while defaulting to the current generation would silently certify symbols nobody re-parsed.
+    racket_config_digest: str = ""  # config.racket_config_digest() at save time: `racket_definition_forms` + `racket_langs` change what the Racket parser emits for UNCHANGED content, and the incremental path never re-reads unchanged content, so a mismatch at the next index forces one full re-parse. Same rule as parser_generation, scoped to one project's config.
     coverage: dict = field(default_factory=dict)  # v1.108.145: coverage contract for absence claims — {files_discovered, files_indexed, skip_counts{reason:count}, no_symbols_count, walk, recorded_at} from the last full discovery walk. Empty = unknown (pre-upgrade index or no full walk recorded).
 
     def __post_init__(self) -> None:

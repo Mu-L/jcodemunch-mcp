@@ -768,6 +768,7 @@ from ._utils import (
     PARSER_UPGRADE_WARNING,
     describe_unloadable_index,
     needs_parser_upgrade as _needs_parser_upgrade,
+    racket_config_changed as _racket_config_changed,
     size_cap_warning as _size_cap_warning,
     stamp_incremental_outcome as _stamp_incremental_outcome,
 )
@@ -1801,7 +1802,7 @@ def index_folder(
             # are UNCHANGED, so a change-set-driven pass never re-parses them
             # (#414). Disarm the fast path and let the full walk below take the
             # upgrade branch, which is the only thing that rewrites every row.
-            if _needs_parser_upgrade(_fast_base_index):
+            if _needs_parser_upgrade(_fast_base_index) or _racket_config_changed(_fast_base_index):
                 existing_index = None
                 use_memory_hash_cache = False
 
@@ -2346,6 +2347,23 @@ def index_folder(
                 getattr(existing_index, "parser_generation", 0), PARSER_GENERATION,
             )
             warnings.append(PARSER_UPGRADE_WARNING)
+        elif _racket_config_changed(existing_index) and not (force_reparse and paths is not None):
+            # `racket_definition_forms` / `racket_langs` change what the
+            # parser emits for UNCHANGED content, which the incremental path
+            # never re-reads. Same escalation as the generation bump above,
+            # same exemption for a bounded slice campaign, its own reason so
+            # a caller can tell the two apart.
+            incremental = False
+            rebuild_reason = "racket_config_changed"
+            logger.warning(
+                "index_folder racket_config_changed — %s/%s: racket_definition_forms "
+                "or racket_langs differ from the index's stamp; re-parsing every file once",
+                owner, repo_name,
+            )
+            warnings.append(
+                "Racket config (racket_definition_forms / racket_langs) changed since this "
+                "index was built; every file was re-parsed once so the declarations apply."
+            )
 
         # Discovery pass — resolve rel_paths and collect mtimes without
         # reading file contents (P2-5: avoids 200MB-1GB allocation

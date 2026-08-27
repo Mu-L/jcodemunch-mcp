@@ -106,9 +106,23 @@ def _connect(d: str) -> sqlite3.Connection:
     return conn
 
 
-def _key(content: str, filename: str, language: str) -> str:
+def _key(content: str, filename: str, language: str, repo: Optional[str] = None) -> str:
     h = hashlib.sha256(content.encode("utf-8", "surrogatepass")).hexdigest()
-    return f"v{_index_version()}:{language}:{h}:{filename}"
+    key = f"v{_index_version()}:{language}:{h}:{filename}"
+    if language == "racket":
+        # `racket_definition_forms` / `racket_langs` change what the parser
+        # emits for identical bytes, so identical bytes are not one entry
+        # across two configs. Empty for an unconfigured project, so the key
+        # is unchanged there.
+        try:
+            from ..config import racket_config_digest
+            digest = racket_config_digest(repo)
+        except Exception:
+            logger.debug("racket config digest unavailable for parse cache", exc_info=True)
+            digest = ""
+        if digest:
+            key = f"{key}:rkt{digest}"
+    return key
 
 
 def cached_parse_file(
@@ -126,7 +140,7 @@ def cached_parse_file(
     if not d:
         return parse_file(content, filename, language, source_bytes=source_bytes, repo=repo)
 
-    key = _key(content, filename, language)
+    key = _key(content, filename, language, repo)
 
     # Read
     try:

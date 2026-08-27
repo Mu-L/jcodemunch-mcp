@@ -336,6 +336,30 @@ def needs_parser_upgrade(index) -> bool:
     return getattr(index, "parser_generation", 0) < PARSER_GENERATION
 
 
+def racket_config_changed(index) -> bool:
+    """True when the Racket config this index was parsed under has changed.
+
+    `racket_definition_forms` and `racket_langs` change what the Racket
+    parser emits for UNCHANGED content, and the incremental path never
+    re-reads unchanged content, so a declaration added after the index was
+    built applied to nothing (measured: `check-admin ABSENT` across an
+    incremental reindex, present only after a full one). Same shape as
+    `needs_parser_upgrade`, scoped to one project's config. Only a local index
+    holding Racket files can differ; a pre-stamp index with config set differs
+    once, which is the re-parse it never had.
+    """
+    if index is None:
+        return False
+    if "racket" not in (getattr(index, "languages", None) or {}):
+        return False
+    source_root = getattr(index, "source_root", "") or ""
+    if not source_root:
+        return False
+    from .. import config as _config
+
+    return _config.racket_config_digest(source_root) != (getattr(index, "racket_config_digest", "") or "")
+
+
 def stamp_incremental_outcome(
     result: dict,
     requested: bool,
