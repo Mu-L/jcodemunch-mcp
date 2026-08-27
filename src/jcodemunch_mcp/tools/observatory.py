@@ -113,29 +113,74 @@ def _run_git(args: list[str], cwd: Path, *, timeout: int = 60) -> tuple[int, str
         return -1, "", str(e)
 
 
+#: Churn look-back used by `get_hotspots` (and therefore by the `churn_surface`
+#: axis), plus a buffer so the boundary commit is present and clock skew between
+#: the runner and the remote cannot clip the window.
+_CHURN_WINDOW_DAYS = 90
+_HISTORY_BUFFER_DAYS = 30
+_SHALLOW_SINCE = f"{_CHURN_WINDOW_DAYS + _HISTORY_BUFFER_DAYS} days ago"
+
+
 def clone_or_update(url: str, dest: Path, branch: Optional[str] = None) -> Optional[str]:
     """Ensure ``dest`` contains a checkout of ``url``; return current HEAD SHA.
 
-    Shallow clone (depth=1) is sufficient for indexing — we don't need
-    history, just the current tree. Subsequent runs do a fast-forward
-    fetch + reset to the latest tip.
+    ⚠⚠ Clones with ``--shallow-since``, NOT ``--depth=1``. This used to say
+    "shallow clone is sufficient for indexing — we don't need history", which is
+    true of INDEXING and false of SCORING. `churn_surface` is
+    ``complexity x log(1 + commits_in_window)`` with the window counted by
+    ``git log --since=90.days``, so a one-commit clone reports churn 1 for every
+    file in every repository. The axis then measures nothing but complexity, and
+    it does so IDENTICALLY for all eleven scored repos, which is why it looked
+    plausible for months.
+
+    ⚠⚠ Measured on jcodemunch-mcp at one commit: depth=1 scored **81.3 (B)**,
+    full history **75.6 (C)**. The observatory was FLATTERING every repository it
+    scores, ours included. Exactly the defect Practice 6 records from the
+    health-radar Action -- `--depth=1` against a complete clone SHORTENS it --
+    reappearing in a second place that publishes a public verdict.
+
+    ⚠ `--shallow-since` rather than a full clone: the scoring only needs the
+    churn window, and Django's complete history is a large download to answer a
+    90-day question.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     if not (dest / ".git").is_dir():
         if dest.exists():
             shutil.rmtree(dest)
-        clone_args = ["clone", "--depth=1"]
+        base = ["clone", f"--shallow-since={_SHALLOW_SINCE}"]
         if branch:
-            clone_args += ["--branch", branch]
-        clone_args += [url, str(dest)]
-        rc, _, err = _run_git(clone_args, cwd=dest.parent, timeout=300)
+            base += ["--branch", branch]
+        rc, _, err = _run_git(base + [url, str(dest)], cwd=dest.parent, timeout=600)
         if rc != 0:
-            logger.warning("clone %s failed: %s", url, err)
-            return None
+            # ⚠ A repository whose newest commit predates the window selects no
+            # commits and git refuses. Depth 1 is correct THERE: with no commits
+            # in the window the churn really is zero, so the axis is not being
+            # flattered -- it is being told the truth about a quiet repo.
+            logger.warning(
+                "shallow-since clone of %s failed (%s); falling back to depth=1",
+                url, err,
+            )
+            if dest.exists():
+                shutil.rmtree(dest)
+            fb = ["clone", "--depth=1"]
+            if branch:
+                fb += ["--branch", branch]
+            rc, _, err = _run_git(fb + [url, str(dest)], cwd=dest.parent, timeout=300)
+            if rc != 0:
+                logger.warning("clone %s failed: %s", url, err)
+                return None
     else:
-        # Fast-forward update.
+        # Fast-forward update, keeping the same history window.
         ref = branch or "HEAD"
-        rc, _, err = _run_git(["fetch", "--depth=1", "origin", ref], cwd=dest, timeout=120)
+        rc, _, err = _run_git(
+            ["fetch", f"--shallow-since={_SHALLOW_SINCE}", "origin", ref],
+            cwd=dest, timeout=300,
+        )
+        if rc != 0:
+            logger.warning(
+                "shallow-since fetch of %s failed (%s); retrying unbounded", url, err
+            )
+            rc, _, err = _run_git(["fetch", "origin", ref], cwd=dest, timeout=300)
         if rc != 0:
             logger.warning("fetch %s failed: %s", url, err)
             return None

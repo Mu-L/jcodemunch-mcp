@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+### Fixed - the observatory scored eleven repos on one commit of history
+
+`clone_or_update` used `--depth=1`, with the comment "shallow clone is
+sufficient for indexing -- we don't need history". True of INDEXING, false of
+SCORING. `churn_surface` is `complexity x log(1 + commits_in_window)` with the
+window counted by `git log --since=90.days`, so a one-commit clone reports
+**churn 1 for every file in every repository**. The axis then ranked nothing but
+complexity -- identically for all eleven scored repos, which is why it looked
+plausible for months.
+
+⚠⚠ **The observatory was FLATTERING every repository it publishes, ours
+included.** Measured on jcodemunch-mcp at one commit: depth=1 scores **81.3
+(B)**, real history **75.6 (C)**. Same defect Practice 6 records from the
+health-radar Action -- `--depth=1` against a complete clone SHORTENS it --
+reappearing in a second place that publishes a public verdict.
+
+⚠ **`--shallow-since` rather than a full clone**: scoring needs the 90-day churn
+window plus a buffer, not Django's entire past. Measured on gin: 1 commit ->
+17, of which 16 fall inside the window, and the checkout stays shallow.
+
+⚠⚠ **gin's GRADE did not move (91.8 A both ways) and that is the more
+interesting result.** Its `churn_surface` raw went 55.45 -> 39.42 because a
+DIFFERENT symbol became the top hotspot: under depth=1 every file has churn 1,
+so the axis ranks the most complex file; with real history an untouched complex
+file scores zero and drops out. **The axis now means what it says -- complex
+code you actually change, not complex code you merely own.** gin commits
+frequently and pays nothing, because its churn does not land on its complex
+code. Ours does.
+
+⚠ The `--depth=1` fallback survives for a repository whose newest commit
+predates the window: there the churn genuinely IS zero, so the axis is not being
+flattered, it is being told the truth about a quiet repo. `tests/
+test_observatory_clone_depth.py` requires that branch to carry its reason, or
+the next reader deletes the shallow-since path as redundant.
+
+⚠ The FETCH path is guarded separately. The observatory caches its workdir
+between builds, so a correct first clone followed by `fetch --depth=1` walks
+straight back to one commit on run two -- the defect would return on every build
+after the first.
+
+⚠⚠ **The first version of that guard failed on CORRECT code.** It compared
+source-text positions, and the docstring names `--depth=1` while explaining why
+it is not used -- earlier in the file than the code's first `--shallow-since=`.
+It reads the ARGUMENTS off the AST now, docstring excluded: a guard that reads
+prose is measuring the explanation, not the behaviour.
+
+
 ### Changed - broke three import cycles; `cycles` axis 5 -> 2
 
 All three were the same shape: **shared code with no home of its own, living in
