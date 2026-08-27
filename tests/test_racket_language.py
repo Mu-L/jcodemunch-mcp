@@ -193,6 +193,75 @@ def test_define_values_with_a_dotted_tail_is_skipped():
     assert "a" not in names and "rest" not in names
 
 
+# ── binding forms that were (no symbols) ──────────────────────────────────
+#
+# Each form below is a real, importable binding form from the distribution,
+# and each yielded nothing before it was listed. The fidelity corpus filed
+# the results as macro output no parser could reach; two table entries moved
+# 60 human-typed names out of that bucket.
+
+def test_begin_encourage_inline_splices_like_begin():
+    """racket/performance-hint. Hid `sqr`, `sgn`, `conjugate` and all of
+    math-predicates.rkt: 32 names in the corpus."""
+    names = _by_name("(require racket/performance-hint)\n"
+                     "(begin-encourage-inline\n  (define (sqr z) (* z z))\n  (define pi 3))")
+    assert names["sqr"].kind == "function"
+    assert names["pi"].kind == "constant"
+
+
+def test_define_sequence_syntax_is_a_function():
+    """`range` and `inclusive-range` in racket/list.rkt are bound this way."""
+    src = ("(require (for-syntax racket/base))\n"
+           "(define-sequence-syntax range (lambda () #'range-proc) (lambda (stx) #f))")
+    assert _by_name(src)["range"].kind == "function"
+
+
+@pytest.mark.parametrize("src,name", [
+    ("(define-syntax-parse-rule (my-or a b) (or a b))", "my-or"),
+    ("(define-syntax-parameter it (syntax-rules ()))", "it"),
+    ("(define-match-expander pt (syntax-rules () [(_ a b) (posn a b)]))", "pt"),
+    ("(define-inline (fast x) x)", "fast"),
+    ("(define-check (check-foo x) (void))", "check-foo"),
+    ("(define-simple-check (check-bar x) #t)", "check-bar"),
+    ("(define-binary-check (check-baz a b) (equal? a b))", "check-baz"),
+], ids=["syntax-parse-rule", "syntax-parameter", "match-expander", "inline",
+        "check", "simple-check", "binary-check"])
+def test_function_binding_forms_bind_a_function(src, name):
+    """`define-syntax-parse-rule` in particular is the CURRENT name of
+    `define-simple-macro`, which was listed; the live spelling was not."""
+    assert _by_name(src)[name].kind == "function"
+
+
+def test_define_unit_binds_a_constant():
+    src = "(define-unit abc@ (import fee^) (export study^) (define (helper) 1))"
+    names = _by_name(src)
+    assert names["abc@"].kind == "constant"
+    assert "helper" not in names, "a unit body is an internal-definition context"
+
+
+@pytest.mark.parametrize("src", [
+    "(define-syntax-class num (pattern n:number))",
+    "(define-syntax-class (num limit) (pattern n:number))",
+    "(define-splicing-syntax-class num (pattern (~seq n:number)))",
+], ids=["symbol", "header", "splicing"])
+def test_syntax_classes_bind_a_type(src):
+    assert _by_name("(require syntax/parse)\n" + src)["num"].kind == "type"
+
+
+def test_define_logger_synthesises_the_logger_and_the_level_forms():
+    """`(define-logger app)` binds `app-logger` and `log-app-<level>` -- and
+    NOT `app`. Guessing `app` was one of the 168 fabrications measured when
+    `def*` heads were treated as definitions."""
+    syms = {s.name: s for s in _parse("#lang racket/base\n(define-logger app #:parent #f)")}
+    assert "app" not in syms
+    assert syms["app-logger"].kind == "constant"
+    for level in ("fatal", "error", "warning", "info", "debug"):
+        s = syms[f"log-app-{level}"]
+        assert s.kind == "function"
+        assert s.parent == syms["app-logger"].id
+        assert s.line == syms["app-logger"].line
+
+
 # ── absence: things that are not definitions ──────────────────────────────
 
 def test_internal_helper_defines_are_not_emitted():

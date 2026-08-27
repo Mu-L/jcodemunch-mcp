@@ -10911,15 +10911,26 @@ _RACKET_METHOD_FORMS = frozenset({
 })
 
 #: `define`-shaped forms: children[1] is either a header list or a bare symbol.
+#: `define-inline` (racket/performance-hint), rackunit's `define-check`
+#: family and the unit forms all bind exactly what `define` would from the
+#: same header; each was `(no symbols)` before it was listed.
 _RACKET_DEFINE_FORMS = frozenset({
     "define", "define/contract", "define/match", "define-for-syntax",
+    "define-inline", "define-check", "define-simple-check", "define-binary-check",
+    "define-unit", "define-compound-unit", "define-compound-unit/infer",
 })
 
 #: Macro definitions. `function` follows Clojure's and Common Lisp's
 #: `defmacro` -> function: a macro is invoked in operator position.
+#: ⚠ `define-syntax-parse-rule` is the CURRENT name of `define-simple-macro`;
+#: listing the deprecated spelling and not the live one meant every macro
+#: written after the rename was invisible. `define-sequence-syntax` alone hid
+#: `range`, `inclusive-range`, `in-generator` and 19 names in
+#: racket/private/for.rkt from the fidelity corpus.
 _RACKET_SYNTAX_FORMS = frozenset({
     "define-syntax", "define-syntax-rule", "define-simple-macro",
-    "define-syntax-parser",
+    "define-syntax-parser", "define-syntax-parse-rule", "define-syntax-parameter",
+    "define-sequence-syntax", "define-match-expander",
 })
 
 #: Multiple-value binding forms; children[1] is a list of names.
@@ -10947,6 +10958,20 @@ _RACKET_NAMED_FORMS = {
     "define-predicate": "function",
     "define-runtime-path": "constant",
 }
+
+#: Header-or-symbol forms that bind a syntax CLASS (syntax/parse): a
+#: compile-time pattern name, so `type` rather than `function`. 92 pkgs files
+#: use them and every one was `(no symbols)`.
+_RACKET_TYPE_HEADER_FORMS = frozenset({
+    "define-syntax-class", "define-splicing-syntax-class",
+})
+
+#: `(define-logger app)` binds `app-logger` and one `log-app-<level>` macro
+#: per level, none of which occur in the file text -- the struct-accessor
+#: situation again. 25 pkgs files; treating `app` as the binding fabricates
+#: a name (measured: 168 such names across the collects tree when `def*`
+#: heads were guessed at).
+_RACKET_LOGGER_LEVELS = ("fatal", "error", "warning", "info", "debug")
 
 #: ⚠ LOAD-BEARING. These are NAMED WRAPPER nodes whose child is a real `list`,
 #: so without this guard `#;(define x 1)` and `'(define x 1)` both extract as
@@ -10985,8 +11010,14 @@ _RACKET_OPAQUE_HEADS = frozenset({
 #: form, and on `racket/set.rkt`, where `elem/c` / `cmp/c` / `lazy?` are locals
 #: inside a contract macro. Descending into unrecognised forms reported all of
 #: them as module-level bindings that no caller can import.
+#:
+#: `begin-encourage-inline` (racket/performance-hint) is `begin` with an
+#: inlining hint; its absence here hid `sqr`, `sgn`, `conjugate` and every
+#: predicate in racket/private/math-predicates.rkt -- 32 human-typed names in
+#: the fidelity corpus, filed as macro output that no parser could reach.
 _RACKET_SPLICING_HEADS = frozenset({
     "begin", "begin-for-syntax", "#%module-begin", "#%plain-module-begin",
+    "begin-encourage-inline",
 })
 
 #: Descend, but do NOT count the head as a call. Distinct from
@@ -11939,6 +11970,25 @@ def _parse_racket_symbols(
                         kind = "function" if form == "define-syntaxes" else "constant"
                         for c in names:
                             _emit(node, _text(c), kind, sig, scope)
+                    return
+
+                if form in _RACKET_TYPE_HEADER_FORMS:
+                    nn = (_racket_head_name(kids[1]) if kids[1].type == "list"
+                          else (kids[1] if kids[1].type == "symbol" else None))
+                    if nn is not None:
+                        _emit(node, _text(nn), "type", f"({form} {_text(kids[1])})", scope)
+                    return
+
+                if form == "define-logger" and kids[1].type == "symbol":
+                    name = _text(kids[1])
+                    logger_id = make_symbol_id(
+                        filename, f"{scope}::{name}-logger" if scope else f"{name}-logger", "constant")
+                    _emit(node, f"{name}-logger", "constant", f"(define-logger {name})", scope)
+                    for level in _RACKET_LOGGER_LEVELS:
+                        _emit(node, f"log-{name}-{level}", "function",
+                              f"(log-{name}-{level} string-expr)", scope,
+                              parent_id=logger_id,
+                              docstring=f"{level} logging form of (define-logger {name})")
                     return
 
                 # Project-declared forms, matched AFTER every built-in so a

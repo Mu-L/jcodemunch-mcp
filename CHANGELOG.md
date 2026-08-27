@@ -143,6 +143,36 @@ for `(struct child parent (a b))`. Typed Racket's `#:type-name Posn` binds
 `Posn` as a `type` alongside. Fidelity corpus: `missing` 475 -> 430, coverage
 86.5% -> 87.8%, `extra` and `wrong_span` 0.
 
+### Fixed - Racket: binding forms that yielded `(no symbols)`
+
+Every form below is a real, importable binding form from the distribution,
+and every one produced nothing:
+
+- **`begin-encourage-inline`** (racket/performance-hint) is `begin` with an
+  inlining hint and was not a splicing head, so `sqr`, `sgn`, `conjugate` and
+  every predicate in `racket/private/math-predicates.rkt` -- 32 human-typed
+  names in the fidelity corpus -- were filed as macro output no parser could
+  reach.
+- **`define-sequence-syntax`** binds `range`, `inclusive-range`,
+  `in-generator`, `in-treelist` and 19 names in `racket/private/for.rkt`.
+- **`define-syntax-parse-rule`** is the CURRENT name of `define-simple-macro`.
+  The deprecated spelling was listed; the live one was not, so every macro
+  written after the rename was invisible. `define-syntax-parameter`,
+  `define-match-expander`, `define-inline`, rackunit's `define-check` /
+  `define-simple-check` / `define-binary-check`, and `define-unit` /
+  `define-compound-unit` join the tables under the kind their header implies.
+- **`define-syntax-class`** / **`define-splicing-syntax-class`** (92 pkgs
+  files) bind a compile-time pattern name, emitted as `type`.
+- **`define-logger app`** binds `app-logger` and `log-app-<level>` for five
+  levels -- names that occur nowhere in the file, synthesised the way struct
+  accessors are -- and NOT `app`, which was one of the 168 fabrications
+  measured when `def*` heads were guessed at.
+
+Fidelity corpus after this and the two entries above: `missing` 475 -> 362,
+coverage **86.5% -> 89.7%**, `extra` and `wrong_span` still 0. ⚠ The README
+for the harness used to say the bulk of the gap was macro output; 113 of the
+475 were table entries.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises
