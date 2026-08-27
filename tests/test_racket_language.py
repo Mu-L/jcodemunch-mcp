@@ -564,6 +564,45 @@ def test_rename_in_records_the_source_side_name():
     assert edges == [{"specifier": "m.rkt", "names": ["f"]}]
 
 
+def _edges(src: str) -> dict:
+    return {e["specifier"]: e["names"] for e in extract_imports(src, "d/a.rkt", "racket")}
+
+
+def test_every_module_path_inside_a_wrapper_is_an_edge():
+    """⚠ `(for-syntax racket/base "private/helpers.rkt")` recorded
+    `racket/base` and dropped the local file -- and a phase-1 helper's only
+    importer is usually a `for-syntax`, so it read as dead. 166 multi-path
+    wrappers in the distribution's pkgs."""
+    edges = _edges('(require (for-syntax racket/base racket/syntax "helpers.rkt")\n'
+                   '         (combine-in "a.rkt" "b.rkt")\n'
+                   '         (for-template "t.rkt" "u.rkt"))')
+    assert {"racket/base", "racket/syntax", "helpers.rkt", "a.rkt", "b.rkt",
+            "t.rkt", "u.rkt"} <= set(edges)
+
+
+def test_for_meta_phase_level_is_not_a_module_path():
+    edges = _edges('(require (for-meta 1 "m.rkt" racket/base) (for-meta -1 "n.rkt"))')
+    assert set(edges) == {"m.rkt", "racket/base", "n.rkt"}
+    assert "1" not in edges and "-1" not in edges
+
+
+def test_names_stay_attached_to_their_own_path_inside_a_wrapper():
+    edges = _edges('(require (for-syntax (only-in "a.rkt" x) (rename-in "b.rkt" [y z])))')
+    assert edges == {"a.rkt": ["x"], "b.rkt": ["y"]}
+
+
+def test_a_submodule_of_another_file_is_an_edge_to_that_file():
+    """`(submod "." test)` names THIS file; `(submod "other.rkt" sub)` names
+    another file and is a dependency on it. Both were dropped."""
+    edges = _edges('(require (submod "other.rkt" sub) (submod "." test) (submod ".." up))')
+    assert set(edges) == {"other.rkt"}
+
+
+def test_require_syntax_is_not_require():
+    edges = _edges("(require racket/require-syntax)\n(require-syntax foo)")
+    assert set(edges) == {"racket/require-syntax"}
+
+
 def test_requires_inside_comments_are_ignored():
     src = ';; (require fake/one)\n#| (require fake/two) |#\n(require real/three)'
     specs = [e["specifier"] for e in extract_imports(src, "a.rkt", "racket")]

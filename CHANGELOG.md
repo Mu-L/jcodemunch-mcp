@@ -173,6 +173,22 @@ coverage **86.5% -> 89.7%**, `extra` and `wrong_span` still 0. ⚠ The README
 for the harness used to say the bulk of the gap was macro output; 113 of the
 475 were table entries.
 
+### Fixed - Racket: every module path inside a `require` wrapper is an edge
+
+The require reader reduced each sub-form to ONE module path, so the wrappers
+that take several -- `for-syntax`, `for-template`, `for-label`, `for-meta`,
+`combine-in` -- kept the first and dropped the rest. `(require (for-syntax
+racket/base "private/helpers.rkt"))` recorded `racket/base` and lost the
+local file, and since a phase-1 helper's only importer is usually a
+`for-syntax`, it read as dead. `(for-meta 1 "m.rkt")` recorded the phase
+level **`1`** as a module path. 166 multi-path wrappers in the distribution's
+pkgs, 17 in one project. The reader now returns every (path, names) pair a
+sub-form carries, names staying attached to their own path, and `for-meta`'s
+first argument is skipped. `(submod "other.rkt" sub)` is a dependency on
+`other.rkt` and was dropped as if it were `(submod "." test)`; only `"."` and
+`".."` name this file. `(require-syntax ...)` no longer matches the `require`
+scan (`\b` treats `-` as a boundary).
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises
