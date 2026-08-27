@@ -768,6 +768,7 @@ from ._utils import (
     PARSER_UPGRADE_WARNING,
     describe_unloadable_index,
     needs_parser_upgrade as _needs_parser_upgrade,
+    racket_reparse_reason as _racket_reparse_reason,
     size_cap_warning as _size_cap_warning,
     stamp_incremental_outcome as _stamp_incremental_outcome,
 )
@@ -1801,7 +1802,7 @@ def index_folder(
             # are UNCHANGED, so a change-set-driven pass never re-parses them
             # (#414). Disarm the fast path and let the full walk below take the
             # upgrade branch, which is the only thing that rewrites every row.
-            if _needs_parser_upgrade(_fast_base_index):
+            if _needs_parser_upgrade(_fast_base_index) or _racket_reparse_reason(_fast_base_index):
                 existing_index = None
                 use_memory_hash_cache = False
 
@@ -2346,6 +2347,39 @@ def index_folder(
                 getattr(existing_index, "parser_generation", 0), PARSER_GENERATION,
             )
             warnings.append(PARSER_UPGRADE_WARNING)
+        elif (_racket_reason := _racket_reparse_reason(existing_index)) and not (force_reparse and paths is not None):
+            # Two Racket-only escalations, same shape as the generation bump
+            # above and the same exemption for a bounded slice campaign, each
+            # with its own reason so a caller can tell them apart:
+            # `racket_index_predates_gate` -- the index carries no config
+            # stamp, so it was built before the Racket extraction changes of
+            # 2026-08-27 and may hold symbols the `#lang` gate now refuses;
+            # `racket_config_changed` -- `racket_definition_forms` /
+            # `racket_langs` differ from the stamp, and they change what the
+            # parser emits for UNCHANGED content, which the incremental path
+            # never re-reads.
+            incremental = False
+            rebuild_reason = _racket_reason
+            if _racket_reason == "racket_index_predates_gate":
+                logger.warning(
+                    "index_folder racket_index_predates_gate — %s/%s: this index holds "
+                    "Racket files and predates the Racket #lang gate; re-parsing every file once",
+                    owner, repo_name,
+                )
+                warnings.append(
+                    "This index holds Racket files and was built before the Racket #lang gate; "
+                    "every file was re-parsed once so its Racket symbols match the current parser."
+                )
+            else:
+                logger.warning(
+                    "index_folder racket_config_changed — %s/%s: racket_definition_forms "
+                    "or racket_langs differ from the index's stamp; re-parsing every file once",
+                    owner, repo_name,
+                )
+                warnings.append(
+                    "Racket config (racket_definition_forms / racket_langs) changed since this "
+                    "index was built; every file was re-parsed once so the declarations apply."
+                )
 
         # Discovery pass — resolve rel_paths and collect mtimes without
         # reading file contents (P2-5: avoids 200MB-1GB allocation

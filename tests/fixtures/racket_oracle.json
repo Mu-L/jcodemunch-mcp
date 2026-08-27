@@ -1,6 +1,80 @@
 {
   "_note": "Frozen output of benchmarks/racket_fidelity/oracle.rkt against tests/fixtures/racket/*.rkt. Regenerate with tests/fixtures/racket/REGENERATE.md when a fixture changes.",
   "files": {
+    "atexp.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "atexp"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 10,
+          "name": "before-the-bodies"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 12,
+          "name": "step-one"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 15,
+          "name": "step-two"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 18,
+          "name": "step-three"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 22,
+          "name": "after-the-bodies"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "after-the-bodies",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "before-the-bodies",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "step-one",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "step-three",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "step-two",
+          "procedure": true
+        }
+      ],
+      "file": "atexp.rkt"
+    },
     "basics.rkt": {
       "definitions": [
         {
@@ -191,6 +265,459 @@
         }
       ],
       "file": "basics.rkt"
+    },
+    "forms.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "forms"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 11,
+          "name": "inlined-sqr"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 12,
+          "name": "inlined-pi"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 15,
+          "name": "struct:parent"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "parent1"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 15,
+          "name": "parent?"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 15,
+          "name": "parent-p"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 15,
+          "name": "parent"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "struct:child"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "make-child"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "child?"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "child-a"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 16,
+          "name": "child-b"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 16,
+          "name": "child"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "gen:stack"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 161,
+          "name": "prop:guard"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "stack3"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 174,
+          "name": "prop:pred"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "stack4"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "stack?"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "g2"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 20,
+          "name": "stack-push"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 21,
+          "name": "stack-pop"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "stack-push5"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "stack-pop6"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "stack/c"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 24,
+          "name": "app-logger"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": 24,
+          "name": "log-app-fatal"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": 24,
+          "name": "log-app-error"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": 24,
+          "name": "log-app-warning"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": 24,
+          "name": "log-app-info"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": 24,
+          "name": "log-app-debug"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "lifted/213"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "g11"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 27,
+          "name": "contracted-handler"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "stx-param12"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 27,
+          "name": "contracted-handler"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 27,
+          "name": "contracted-handler"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 27,
+          "name": "contracted-handler"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 27,
+          "name": "contracted-handler"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 30,
+          "name": "matcher"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 32,
+          "name": "my-or"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "it13"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 33,
+          "name": "it"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 34,
+          "name": "pt"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 35,
+          "name": "in-things"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 36,
+          "name": "num"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "parse-num14"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "fast-id-internal"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "fast-id16"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 37,
+          "name": "fast-id"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "fast-id-inline"
+        },
+        {
+          "from_source": false,
+          "kind": "syntax",
+          "line": null,
+          "name": "check-foo-impl"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "lifted/327"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "check-foo-impl"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "check-foo-impl"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "check-foo-impl23"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 38,
+          "name": "check-foo"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": 66,
+          "name": "u"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 39,
+          "name": "unit@"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 44,
+          "name": "between"
+        },
+        {
+          "from_source": true,
+          "kind": "module",
+          "line": 42,
+          "name": "test"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 43,
+          "name": "t1"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 46,
+          "name": "t2"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "between",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "inlined-pi",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "inlined-sqr",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "matcher",
+          "procedure": true
+        },
+        {
+          "kind": "syntax",
+          "name": "check-foo",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "child",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "contracted-handler",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "fast-id",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "my-or",
+          "procedure": null
+        },
+        {
+          "kind": "syntax",
+          "name": "unit@",
+          "procedure": null
+        }
+      ],
+      "file": "forms.rkt"
     },
     "guards.rkt": {
       "definitions": [

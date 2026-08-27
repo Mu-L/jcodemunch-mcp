@@ -3,16 +3,16 @@
     "racket_version": "Welcome to Racket v9.2 [cs].",
     "files_measured": 211,
     "files_oracle_failed": 0,
-    "jcm_symbols": 3438,
+    "jcm_symbols": 3592,
     "methods_unscored": 0,
     "oracle_source_names": 3526,
     "oracle_generated_names": 2017,
     "extra": 0,
     "wrong_span": 0,
     "callable_unknowable": 212,
-    "missing": 475,
+    "missing": 362,
     "export_only": 12612,
-    "source_coverage_pct": 86.5
+    "source_coverage_pct": 89.7
   },
   "hard_fail_buckets": [
     "extra",
@@ -22,7 +22,7 @@
   "per_file": [
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/async-channel.rkt",
-      "jcm_symbols": 33,
+      "jcm_symbols": 39,
       "methods_unscored": 0,
       "oracle_source": 26,
       "oracle_generated": 66,
@@ -36,12 +36,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "async-channel-get",
-        "async-channel-put",
-        "async-channel-put-evt",
-        "async-channel-try-get"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -2296,7 +2291,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/enter.rkt",
-      "jcm_symbols": 5,
+      "jcm_symbols": 11,
       "methods_unscored": 0,
       "oracle_source": 5,
       "oracle_generated": 10,
@@ -2691,7 +2686,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/generator.rkt",
-      "jcm_symbols": 22,
+      "jcm_symbols": 23,
       "methods_unscored": 0,
       "oracle_source": 16,
       "oracle_generated": 9,
@@ -2699,9 +2694,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "in-generator"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -7010,7 +7003,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/list.rkt",
-      "jcm_symbols": 61,
+      "jcm_symbols": 63,
       "methods_unscored": 0,
       "oracle_source": 77,
       "oracle_generated": 8,
@@ -7025,9 +7018,7 @@
         "fifth",
         "fourteenth",
         "fourth",
-        "inclusive-range",
         "ninth",
-        "range",
         "second",
         "seventh",
         "sixth",
@@ -9823,7 +9814,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/math.rkt",
-      "jcm_symbols": 3,
+      "jcm_symbols": 15,
       "methods_unscored": 0,
       "oracle_source": 19,
       "oracle_generated": 2,
@@ -9838,22 +9829,10 @@
         }
       ],
       "missing": [
-        "conjugate",
-        "cosh",
-        "ctanh",
-        "define-integer-conversion",
-        "degrees->radians",
         "exact-ceiling",
         "exact-floor",
         "exact-round",
-        "exact-truncate",
-        "flasinh",
-        "flcopysign",
-        "radians->degrees",
-        "sgn",
-        "sinh",
-        "sqr",
-        "tanh"
+        "exact-truncate"
       ],
       "export_only": [
         "infinite?",
@@ -9891,7 +9870,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/mutable-treelist.rkt",
-      "jcm_symbols": 48,
+      "jcm_symbols": 49,
       "methods_unscored": 0,
       "oracle_source": 46,
       "oracle_generated": 23,
@@ -9905,9 +9884,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "in-mutable-treelist"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -9944,7 +9921,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/performance-hint.rkt",
-      "jcm_symbols": 3,
+      "jcm_symbols": 5,
       "methods_unscored": 0,
       "oracle_source": 5,
       "oracle_generated": 4,
@@ -9952,10 +9929,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "actual",
-        "formals"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -10199,7 +10173,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/promise.rkt",
-      "jcm_symbols": 20,
+      "jcm_symbols": 39,
       "methods_unscored": 0,
       "oracle_source": 19,
       "oracle_generated": 29,
@@ -10207,14 +10181,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "promise/idle",
-        "promise/name",
-        "promise/strict",
-        "promise/sync",
-        "promise/thread",
-        "running-thread"
-      ],
+      "missing": [],
       "export_only": [
         "delay",
         "force",
@@ -10419,7 +10386,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/sequence.rkt",
-      "jcm_symbols": 26,
+      "jcm_symbols": 27,
       "methods_unscored": 0,
       "oracle_source": 24,
       "oracle_generated": 21,
@@ -10433,9 +10400,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "in-syntax"
-      ],
+      "missing": [],
       "export_only": [
         "sequence-andmap",
         "sequence-count",
@@ -10630,7 +10595,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/stream.rkt",
-      "jcm_symbols": 33,
+      "jcm_symbols": 35,
       "methods_unscored": 0,
       "oracle_source": 31,
       "oracle_generated": 12,
@@ -10638,10 +10603,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "stream",
-        "stream*"
-      ],
+      "missing": [],
       "export_only": [
         "empty-stream",
         "in-stream",
@@ -10945,7 +10907,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/treelist.rkt",
-      "jcm_symbols": 156,
+      "jcm_symbols": 157,
       "methods_unscored": 0,
       "oracle_source": 136,
       "oracle_generated": 45,
@@ -10959,9 +10921,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "in-treelist"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -12831,7 +12791,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/check.rkt",
-      "jcm_symbols": 4,
+      "jcm_symbols": 5,
       "methods_unscored": 0,
       "oracle_source": 5,
       "oracle_generated": 3,
@@ -12839,9 +12799,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "who"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -13016,7 +12974,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/class-struct.rkt",
-      "jcm_symbols": 91,
+      "jcm_symbols": 94,
       "methods_unscored": 0,
       "oracle_source": 21,
       "oracle_generated": 91,
@@ -13040,9 +12998,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "exn:fail:object"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -13189,7 +13145,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/define-struct.rkt",
-      "jcm_symbols": 35,
+      "jcm_symbols": 36,
       "methods_unscored": 0,
       "oracle_source": 36,
       "oracle_generated": 1,
@@ -13197,9 +13153,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "struct-field-index"
-      ],
+      "missing": [],
       "export_only": [
         "checked-struct-info?"
       ]
@@ -13219,7 +13173,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/dict.rkt",
-      "jcm_symbols": 66,
+      "jcm_symbols": 69,
       "methods_unscored": 0,
       "oracle_source": 97,
       "oracle_generated": 175,
@@ -13228,9 +13182,6 @@
       "wrong_span": [],
       "callable_unknowable": [],
       "missing": [
-        ":in-dict",
-        ":in-dict-keys",
-        ":in-dict-values",
         "dict->list",
         "dict-clear",
         "dict-clear!",
@@ -13341,7 +13292,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/for.rkt",
-      "jcm_symbols": 167,
+      "jcm_symbols": 186,
       "methods_unscored": 0,
       "oracle_source": 220,
       "oracle_generated": 64,
@@ -13371,31 +13322,12 @@
         }
       ],
       "missing": [
-        "*in-bytes",
-        "*in-bytes-lines",
-        "*in-directory",
-        "*in-inclusive-range",
-        "*in-indexed",
-        "*in-input-port-bytes",
-        "*in-input-port-chars",
-        "*in-lines",
-        "*in-list",
-        "*in-mlist",
-        "*in-naturals",
-        "*in-port",
-        "*in-producer",
-        "*in-range",
-        "*in-stream",
-        "*in-string",
-        "*in-value",
-        "*in-vector",
         ":bytes-gen",
         ":flvector-gen",
         ":fxvector-gen",
         ":string-gen",
         ":vector-gen",
         "check-bytes",
-        "check-naturals",
         "check-string",
         "check-vector",
         "for*",
@@ -13444,7 +13376,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/generic-methods.rkt",
-      "jcm_symbols": 33,
+      "jcm_symbols": 35,
       "methods_unscored": 0,
       "oracle_source": 34,
       "oracle_generated": 2,
@@ -13452,10 +13384,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "generic-method-inner-context",
-        "generic-method-outer-context"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -14025,7 +13954,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/map.rkt",
-      "jcm_symbols": 7,
+      "jcm_symbols": 11,
       "methods_unscored": 0,
       "oracle_source": 11,
       "oracle_generated": 0,
@@ -14039,12 +13968,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "andmap2",
-        "for-each2",
-        "map2",
-        "ormap2"
-      ],
+      "missing": [],
       "export_only": [
         "andmap",
         "for-each",
@@ -14053,7 +13977,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/math-predicates.rkt",
-      "jcm_symbols": 0,
+      "jcm_symbols": 7,
       "methods_unscored": 0,
       "oracle_source": 7,
       "oracle_generated": 2,
@@ -14061,15 +13985,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "infinite?",
-        "nan?",
-        "natural?",
-        "negative-integer?",
-        "nonnegative-integer?",
-        "nonpositive-integer?",
-        "positive-integer?"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -14211,7 +14127,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/object-c.rkt",
-      "jcm_symbols": 57,
+      "jcm_symbols": 74,
       "methods_unscored": 0,
       "oracle_source": 41,
       "oracle_generated": 52,
@@ -14225,11 +14141,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "instanceof/c-object/c",
-        "object-contract",
-        "object/c"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -14430,7 +14342,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/pre-base.rkt",
-      "jcm_symbols": 8,
+      "jcm_symbols": 9,
       "methods_unscored": 0,
       "oracle_source": 10,
       "oracle_generated": 0,
@@ -14450,7 +14362,6 @@
         }
       ],
       "missing": [
-        "-random",
         "configure-runtime"
       ],
       "export_only": [
@@ -16076,7 +15987,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/promise.rkt",
-      "jcm_symbols": 37,
+      "jcm_symbols": 40,
       "methods_unscored": 0,
       "oracle_source": 24,
       "oracle_generated": 21,
@@ -16090,9 +16001,7 @@
           "is_procedure": true
         }
       ],
-      "missing": [
-        "composable-promise"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -16366,7 +16275,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/set.rkt",
-      "jcm_symbols": 39,
+      "jcm_symbols": 72,
       "methods_unscored": 0,
       "oracle_source": 69,
       "oracle_generated": 69,
@@ -16374,39 +16283,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "*in-set",
-        "in-set",
-        "proper-subset?",
-        "set->list",
-        "set->stream",
-        "set-add",
-        "set-add!",
-        "set-clear",
-        "set-clear!",
-        "set-copy",
-        "set-copy-clear",
-        "set-count",
-        "set-empty?",
-        "set-first",
-        "set-for-each",
-        "set-implements?",
-        "set-intersect",
-        "set-intersect!",
-        "set-map",
-        "set-member?",
-        "set-remove",
-        "set-remove!",
-        "set-rest",
-        "set-subtract",
-        "set-subtract!",
-        "set-symmetric-difference",
-        "set-symmetric-difference!",
-        "set-union",
-        "set-union!",
-        "set=?",
-        "subset?"
-      ],
+      "missing": [],
       "export_only": []
     },
     {
@@ -16925,7 +16802,7 @@
     },
     {
       "file": "/Users/joel/.rackup/toolchains/release-9.2-cs-aarch64-macosx-full/install/collects/racket/private/template.rkt",
-      "jcm_symbols": 78,
+      "jcm_symbols": 85,
       "methods_unscored": 0,
       "oracle_source": 85,
       "oracle_generated": 0,
@@ -16933,15 +16810,7 @@
       "extra": [],
       "wrong_span": [],
       "callable_unknowable": [],
-      "missing": [
-        "h-splice",
-        "t-append",
-        "t-metafun",
-        "t-orelse*",
-        "t-relocate",
-        "t-resyntax",
-        "t-struct"
-      ],
+      "missing": [],
       "export_only": [
         "~?",
         "~@"

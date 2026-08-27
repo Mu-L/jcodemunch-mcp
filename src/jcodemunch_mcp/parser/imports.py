@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import posixpath
 import re
 import threading
@@ -709,7 +710,9 @@ def _extract_svelte_imports(content: str) -> list[dict]:
 # minimal balanced reader over the require form only; it never parses the whole
 # file, so it stays as cheap as the regex extractors around it.
 
-_RACKET_REQUIRE_RE = re.compile(r"\(\s*require\b")
+#: `\b` after `require` also matched `(require-syntax ...)` (`-` is a word
+#: boundary), which is a different form; the lookahead demands a delimiter.
+_RACKET_REQUIRE_RE = re.compile(r"\(\s*require(?=[\s()\[\]])")
 
 #: Wrappers that carry the real module path deeper inside.
 _RACKET_REQUIRE_UNWRAP = frozenset({
@@ -803,70 +806,90 @@ def _racket_read_form(text: str, start: int):
     return text[i:j], j
 
 
-def _racket_specifier(node) -> Optional[str]:
-    """Reduce a require sub-form to its module path string, or None."""
-    if isinstance(node, str):
-        if node.startswith('"'):
-            return node[1:-1] or None
-        if node.startswith("#") or node in ("", "."):
-            return None
-        return node
-    if not node:
-        return None
-    head = node[0] if isinstance(node[0], str) else ""
-    if head == "submod":
-        # An intra-file reference, not a dependency edge.
-        return None
-    if head in ("file", "lib", "planet", "quote"):
-        return _racket_specifier(node[1]) if len(node) >= 2 else None
-    if head in _RACKET_REQUIRE_UNWRAP:
-        for sub in node[1:]:
-            spec = _racket_specifier(sub)
-            if spec:
-                return spec
-        return None
-    if head in ("only-in", "rename-in", "prefix-in", "except-in", "relative-in"):
-        idx = 2 if head == "prefix-in" else 1
-        return _racket_specifier(node[idx]) if len(node) > idx else None
-    return None
+def _racket_atom_specifier(node: str) -> Optional[str]:
+    """A bare module path or a `"string"` path; None for anything else.
 
-
-def _racket_names(node) -> list[str]:
-    """Imported names, reduced to their SOURCE-side spelling.
-
-    `(rename-in m [f g])` yields `f`, not `g` -- the name at the definition
-    site, which is what makes the edge point at a real symbol. This is the same
-    reduction :func:`_clean_names` applies to `import {a as b}` and Gleam's
-    `X as Y` for every other language here.
+    `"."` and `".."` are the submod spellings for THIS module and its
+    enclosing module, never a file.
     """
-    if isinstance(node, str) or not node:
+    if node.startswith('"'):
+        node = node[1:-1]
+    if node.startswith("#") or node in ("", ".", ".."):
+        return None
+    return node
+
+
+def _racket_edges(node) -> list[tuple[str, list[str]]]:
+    """Every (module path, imported names) pair a require sub-form carries.
+
+    ⚠ Plural on purpose. The wrappers -- `for-syntax`, `for-template`,
+    `for-label`, `for-meta`, `combine-in` -- take ANY number of module paths,
+    and a reducer that returned one string kept the first and dropped the
+    rest: `(for-syntax racket/base "private/helpers.rkt")` recorded
+    `racket/base` and lost the local file, and `(for-meta 1 "m.rkt")` recorded
+    the phase level `1` as a module path. 166 multi-path wrappers in the
+    distribution's pkgs; a phase-1 helper's only importer is usually one of
+    them, so it read as dead.
+
+    Names are reduced to their SOURCE-side spelling: `(rename-in m [f g])`
+    yields `f`, the name at the definition site, which is what makes the edge
+    point at a real symbol -- the reduction :func:`_clean_names` applies to
+    `import {a as b}` and Gleam's `X as Y` for every other language here.
+    """
+    if isinstance(node, str):
+        spec = _racket_atom_specifier(node)
+        return [(spec, [])] if spec else []
+    if not node:
         return []
     head = node[0] if isinstance(node[0], str) else ""
-    if head == "only-in":
-        out = []
-        for item in node[2:]:
-            if isinstance(item, str):
-                out.append(item)
-            elif item and isinstance(item[0], str):
-                out.append(item[0])
-        return out
-    if head == "rename-in":
-        return [p[0] for p in node[2:] if isinstance(p, list) and p and isinstance(p[0], str)]
+    if head == "submod":
+        # `(submod "." test)` / `(submod ".." x)` name a submodule of THIS
+        # file; `(submod "other.rkt" sub)` names a submodule of ANOTHER file,
+        # which is a dependency on that file.
+        if len(node) >= 2 and isinstance(node[1], str):
+            spec = _racket_atom_specifier(node[1])
+            return [(spec, [])] if spec else []
+        return []
+    if head in ("file", "lib", "planet", "quote"):
+        return _racket_edges(node[1]) if len(node) >= 2 else []
     if head in _RACKET_REQUIRE_UNWRAP:
-        for sub in node[1:]:
-            names = _racket_names(sub)
-            if names:
-                return names
+        # `(for-meta 1 a b)`: the first argument is a phase level, not a path.
+        rest = node[2:] if head == "for-meta" else node[1:]
+        out: list[tuple[str, list[str]]] = []
+        for sub in rest:
+            out.extend(_racket_edges(sub))
+        return out
+    if head in ("only-in", "rename-in", "prefix-in", "except-in", "relative-in"):
+        idx = 2 if head == "prefix-in" else 1
+        if len(node) <= idx:
+            return []
+        inner = _racket_edges(node[idx])
+        if not inner:
+            return []
+        spec, names = inner[0]
+        if head == "only-in":
+            names = list(names)
+            for item in node[2:]:
+                if isinstance(item, str):
+                    names.append(item)
+                elif item and isinstance(item[0], str):
+                    names.append(item[0])
+        elif head == "rename-in":
+            names = list(names) + [
+                p[0] for p in node[2:] if isinstance(p, list) and p and isinstance(p[0], str)
+            ]
+        return [(spec, names)] + inner[1:]
     return []
 
 
 def _extract_racket_imports(content: str) -> list[dict]:
     """Extract Racket `(require ...)` edges.
 
-    Handles bare collection paths, string paths, and the `only-in` /
-    `rename-in` / `prefix-in` / `except-in` / `for-syntax` wrappers.
-    `(submod "." test)` is deliberately skipped -- it names a submodule of the
-    same file, not another file.
+    Handles bare collection paths, string paths, `(submod "file" sub)`, and
+    the `only-in` / `rename-in` / `prefix-in` / `except-in` / `for-syntax` /
+    `for-meta` / `combine-in` wrappers, each of which may carry several
+    module paths. `(submod "." test)` is deliberately skipped -- it names a
+    submodule of the same file, not another file.
     """
     text = _racket_strip_comments(content)
     edges: list[dict] = []
@@ -876,16 +899,125 @@ def _extract_racket_imports(content: str) -> list[dict]:
         if not isinstance(form, list):
             continue
         for item in form[1:]:
-            spec = _racket_specifier(item)
-            if not spec:
-                continue
-            names = _racket_names(item)
-            key = (spec, tuple(names))
-            if key in seen:
-                continue
-            seen.add(key)
-            edges.append({"specifier": spec, "names": names})
+            for spec, names in _racket_edges(item):
+                key = (spec, tuple(names))
+                if key in seen:
+                    continue
+                seen.add(key)
+                edges.append({"specifier": spec, "names": names})
     return edges
+
+
+# `(define collection "name")` or `(define collection 'multi)` in an info.rkt.
+_RACKET_INFO_COLLECTION_RE = re.compile(
+    r"\(define\s+collection\s+(?:\"([^\"]+)\"|'multi\b|\(quote\s+multi\))"
+)
+_racket_collection_cache: dict[tuple, dict[str, list[str]]] = {}
+
+
+def build_racket_collection_map(source_root: str, source_files) -> dict[str, list[str]]:
+    """Collection name -> root-relative directories, from every `info.rkt`.
+
+    ⚠ A Racket collection path names a DIRECTORY that `info.rkt` declares,
+    not a path in the repo. In the layout the packaging docs prescribe --
+    `foo-lib/info.rkt` holding `(define collection "foo")` -- `(require
+    foo/bar)` means `foo-lib/bar.rkt`, and there is no way to know that
+    without reading the file. Measured before this existed: **splitflap, 0 of
+    70 require edges resolved**; congame, 147 own-collection specifiers
+    unresolved. Every library file read as dead. This is the PSR-4 shape
+    (:func:`build_psr4_map`), where `composer.json` maps a namespace prefix
+    to a directory.
+
+    A `'multi` package makes every subdirectory a collection named after
+    itself. ⚠ Several directories may declare the SAME collection -- Racket
+    splices them (`congame-cli`, `congame-core` and `congame-doc` all declare
+    `"congame"`) -- so the value is a LIST, in discovery order.
+
+    Cached per (source_root, info.rkt set); the set is part of the key so an
+    added package is seen without a restart.
+    """
+    infos = tuple(sorted(
+        p for p in source_files if p == "info.rkt" or p.endswith("/info.rkt")
+    ))
+    key = (source_root, infos)
+    cached = _racket_collection_cache.get(key)
+    if cached is not None:
+        return cached
+    mapping: dict[str, list[str]] = {}
+    for info in infos:
+        try:
+            with open(os.path.join(source_root, *info.split("/")), encoding="utf-8", errors="replace") as fh:
+                text = fh.read(65536)
+        except OSError:
+            logger.debug("info.rkt unreadable: %s", info, exc_info=True)
+            continue
+        m = _RACKET_INFO_COLLECTION_RE.search(text)
+        if not m:
+            continue
+        d = posixpath.dirname(info)
+        if m.group(1):
+            dirs = mapping.setdefault(m.group(1), [])
+            if d not in dirs:
+                dirs.append(d)
+        else:
+            prefix = d + "/" if d else ""
+            for f in source_files:
+                if not (f.startswith(prefix) and f.endswith(_RACKET_EXTENSIONS)):
+                    continue
+                rest = f[len(prefix):]
+                if "/" not in rest:
+                    continue
+                sub = rest.split("/", 1)[0]
+                sub_dir = posixpath.join(d, sub) if d else sub
+                dirs = mapping.setdefault(sub, [])
+                if sub_dir not in dirs:
+                    dirs.append(sub_dir)
+    _racket_collection_cache[key] = mapping
+    return mapping
+
+
+def augment_racket_collection_edges(imports: dict, source_root: str, source_files) -> int:
+    """Add a root-relative file edge beside each collection-path require.
+
+    `(require splitflap/constructs)` from `splitflap-lib/main.rkt` keeps its
+    edge to the specifier `splitflap/constructs` -- which resolves to nothing,
+    and every consumer already skips an unresolved edge -- and gains one to
+    `splitflap-lib/constructs.rkt`, which `resolve_specifier` matches
+    directly. A bare collection name (`(require splitflap)`) names the
+    collection's `main.rkt`. Same shape as #550: the edge is ADDED at the
+    index, so the 26 `resolve_specifier` call sites keep their single-target
+    contract and nothing threads a map through them.
+
+    Idempotent: an edge already present is not added twice, so running at
+    every `CodeIndex` construction (index time AND load time) is safe.
+    Returns the number of edges added.
+    """
+    if not imports:
+        return 0
+    cmap = build_racket_collection_map(source_root, source_files)
+    if not cmap:
+        return 0
+    added = 0
+    for importer, edges in imports.items():
+        if not importer.endswith(_RACKET_EXTENSIONS) or not edges:
+            continue
+        present = {e.get("specifier") for e in edges}
+        new: list[dict] = []
+        for e in edges:
+            spec = e.get("specifier") or ""
+            if not spec or spec.startswith((".", "/")) or spec.endswith(_RACKET_EXTENSIONS):
+                continue
+            head, _, rest = spec.partition("/")
+            for d in cmap.get(head, ()):
+                leaf = rest + ".rkt" if rest else "main.rkt"
+                target = posixpath.normpath(posixpath.join(d, leaf) if d else leaf)
+                if target in source_files and target not in present:
+                    new.append({"specifier": target, "names": list(e.get("names") or [])})
+                    present.add(target)
+                    added += 1
+        if new:
+            edges.extend(new)
+    return added
 
 
 _LANGUAGE_EXTRACTORS = {

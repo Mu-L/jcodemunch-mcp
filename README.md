@@ -257,6 +257,23 @@ Each entry maps a form name to what it binds: `function`, `constant`, `class` or
 
 ⚠ This is an assertion, not something jCodeMunch can verify. A wrong declaration puts a name in the index that Racket does not actually bind. Declarations are also matched only after every built-in form, so declaring `define` or `struct` has no effect — the built-in handling wins.
 
+### Declaring what a Racket `#lang` looks like
+
+A `#lang` line names a *reader*, and jCodeMunch's Racket parser reads S-expressions. The distribution's langs are built in (`racket/*`, `typed/racket*`, `s-exp`, `info`, `at-exp …`, and the document langs `scribble/*`, `pollen`, `punct`, `markdown` …), but a project's own lang is unknown to it and is treated as a document — no symbols, still text-searchable — until you say what its syntax is:
+
+```jsonc
+{
+  "racket_langs": {
+    "conscript": "at-exp",
+    "mylang": "sexp"
+  }
+}
+```
+
+`sexp` is plain S-expressions; `at-exp` is at-exp text bodies over Racket (the bodies are blanked before parsing, so prose containing `;` `"` `#` or `|` cannot break the grammar); `text` is a document language that is never walked. A key also covers its sub-langs (`conscript` matches `conscript/with-require`), and a project may demote a lang as well as promote one.
+
+Both keys change what the parser emits for *unchanged* files, so a change to either is stamped on the index and forces one full re-parse on the next index (`rebuild_reason: "racket_config_changed"`); you do not need to touch the files or clear the index. An index holding Racket files that was built before this stamp existed re-parses once the same way (`rebuild_reason: "racket_index_predates_gate"`).
+
 ---
 
 ## Documentation

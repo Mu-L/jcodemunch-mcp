@@ -133,6 +133,22 @@ INDEX_VERSION = 17
 #   Two bumps in two releases is the cost of the mechanism being manual, which
 #   is the standing complaint above, not a reason to skip one.
 #
+# ⚠ The Racket extraction changes of 2026-08-27 (the `#lang` gate,
+#   `define-struct` supertype headers, `define-generics`, docstring adjacency,
+#   call references ...) did NOT bump this counter, although every one alters
+#   what unchanged `.rkt` content yields and the gate REMOVES fabricated
+#   symbols that a 1.108.297-.301 index still holds. The counter is one
+#   integer for the whole tree, so a bump re-parses every language for
+#   everybody, and Racket support was three days old with (as far as anyone
+#   knows) one user. Gens 5 and 6 below, bumped the same day for other
+#   languages, carry every existing index through the full re-parse anyway;
+#   what remains is the narrower, forward-looking mechanism in
+#   `CodeIndex.racket_config_digest`: an index built before the stamp existed
+#   has NO such meta key, and a local index holding Racket files with no key
+#   re-parses once (`tools/_utils.racket_reparse_reason`). Unlike a skipped
+#   bump, that stays repairable later -- an absent key is detectable at any
+#   date, where a stamp equal to the constant is not.
+#
 # gen 5 (1.108.302-dev): RUST EXTRACTION -- three definition classes that
 #   yielded no symbol at all.
 #
@@ -341,6 +357,7 @@ class CodeIndex:
     branch: str = ""                 # Git branch name at index time (empty = base/default branch or non-git)
     file_cap_status: dict = field(default_factory=dict)  # v1.108.126: {truncated, files_discovered, files_indexed, files_skipped_cap, max_folder_files} when the max_folder_files walk cap dropped files; {"truncated": False} otherwise. Empty = pre-v1.108.126 index (unknown).
     parser_generation: int = 0  # v1.108.244: extraction-semantics generation this index's symbols were produced by. ⚠ Defaults to 0 (= unknown/legacy) deliberately: a construction site that forgets to carry it costs one re-parse, while defaulting to the current generation would silently certify symbols nobody re-parsed.
+    racket_config_digest: Optional[str] = None  # config.racket_config_digest() at save time: `racket_definition_forms` + `racket_langs` change what the Racket parser emits for UNCHANGED content, and the incremental path never re-reads unchanged content, so a mismatch at the next index forces one full re-parse. Same rule as parser_generation, scoped to one project's config. ⚠ None means NEVER STAMPED (the meta key is absent): an index built before the stamp existed. A local index holding Racket files with None re-parses once -- that is how the Racket extraction changes of 2026-08-27 reach existing indexes WITHOUT a PARSER_GENERATION bump that would re-parse every language for everybody. "" is a stamped, unconfigured project and never differs from itself.
     coverage: dict = field(default_factory=dict)  # v1.108.145: coverage contract for absence claims — {files_discovered, files_indexed, skip_counts{reason:count}, no_symbols_count, walk, recorded_at} from the last full discovery walk. Empty = unknown (pre-upgrade index or no full walk recorded).
 
     def __post_init__(self) -> None:
@@ -373,6 +390,19 @@ class CodeIndex:
                     self.psr4_map = build_psr4_map(self.source_root)
             except Exception:
                 pass
+        # Racket: a collection path names a DIRECTORY declared by info.rkt,
+        # so `(require foo/bar)` from `foo-lib/` resolves through a map the
+        # way PHP's PSR-4 does. The map's edges are ADDED here, beside the
+        # collection-path edge, rather than threaded through the resolver's
+        # 26 call sites (the #550 shape). Runs at construction, so an index
+        # built by the indexer carries them into its save, and an older index
+        # gains them on load; idempotent, so both are safe.
+        if self.imports and self.source_root and "racket" in (self.languages or {}):
+            try:
+                from ..parser.imports import augment_racket_collection_edges
+                augment_racket_collection_edges(self.imports, self.source_root, self._source_file_set)
+            except Exception:
+                logger.debug("racket collection edges unavailable", exc_info=True)
 
     def get_callers_by_name(self) -> dict[tuple[str, str], list[str]]:
         """Lazy reverse lookup: (caller_file, called_name) -> [symbol IDs].

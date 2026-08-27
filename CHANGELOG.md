@@ -216,6 +216,315 @@ edited every time it does -- at which point nobody checks whether the edit was
 correct. Two of its 14 assertions fail against the bracket-only tree.
 
 
+### Fixed - Racket: the `#lang` line is read before the grammar runs
+
+tree-sitter-racket parses S-expressions. A `#lang` line names a READER, and a
+reader can make a `.rkt` file's surface syntax anything at all -- `#lang punct`
+is Markdown, `#lang scribble/manual` is prose, `#lang conscript` is at-exp text
+over Racket -- and every one of them was parsed as if it were `racket/base`.
+
+⚠⚠ **Measured on 207 `#lang conscript` files against Racket's own reader: 39%
+of definitions found, ~100 FABRICATED.** The cause is four characters that are
+prose inside an at-exp text body and tokens to the grammar: `;` opens a
+comment, `"` opens a string that never closes and takes every later definition
+in the file with it, `#` and `|` are reader prefixes. Error recovery then
+re-parents an INTERNAL `define` under a root `ERROR` node (`list -> ERROR ->
+program`, measured on a `(define abc@ (unit ... (define (compute-payment)
+...)))`), and the walker reported it as an importable module-level function.
+On 94 `#lang punct` files the walker emitted one symbol, and that one was
+correct -- but a Markdown document ABOUT Racket carries `(define ...)` in its
+code samples, and those are not bindings.
+
+Three tiers, decided from the `#lang` line before the parser runs:
+
+- **`sexp`** -- the surface syntax is S-expressions (`racket`, `racket/*`,
+  `typed/racket*`, `s-exp`, `info`, `scheme*`, `plai`, `htdp/*`, `eopl`, `br`,
+  `web-server*` ...): walked as before. A file with no `#lang` line is read by
+  the default reader by construction, so a `(module ...)` file is `sexp`.
+- **`at-exp`** -- every `{...}` text body is blanked to spaces, byte for byte,
+  so every offset still names the same position in the original and
+  `content_hash` is still taken from the bytes on disk; the paren skeleton,
+  where every definition lives, is walked. Code mode steps over strings,
+  comments and `#\{` so a brace inside them is not mistaken for a body.
+- **`text`** -- a document language (`scribble/*`, `pollen*`, `punct`,
+  `markdown`, `brag`, `datalog`, `rhombus` ...): no symbols; the file stays
+  text-searchable and is announced at INFO, naming the lang.
+
+⚠ **An UNLISTED lang is `text`**, by the asymmetry the parser is built on: a
+missed definition makes an agent read the file, a fabricated one makes it act
+on a name that does not exist. **`racket_langs` in config promotes a project's
+own lang** -- `{"conscript": "at-exp"}` -- because the project is the only
+party that knows what its reader produces. A key covers its sub-langs
+(`conscript` matches `conscript/with-require`), and a project may demote a
+lang as well as promote one.
+
+With `{"conscript": "at-exp"}` declared, the same 207 files measure **0
+missing, 0 wrong spans** against the reader (13 "extra", every one a
+`define-signature` or `define-runtime-path` binding the comparison did not
+model). The 94 punct files yield 0 symbols. 712 `#lang racket/base` files
+measure exactly as before: 0 parse errors, 0 missing, 0 wrong spans.
+
+⚠ **`ERROR` nodes are skipped in BOTH directions, and the file is named at
+WARNING.** Recovery puts a promoted internal define and every top-level form
+after a stray `)` under the same node, and the two cannot be told apart; a
+miss is recoverable by reading the file, a fabrication is not.
+`tests/test_racket_lang_gate.py` pins the promotion shape structurally (the
+test asserts the `ERROR` ancestry exists before asserting the name is absent),
+and pins the stray-paren direction as a decision rather than an accident.
+
+### Fixed - Racket: a comment is a docstring only when it sits directly above the form
+
+`_preceding_comment` walked `prev_named_sibling` while it was a comment, with
+no line-adjacency check. Two wrong docstrings shipped, and a docstring is the
+one place the index serves PROSE as fact: `(define alpha 1) ;; note about
+alpha` made "note about alpha" the docstring of the NEXT define, and a file's
+header block -- `#lang`, a description, a blank line, the first define -- was
+the first define's docstring (guards.rkt's "Every form here is something that
+LOOKS like a definition" was `live-anchor`'s). The chain must now end on the
+line directly above the form, each link must end directly above the next, and
+a comment starting on the line its preceding non-comment sibling ends on is
+that sibling's trailing comment and stops the chain. Contiguous blocks and
+multi-line `#| |#` comments attach exactly as before.
+
+### Fixed - Racket: a binding position is not a call
+
+`_collect_calls` recorded every list head not on a stop-list, so every
+BINDING position in the language was a phantom call reference: `(lambda (item
+acc) ...)` made `item` a callee, `(for/sum ([elem lst]) ...)` made `elem` one
+(only 7 of the `for/...` forms were on the clause list, and `for/fold`'s
+second clause list never was), `(let loop ([i 0]) ...)` made `i` one, a
+`match` pattern `(list a b)` made `list` one, and `(provide (contract-out [f
+...]))` made `f` a call of itself. A struct form's field list and `#:guard`
+lambda parameters were attributed to whichever synthesised accessor was
+emitted last: `posn-y calls=['x', 'a', 'values']`. Those references feed
+`get_call_hierarchy`, `get_blast_radius` (callers by name) and
+`get_untested_symbols`' name match, where a parameter named like the function
+under test counted as coverage.
+
+Headers and parameter lists are skipped whole; every `for` and `for*` variant
+is matched by prefix so none can be left off a list again; `let`/`for`/`do`/
+`with-syntax`/`match-let` clause heads are bindings and their values are
+walked; `match`/`case-lambda`/`syntax-case`/`syntax-parse` clause patterns are
+skipped and their bodies walked; the struct family, `provide`/`require` and
+class-body declarations (`init-field`, `field`, `inherit` ...) are not
+descended at all. `(send obj method ...)` now records `method` rather than
+`send`, and `(new cls% [init val])` records `cls%` and not the init names.
+`define`-header defaults are a lost call rather than a self-call -- a miss,
+not a fabrication.
+
+### Fixed - Racket: a callable is a `function` when the text says so
+
+The value of a symbol-named define is not always `children[2]`.
+`(define/contract handler (-> any/c any/c) (lambda (x) x))` has the CONTRACT
+there, and Typed Racket's `(define f : (-> Integer Integer) (lambda (x) x))`
+has a `:`; both were filed as `constant`, a false statement about a callable
+that an agent acts on when deciding whether a name can be called. The
+fidelity harness had been listing these under `callable_unknowable` beside
+`(define curry (make-curry #f))`, which genuinely needs an evaluator; these
+never did. The value is now located by the define's shape, the contract or
+type rides in the signature, and `match-lambda`/`match-lambda*`/`thunk`/
+`thunk*` join the lambda heads because their expansion to a lambda is visible
+in the text. `define-syntaxes` binds macros and now emits `function`, the rule
+`define-syntax` already followed two blocks away in the same walker. A
+`case-lambda` signature shows the first parameter list rather than the first
+clause with its body.
+
+### Fixed - Racket: `define-generics` emits what the expander binds, not a name it does not
+
+`(define-generics stack (stack-push s v) (stack-pop s))` binds `gen:stack`,
+`stack?`, `stack/c` and each METHOD -- and not `stack`. The walker emitted the
+bare stem as a `type` and none of the methods, which are the names callers
+write. ⚠⚠ **The fidelity harness knew, and forgave it by name**:
+`_oracle_knows` treated the oracle knowing `gen:<name>` as knowing `<name>`,
+so the one bucket the harness exists for -- `extra`, a name Racket does not
+bind -- read 0 while carrying a fabrication. The exemption is gone; the
+comparison is plain membership; `extra` is 0 against the expander on the
+committed corpus without it. The methods, `#:defined-predicate` and
+`#:defined-table` names are synthesised from the form the way struct accessors
+are, sharing its range and parented to `gen:<name>`; `#:defaults`,
+`#:fallbacks` and `#:derive-property` (which takes TWO values) are stepped
+over, so a `define` inside them stays internal.
+
+### Fixed - Racket: `(define-struct (child parent) (a b))` no longer yields nothing
+
+The old supertype form puts a LIST in the name slot, and the struct branch
+required a symbol there, so the whole form fell through to the descent guard
+and produced no symbol at all -- not the struct, not `child?`, not the
+accessors, not `make-child`. That form is still the commonest way HtDP-era
+code writes a struct with a parent: 130 uses in 36 collects files, 283 in 66
+pkgs files. `define-struct/contract` has the same header. Own fields only, as
+for `(struct child parent (a b))`. Typed Racket's `#:type-name Posn` binds
+`Posn` as a `type` alongside. Fidelity corpus: `missing` 475 -> 430, coverage
+86.5% -> 87.8%, `extra` and `wrong_span` 0.
+
+### Fixed - Racket: binding forms that yielded `(no symbols)`
+
+Every form below is a real, importable binding form from the distribution,
+and every one produced nothing:
+
+- **`begin-encourage-inline`** (racket/performance-hint) is `begin` with an
+  inlining hint and was not a splicing head, so `sqr`, `sgn`, `conjugate` and
+  every predicate in `racket/private/math-predicates.rkt` -- 32 human-typed
+  names in the fidelity corpus -- were filed as macro output no parser could
+  reach.
+- **`define-sequence-syntax`** binds `range`, `inclusive-range`,
+  `in-generator`, `in-treelist` and 19 names in `racket/private/for.rkt`.
+- **`define-syntax-parse-rule`** is the CURRENT name of `define-simple-macro`.
+  The deprecated spelling was listed; the live one was not, so every macro
+  written after the rename was invisible. `define-syntax-parameter`,
+  `define-match-expander`, `define-inline`, rackunit's `define-check` /
+  `define-simple-check` / `define-binary-check`, and `define-unit` /
+  `define-compound-unit` join the tables under the kind their header implies.
+- **`define-syntax-class`** / **`define-splicing-syntax-class`** (92 pkgs
+  files) bind a compile-time pattern name, emitted as `type`.
+- **`define-logger app`** binds `app-logger` and `log-app-<level>` for five
+  levels -- names that occur nowhere in the file, synthesised the way struct
+  accessors are -- and NOT `app`, which was one of the 168 fabrications
+  measured when `def*` heads were guessed at.
+
+Fidelity corpus after this and the two entries above: `missing` 475 -> 362,
+coverage **86.5% -> 89.7%**, `extra` and `wrong_span` still 0. ⚠ The README
+for the harness used to say the bulk of the gap was macro output; 113 of the
+475 were table entries.
+
+### Fixed - Racket: every module path inside a `require` wrapper is an edge
+
+The require reader reduced each sub-form to ONE module path, so the wrappers
+that take several -- `for-syntax`, `for-template`, `for-label`, `for-meta`,
+`combine-in` -- kept the first and dropped the rest. `(require (for-syntax
+racket/base "private/helpers.rkt"))` recorded `racket/base` and lost the
+local file, and since a phase-1 helper's only importer is usually a
+`for-syntax`, it read as dead. `(for-meta 1 "m.rkt")` recorded the phase
+level **`1`** as a module path. 166 multi-path wrappers in the distribution's
+pkgs, 17 in one project. The reader now returns every (path, names) pair a
+sub-form carries, names staying attached to their own path, and `for-meta`'s
+first argument is skipped. `(submod "other.rkt" sub)` is a dependency on
+`other.rkt` and was dropped as if it were `(submod "." test)`; only `"."` and
+`".."` name this file. `(require-syntax ...)` no longer matches the `require`
+scan (`\b` treats `-` as a boundary).
+
+### Fixed - Racket: a collection path resolves through `info.rkt`, the way PSR-4 does
+
+⚠⚠ **A Racket collection path names a DIRECTORY that `info.rkt` declares, not
+a path in the repo.** In the layout the packaging docs prescribe --
+`foo-lib/info.rkt` holding `(define collection "foo")` -- `(require foo/bar)`
+means `foo-lib/bar.rkt`, and nothing in the specifier says so. The resolver
+tried `foo/bar.rkt` at the repo root and importer-relative, both of which
+exist only when the repo IS a collects root, which is what the fidelity
+corpus is and what no package is. Measured on two real projects: **splitflap,
+0 of 70 require edges resolved; congame, 147 own-collection specifiers
+unresolved.** Every library file in both read as dead -- the #548 symptom
+(78% of the collects tree dead) on every package-layout repo, while
+`LANGUAGE_SUPPORT.md` said collection paths resolve.
+
+`build_racket_collection_map(source_root, source_files)` reads every
+`info.rkt` in the index: `(define collection "name")` maps `name` to that
+directory, `'multi` makes each subdirectory a collection named after itself.
+⚠ Several directories may declare ONE collection -- Racket splices them, and
+`congame-cli`, `congame-core` and `congame-doc` all declare `"congame"` -- so
+the value is a list. A bare `(require foo)` is the collection's `main.rkt`.
+
+⚠ **The edge is ADDED beside the collection-path edge, not threaded through
+the resolver** -- the #550 shape. `augment_racket_collection_edges` runs in
+`CodeIndex.__post_init__`, so an index built by the indexer carries the
+edges into its save and an older index gains them on load; it is idempotent,
+so both are safe; and the 26 `resolve_specifier` call sites keep their
+single-target contract. The original `foo/bar` edge still resolves to
+nothing and every consumer already skips it. An installed collection
+(`racket/list`) is not in any `info.rkt` and gains nothing: an edge to a
+file that is not the one Racket would load is worse than none.
+
+Measured after: splitflap **0 -> 13** resolved edges, 7 of 17 files gain an
+importer; congame **304 -> 624**. `tests/test_racket_collections.py` goes
+through `resolve_specifier` for every added edge, because an edge nothing
+downstream can resolve is indistinguishable from no edge.
+
+### Fixed - Racket: repeated `module+` blocks share one symbol; annotations attach by name
+
+`(module+ test ...)` may appear many times in one file -- Racket splices them
+into ONE submodule, and the docs recommend keeping tests beside the code
+they test -- and each block emitted a `class` with the SAME id, where
+`symbols.id` is a PRIMARY KEY. The first block carries the symbol; later
+blocks contribute members under the same parent. Typed Racket's `(: name
+type)` annotations were held in a single last-seen slot, so a block of
+declarations before their defines kept only the last and then cleared it
+against the wrong define; they are keyed by name now, and the infix spelling
+`(: g : Integer -> Integer)` renders its type instead of `: :`.
+
+### Fixed - Racket: a config change re-parses unchanged files, once
+
+⚠⚠ **`racket_definition_forms` (1.108.301) applied to nothing on an existing
+index.** It changes what the parser emits for IDENTICAL bytes, and the
+incremental indexer skips identical bytes by design, so a declaration added
+after the index was built took effect only for files edited afterwards.
+Measured end to end: index, add `{"defstep": "function"}`, reindex --
+`check-admin ABSENT`; present only after a full reindex or a touch. A user
+following the README saw nothing change and had every reason to conclude the
+key was broken -- the "parameter present and doing nothing" defect (#508)
+wearing a config key's name. `racket_langs` (above) had the same hole from
+birth, and so did the shared parse cache, whose key is content + language +
+filename and nothing about config.
+
+The fix is the `PARSER_GENERATION` mechanism scoped to one project's config.
+`config.racket_config_digest(repo)` fingerprints both keys (empty when neither
+is set, so an unconfigured project never differs); `save_index` stamps it on
+a local index holding Racket files; `racket_config_changed(index)` beside
+`needs_parser_upgrade` compares it at the next index and, on a mismatch,
+escalates to one full re-parse with its own `rebuild_reason`
+(`racket_config_changed`) and warning, exempting a bounded `refresh` slice
+exactly as the generation bump does. The digest also enters the parse-cache
+key for Racket files. `tests/test_racket_config_reparse.py` goes through
+`index_folder` for every case -- add, remove, `racket_langs`, once-not-every-
+run, and a project without Racket never escalating -- because the defect was
+never in the parser.
+
+### Changed - Racket: an index that predates the `#lang` gate re-parses once, instead of a `PARSER_GENERATION` bump
+
+Every Racket change above alters extraction for UNCHANGED content, and the
+`#lang` gate REMOVES fabricated symbols that an index built by
+1.108.297-.301 still holds; the project's rule for that is a
+`PARSER_GENERATION` bump. ⚠ **Deliberately not bumped.** The counter is one
+integer for the whole tree, so a bump re-parses every language for everybody
+-- the bill gen 3 and gen 4 already sent this week -- and Racket support was
+three days old with, as far as anyone knows, one user.
+
+The narrower mechanism is the stamp the config-change fix introduced: every
+LOCAL index is now stamped with `racket_config_digest` at save (`""` when
+unconfigured), so an index with NO such meta key is one that predates the
+stamp. `racket_reparse_reason(index)` -- which replaces `racket_config_changed`
+-- returns `racket_index_predates_gate` for a local index holding Racket files
+with no key, and `racket_config_changed` for a stamp that differs; either
+escalates to one full re-parse of that index with its own `rebuild_reason` and
+warning. That reaches exactly the indexes that need it, and unlike a skipped
+bump it stays repairable at any later date: an absent key is detectable
+forever, a stamp equal to the constant is not. As it turned out, gens 5 and 6 were bumped the same day for Rust and for
+`max_nesting`, so every existing index takes the full re-parse anyway and
+carries these Racket changes with it; the stamp is what covers the NEXT
+Racket-only extraction change without a global bump. `tests/test_racket_config_reparse.py` deletes the meta key
+from a real store and asserts the single escalation; a non-Racket index with
+no key is left alone; a remote index never qualifies.
+
+### Changed - Racket: two fidelity fixtures; artifacts regenerated
+
+Two fixtures join the CI-safe fidelity gate, each with its frozen expander
+answer: `forms.rkt` holds one instance of every form that yielded nothing,
+the wrong kind or an unbound name (`begin-encourage-inline`, the old
+`define-struct` header, `define-generics`, `define-logger`, `define/contract`,
+`match-lambda`, `define-syntax-parse-rule`, `define-syntax-class`,
+`define-inline`, `define-check`, `define-unit`, two `module+` blocks) and must
+come back with nothing missing and none of the unbound stems present;
+`atexp.rkt` carries the four hazard characters inside text bodies, asserts
+the raw bytes STILL fail the grammar (non-vacuity), and must come back
+complete with its internal helper not promoted.
+
+`benchmarks/racket_fidelity/results.json` is regenerated on the same 211-file
+corpus at Racket v9.2: **`missing` 475 -> 362, coverage 86.5% -> 89.7%, 171
+of 211 files clean (was 153), `extra` 0 and `wrong_span` 0 with the
+`define-generics` exemption removed.** `LANGUAGE_SUPPORT.md` and the harness
+README restate the figures; `tests/test_racket_fidelity_artifacts.py` binds
+them. The harness README no longer says the bulk of `missing` is macro output
+-- 113 of the 475 were table entries -- and says which part of
+`callable_unknowable` is a labelling choice rather than an unknowable.
 ## [1.108.302] - 2026-08-27 - Nothing we could say about Rust
 
 ### Fixed - three Rust definition classes that yielded no symbol at all (`PARSER_GENERATION` 4 -> 5)

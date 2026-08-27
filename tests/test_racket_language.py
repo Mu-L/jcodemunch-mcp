@@ -85,6 +85,55 @@ def test_lambda_valued_define_is_a_function():
     assert _by_name("(define handler (lambda (x) x))")["handler"].kind == "function"
 
 
+# ⚠ The value of a symbol-named define is not always children[2]. Each shape
+# below filed a callable as `constant` -- a false statement an agent acts on
+# when deciding whether a name can be called -- and every one is KNOWABLE from
+# the text, unlike `(define curry (make-curry #f))`, which is not.
+
+def test_define_contract_reads_the_value_after_the_contract():
+    s = _by_name("(define/contract handler (-> any/c any/c) (lambda (x) x))")["handler"]
+    assert s.kind == "function"
+    assert "(-> any/c any/c)" in s.signature
+
+
+def test_define_contract_with_a_non_lambda_value_is_a_constant():
+    s = _by_name("(define/contract limit natural? 10)")["limit"]
+    assert s.kind == "constant"
+    assert "natural?" in s.signature
+
+
+def test_typed_define_reads_the_value_after_the_annotation():
+    s = _by_name("(define f : (-> Integer Integer) (lambda (x) x))")["f"]
+    assert s.kind == "function"
+    assert "(-> Integer Integer)" in s.signature
+
+
+def test_typed_define_of_a_value_is_a_constant_with_its_type():
+    s = _by_name("(define limit : Integer 10)")["limit"]
+    assert s.kind == "constant"
+    assert s.signature.endswith(": Integer")
+
+
+@pytest.mark.parametrize("value", [
+    "(match-lambda [_ 1])", "(match-lambda* [_ 1])", "(thunk 1)", "(thunk* 1)",
+    "(case-lambda [(x) x] [(x y) y])",
+], ids=["match-lambda", "match-lambda*", "thunk", "thunk*", "case-lambda"])
+def test_lambda_shaped_macros_make_a_define_a_function(value):
+    assert _by_name(f"(define f {value})")["f"].kind == "function"
+
+
+def test_case_lambda_signature_shows_the_first_parameter_list_not_a_body():
+    s = _by_name("(define f (case-lambda [(x) (frob x)] [(x y) y]))")["f"]
+    assert s.signature == "(define f (case-lambda (x)))"
+
+
+def test_define_syntaxes_binds_macros_which_are_functions():
+    """The same rule `define-syntax` follows: a macro is invoked in operator
+    position. `constant` contradicted it two blocks away in the same walker."""
+    names = _by_name("(define-syntaxes (m1 m2) (values (lambda (s) s) (lambda (s) s)))")
+    assert names["m1"].kind == "function" and names["m2"].kind == "function"
+
+
 def test_curried_define_finds_the_leftmost_head():
     """A depth-1-only implementation returns `(adder a)` or nothing."""
     names = _by_name("(define ((adder a) b) (+ a b))")
@@ -142,6 +191,75 @@ def test_define_values_with_a_dotted_tail_is_skipped():
     would invent a binding named `.`."""
     names = _by_name("(define-values (a . rest) (values 1 2))")
     assert "a" not in names and "rest" not in names
+
+
+# ── binding forms that were (no symbols) ──────────────────────────────────
+#
+# Each form below is a real, importable binding form from the distribution,
+# and each yielded nothing before it was listed. The fidelity corpus filed
+# the results as macro output no parser could reach; two table entries moved
+# 60 human-typed names out of that bucket.
+
+def test_begin_encourage_inline_splices_like_begin():
+    """racket/performance-hint. Hid `sqr`, `sgn`, `conjugate` and all of
+    math-predicates.rkt: 32 names in the corpus."""
+    names = _by_name("(require racket/performance-hint)\n"
+                     "(begin-encourage-inline\n  (define (sqr z) (* z z))\n  (define pi 3))")
+    assert names["sqr"].kind == "function"
+    assert names["pi"].kind == "constant"
+
+
+def test_define_sequence_syntax_is_a_function():
+    """`range` and `inclusive-range` in racket/list.rkt are bound this way."""
+    src = ("(require (for-syntax racket/base))\n"
+           "(define-sequence-syntax range (lambda () #'range-proc) (lambda (stx) #f))")
+    assert _by_name(src)["range"].kind == "function"
+
+
+@pytest.mark.parametrize("src,name", [
+    ("(define-syntax-parse-rule (my-or a b) (or a b))", "my-or"),
+    ("(define-syntax-parameter it (syntax-rules ()))", "it"),
+    ("(define-match-expander pt (syntax-rules () [(_ a b) (posn a b)]))", "pt"),
+    ("(define-inline (fast x) x)", "fast"),
+    ("(define-check (check-foo x) (void))", "check-foo"),
+    ("(define-simple-check (check-bar x) #t)", "check-bar"),
+    ("(define-binary-check (check-baz a b) (equal? a b))", "check-baz"),
+], ids=["syntax-parse-rule", "syntax-parameter", "match-expander", "inline",
+        "check", "simple-check", "binary-check"])
+def test_function_binding_forms_bind_a_function(src, name):
+    """`define-syntax-parse-rule` in particular is the CURRENT name of
+    `define-simple-macro`, which was listed; the live spelling was not."""
+    assert _by_name(src)[name].kind == "function"
+
+
+def test_define_unit_binds_a_constant():
+    src = "(define-unit abc@ (import fee^) (export study^) (define (helper) 1))"
+    names = _by_name(src)
+    assert names["abc@"].kind == "constant"
+    assert "helper" not in names, "a unit body is an internal-definition context"
+
+
+@pytest.mark.parametrize("src", [
+    "(define-syntax-class num (pattern n:number))",
+    "(define-syntax-class (num limit) (pattern n:number))",
+    "(define-splicing-syntax-class num (pattern (~seq n:number)))",
+], ids=["symbol", "header", "splicing"])
+def test_syntax_classes_bind_a_type(src):
+    assert _by_name("(require syntax/parse)\n" + src)["num"].kind == "type"
+
+
+def test_define_logger_synthesises_the_logger_and_the_level_forms():
+    """`(define-logger app)` binds `app-logger` and `log-app-<level>` -- and
+    NOT `app`. Guessing `app` was one of the 168 fabrications measured when
+    `def*` heads were treated as definitions."""
+    syms = {s.name: s for s in _parse("#lang racket/base\n(define-logger app #:parent #f)")}
+    assert "app" not in syms
+    assert syms["app-logger"].kind == "constant"
+    for level in ("fatal", "error", "warning", "info", "debug"):
+        s = syms[f"log-app-{level}"]
+        assert s.kind == "function"
+        assert s.parent == syms["app-logger"].id
+        assert s.line == syms["app-logger"].line
 
 
 # ── absence: things that are not definitions ──────────────────────────────
@@ -247,6 +365,34 @@ def test_stale_annotation_does_not_attach_to_a_later_define():
     assert "Integer" not in g.signature
 
 
+def test_several_annotations_before_their_defines_all_attach():
+    """Typed Racket routinely declares a block of `(: ...)` first. A single
+    last-seen slot kept `b`'s annotation and cleared it against `a`."""
+    names = _by_name("(: a Integer)\n(: b String)\n(define a 1)\n(define b \"x\")")
+    assert names["a"].signature.endswith(": Integer")
+    assert names["b"].signature.endswith(": String")
+
+
+def test_infix_annotation_spelling_keeps_the_whole_type():
+    """`(: g : Integer -> Integer)` used to render as `... : :`."""
+    s = _by_name("(: g : Integer -> Integer)\n(define (g n) n)")["g"]
+    assert s.signature == "(define (g n)) : Integer -> Integer"
+
+
+def test_repeated_module_plus_blocks_share_one_submodule_symbol():
+    """`(module+ test ...)` may appear many times; Racket splices them into
+    ONE submodule. Each block emitted a `class` with the same id, and
+    `symbols.id` is a PRIMARY KEY."""
+    syms = _parse("#lang racket/base\n(define (f) 1)\n(module+ test (define (t1) 1))\n"
+                  "(define (g) 2)\n(module+ test (define (t2) 2))")
+    tests = [s for s in syms if s.name == "test"]
+    assert len(tests) == 1
+    assert tests[0].line == 3, "the first block carries the symbol"
+    members = {s.qualified_name for s in syms if s.qualified_name.startswith("test::")}
+    assert members == {"test::t1", "test::t2"}
+    assert len({s.id for s in syms}) == len(syms), "every id in the file is unique"
+
+
 # ── docstrings ────────────────────────────────────────────────────────────
 
 def test_preceding_semicolon_comment_becomes_the_docstring():
@@ -261,6 +407,50 @@ def test_block_comment_becomes_the_docstring():
     assert s.docstring == "Adds two numbers."
 
 
+# ⚠ Adjacency. A docstring is the one place the index serves PROSE as fact,
+# so a comment attached to the wrong form is a false statement, not a miss.
+# Both shapes below shipped: the trailing comment of the previous form became
+# the next form's docstring, and a file's header block became the first
+# define's.
+
+def test_a_trailing_comment_belongs_to_the_form_on_its_line_not_the_next():
+    names = _by_name("(define alpha 1) ;; note about alpha\n(define beta 2)")
+    assert names["beta"].docstring == ""
+
+
+def test_a_comment_block_separated_by_a_blank_line_is_not_a_docstring():
+    """The file-header shape: `#lang`, a description block, a blank line, the
+    first define. guards.rkt's header was live-anchor's docstring."""
+    src = ("#lang racket/base\n"
+           ";; Every form here is something that LOOKS like a definition.\n"
+           ";; The expander agrees none of these bind a name.\n"
+           "\n"
+           "(define live-anchor 1)")
+    assert _by_name(src)["live-anchor"].docstring == ""
+
+
+def test_a_contiguous_block_directly_above_still_attaches_in_full():
+    src = (";; First line.\n"
+           ";; Second line.\n"
+           "(define (documented) 1)")
+    assert _by_name(src)["documented"].docstring == "First line.\nSecond line."
+
+
+def test_a_trailing_comment_does_not_join_the_next_forms_own_block():
+    """`(define a 1) ;; about a` directly above `;; about b` must contribute
+    nothing: the chain stops at the trailing comment, keeping `about b`."""
+    src = ("(define a 1) ;; about a\n"
+           ";; about b\n"
+           "(define b 2)")
+    assert _by_name(src)["b"].docstring == "about b"
+
+
+def test_a_multi_line_block_comment_directly_above_attaches():
+    src = ("#| Spans\n   two lines. |#\n"
+           "(define (spanned) 1)")
+    assert _by_name(src)["spanned"].docstring == "Spans\n   two lines."
+
+
 # ── call references ───────────────────────────────────────────────────────
 
 def test_call_references_name_callees_not_binding_forms():
@@ -271,6 +461,105 @@ def test_call_references_name_callees_not_binding_forms():
     assert {"helper", "odd?", "compute", "fallback"} <= set(refs)
     for not_a_call in ("let", "if", "z", "define"):
         assert not_a_call not in refs
+
+
+# ⚠ Binding positions are not calls. Each shape below was measured producing
+# a phantom reference: a parameter, a clause head, a pattern head or a struct
+# field was attributed as a CALL of the enclosing function, and for a struct
+# form, of whichever synthesised accessor was emitted last. Those references
+# feed get_call_hierarchy, blast radius and get_untested_symbols' name match.
+
+def _refs(src: str, name: str) -> set:
+    return set(_by_name("#lang racket/base\n" + src)[name].call_references)
+
+
+def test_lambda_parameters_are_not_calls():
+    refs = _refs("(define (f lst) (map (lambda (item acc) (helper item)) lst))", "f")
+    assert {"map", "helper"} <= refs
+    assert "item" not in refs and "acc" not in refs
+
+
+def test_every_for_variant_treats_its_clause_heads_as_bindings():
+    src = ("(define (f lst)\n"
+           "  (for/sum ([elem lst]) (score elem))\n"
+           "  (for/vector ([v lst]) (shape v))\n"
+           "  (for*/hash ([k lst] [w lst]) (values k (weigh w)))\n"
+           "  (for/fold ([acc 0]) ([x lst]) (fold-step acc x)))")
+    refs = _refs(src, "f")
+    assert {"score", "shape", "weigh", "fold-step"} <= refs
+    for binding in ("elem", "v", "k", "w", "acc", "x", "for/sum", "for/vector",
+                    "for*/hash", "for/fold"):
+        assert binding not in refs
+
+
+def test_named_let_bindings_and_case_lambda_params_are_not_calls():
+    src = ("(define (f)\n"
+           "  (let loop ([i 0]) (when (< i 3) (loop (add1 i))))\n"
+           "  ((case-lambda [(x) (one x)] [(x y) (two x y)]) 1))")
+    refs = _refs(src, "f")
+    assert {"loop", "add1", "<", "one", "two"} <= refs
+    assert "i" not in refs and "x" not in refs
+
+
+def test_match_patterns_are_not_calls_but_clause_bodies_are():
+    src = ("(define (f v)\n"
+           "  (match v\n"
+           "    [(list a b) (pair-case a b)]\n"
+           "    [(cons x _) (cons-case x)]\n"
+           "    [(? number? n) (num-case n)]))")
+    refs = _refs(src, "f")
+    assert {"pair-case", "cons-case", "num-case"} <= refs
+    for pattern_head in ("list", "cons", "?", "a", "x", "n"):
+        assert pattern_head not in refs
+
+
+def test_send_records_the_method_not_the_dispatcher():
+    refs = _refs("(define (f obj) (send obj compute (arg-of obj)))", "f")
+    assert {"compute", "arg-of"} <= refs
+    assert "send" not in refs and "obj" not in refs
+
+
+def test_new_records_the_class_and_not_the_init_names():
+    refs = _refs("(define (f) (new widget% [width (measure)] [height 2]))", "f")
+    assert {"widget%", "measure"} <= refs
+    assert "width" not in refs and "height" not in refs and "new" not in refs
+
+
+def test_struct_fields_and_option_lambdas_leave_the_accessors_clean():
+    """A struct's synthesised accessors share the form's byte range, so the
+    field list `(x y)` and the `#:guard (lambda (a b n) ...)` parameters were
+    attributed to whichever accessor was emitted last."""
+    syms = _parse("#lang racket/base\n"
+                  "(struct posn (x y) #:guard (lambda (a b n) (values a b)))")
+    for s in syms:
+        assert s.call_references == [], (s.name, s.call_references)
+
+
+def test_provide_specs_and_define_values_names_are_not_calls():
+    src = ("(provide (contract-out [f (-> integer? integer?)]) (rename-out [f g]))\n"
+           "(define-values (p q) (values 1 2))\n"
+           "(define (f x) (h x))")
+    refs = _refs(src, "f")
+    assert refs == {"h"}
+
+
+def test_class_body_declarations_are_not_calls():
+    src = ("(define c%\n"
+           "  (class object%\n"
+           "    (init-field [w 1])\n"
+           "    (field [h (initial-height)])\n"
+           "    (define/public (area) (* w h))\n"
+           "    (super-new)))")
+    names = _by_name("#lang racket/base\n" + src)
+    assert names["area"].call_references == ["*"]
+
+
+def test_a_define_header_default_is_not_a_call_of_itself():
+    """`(define (f [x (default)]) ...)`: `f` used to be recorded as calling
+    `f`. The header is skipped whole; `default` is a lost call, which is a
+    miss rather than a fabrication."""
+    refs = _refs("(define (f [x 1]) (use x))\n(define (g) (f))", "g")
+    assert refs == {"f"}
 
 
 # ── imports ───────────────────────────────────────────────────────────────
@@ -301,6 +590,45 @@ def test_rename_in_records_the_source_side_name():
     """
     edges = extract_imports('(require (rename-in "m.rkt" [f g]))', "a.rkt", "racket")
     assert edges == [{"specifier": "m.rkt", "names": ["f"]}]
+
+
+def _edges(src: str) -> dict:
+    return {e["specifier"]: e["names"] for e in extract_imports(src, "d/a.rkt", "racket")}
+
+
+def test_every_module_path_inside_a_wrapper_is_an_edge():
+    """⚠ `(for-syntax racket/base "private/helpers.rkt")` recorded
+    `racket/base` and dropped the local file -- and a phase-1 helper's only
+    importer is usually a `for-syntax`, so it read as dead. 166 multi-path
+    wrappers in the distribution's pkgs."""
+    edges = _edges('(require (for-syntax racket/base racket/syntax "helpers.rkt")\n'
+                   '         (combine-in "a.rkt" "b.rkt")\n'
+                   '         (for-template "t.rkt" "u.rkt"))')
+    assert {"racket/base", "racket/syntax", "helpers.rkt", "a.rkt", "b.rkt",
+            "t.rkt", "u.rkt"} <= set(edges)
+
+
+def test_for_meta_phase_level_is_not_a_module_path():
+    edges = _edges('(require (for-meta 1 "m.rkt" racket/base) (for-meta -1 "n.rkt"))')
+    assert set(edges) == {"m.rkt", "racket/base", "n.rkt"}
+    assert "1" not in edges and "-1" not in edges
+
+
+def test_names_stay_attached_to_their_own_path_inside_a_wrapper():
+    edges = _edges('(require (for-syntax (only-in "a.rkt" x) (rename-in "b.rkt" [y z])))')
+    assert edges == {"a.rkt": ["x"], "b.rkt": ["y"]}
+
+
+def test_a_submodule_of_another_file_is_an_edge_to_that_file():
+    """`(submod "." test)` names THIS file; `(submod "other.rkt" sub)` names
+    another file and is a dependency on it. Both were dropped."""
+    edges = _edges('(require (submod "other.rkt" sub) (submod "." test) (submod ".." up))')
+    assert set(edges) == {"other.rkt"}
+
+
+def test_require_syntax_is_not_require():
+    edges = _edges("(require racket/require-syntax)\n(require-syntax foo)")
+    assert set(edges) == {"racket/require-syntax"}
 
 
 def test_requires_inside_comments_are_ignored():
@@ -491,6 +819,75 @@ def test_auto_fields_get_an_accessor():
 
 def test_a_struct_with_no_fields_still_binds_a_predicate():
     assert _names("(struct posn ())") == {"posn", "posn?"}
+
+
+def test_old_define_struct_with_a_supertype_header_binds_everything():
+    """⚠ `(define-struct (child parent) (a b))` is the OLD supertype form and
+    the commonest way HtDP-era code writes a struct with a parent: 130 uses in
+    36 collects files, 283 in 66 pkgs files. Requiring a symbol in the name
+    slot yielded NOTHING -- not the struct, not the predicate, not the
+    accessors, not `make-child`."""
+    syms = {s.name: s for s in _parse("#lang racket/base\n(struct parent (p))\n"
+                                      "(define-struct (child parent) (a b))")}
+    assert {"child", "child?", "child-a", "child-b", "make-child"} <= set(syms)
+    assert syms["child"].kind == "class"
+    assert "parent" in syms["child"].signature
+    assert "child-p" not in syms, "inherited fields keep the supertype's accessors"
+
+
+def test_old_define_struct_contract_form_with_a_supertype_header():
+    n = _names("(struct parent (p))\n(define-struct/contract (son parent) ([d number?]))")
+    assert {"son", "son?", "son-d", "make-son"} <= n
+
+
+def test_type_name_binds_a_type():
+    syms = {s.name: s for s in _parse(
+        "#lang typed/racket\n(struct posn ([x : Real] [y : Real]) #:type-name Posn)")}
+    assert syms["Posn"].kind == "type"
+    assert syms["posn"].kind == "class"
+    assert {"posn?", "posn-x", "posn-y"} <= set(syms)
+
+
+# ── define-generics: emit what the expander binds ─────────────────────────
+#
+# ⚠ `(define-generics stack (stack-push s v) (stack-pop s))` binds `gen:stack`,
+# `stack?`, `stack/c` and each METHOD -- and not `stack`. The walker emitted
+# the bare stem, a name Racket does not bind, and the fidelity harness forgave
+# it by name; the methods, which are what callers write, were not emitted.
+
+def test_define_generics_binds_the_interface_predicate_contract_and_methods():
+    syms = {s.name: s for s in _parse(
+        "#lang racket/base\n(require racket/generic)\n"
+        "(define-generics stack\n  (stack-push s v)\n  [stack-pop s])")}
+    assert {"gen:stack", "stack?", "stack/c", "stack-push", "stack-pop"} <= set(syms)
+    assert "stack" not in syms, "the bare stem is not a binding"
+    assert syms["gen:stack"].kind == "type"
+    for callable_ in ("stack?", "stack/c", "stack-push", "stack-pop"):
+        assert syms[callable_].kind == "function"
+        assert syms[callable_].parent == syms["gen:stack"].id
+    assert syms["stack-push"].signature == "(stack-push s v)"
+
+
+def test_define_generics_keyword_arguments_are_not_methods():
+    """`#:fallbacks [...]` and `#:defaults (...)` hold `define` forms and
+    method-shaped lists; `#:derive-property` takes TWO values."""
+    n = _names("(require racket/generic)\n"
+               "(define-generics stack\n"
+               "  #:defaults ([list? (define (stack-push s v) (cons v s))])\n"
+               "  #:fallbacks [(define (stack-pop s) s)]\n"
+               "  #:derive-property prop:sequence (lambda (s) s)\n"
+               "  #:requires [stack-push]\n"
+               "  (stack-push s v)\n  (stack-pop s))")
+    assert {"gen:stack", "stack-push", "stack-pop"} <= n
+    for not_a_method in ("list?", "prop:sequence", "lambda", "define", "cons"):
+        assert not_a_method not in n
+
+
+def test_define_generics_defined_predicate_and_table_bind_their_names():
+    n = _names("(require racket/generic)\n"
+               "(define-generics dict #:defined-predicate dict-implements? "
+               "#:defined-table dict-def-table (dict-ref d k))")
+    assert {"dict-implements?", "dict-def-table", "dict-ref"} <= n
 
 
 @pytest.mark.parametrize("kw", ["#:name", "#:extra-name"])

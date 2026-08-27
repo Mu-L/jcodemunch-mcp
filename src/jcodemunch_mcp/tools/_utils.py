@@ -336,6 +336,45 @@ def needs_parser_upgrade(index) -> bool:
     return getattr(index, "parser_generation", 0) < PARSER_GENERATION
 
 
+def racket_reparse_reason(index) -> Optional[str]:
+    """Why a local index holding Racket files must be re-parsed in full, or None.
+
+    Two reasons, told apart because a caller reads `rebuild_reason`:
+
+    - ``racket_index_predates_gate``: the index carries NO
+      `racket_config_digest` stamp, so it was built before the Racket
+      extraction changes of 2026-08-27 (the `#lang` gate above all, which
+      REMOVES fabricated symbols a 1.108.297-.301 index still holds). This is
+      the narrow substitute for a `PARSER_GENERATION` bump: it reaches exactly
+      the indexes that hold Racket files instead of every language for
+      everybody, and an absent key stays detectable at any later date.
+    - ``racket_config_changed``: `racket_definition_forms` / `racket_langs`
+      differ from the stamp. They change what the parser emits for UNCHANGED
+      content, which the incremental path never re-reads, so a declaration
+      added after the index was built applied to nothing (measured:
+      `check-admin ABSENT` across an incremental reindex, present only after a
+      full one).
+
+    Same shape as `needs_parser_upgrade`, scoped to one project. A remote
+    index has no source root and never qualifies.
+    """
+    if index is None:
+        return None
+    if "racket" not in (getattr(index, "languages", None) or {}):
+        return None
+    source_root = getattr(index, "source_root", "") or ""
+    if not source_root:
+        return None
+    stamp = getattr(index, "racket_config_digest", None)
+    if stamp is None:
+        return "racket_index_predates_gate"
+    from .. import config as _config
+
+    if _config.racket_config_digest(source_root) != stamp:
+        return "racket_config_changed"
+    return None
+
+
 def stamp_incremental_outcome(
     result: dict,
     requested: bool,
