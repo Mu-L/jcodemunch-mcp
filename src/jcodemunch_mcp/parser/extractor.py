@@ -10887,8 +10887,12 @@ def _parse_dlang_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
 # the TEXT of the head symbol, exactly as in _parse_clojure_symbols.
 
 #: Values that make `(define name VALUE)` a procedure rather than a constant.
+#: `match-lambda` and `thunk` are macros that expand to a lambda, and that is
+#: visible in the text; leaving them out filed `(define a (match-lambda ...))`
+#: under `callable_unknowable` in the fidelity harness, which it is not.
 _RACKET_LAMBDA_HEADS = frozenset({
     "lambda", "λ", "case-lambda", "opt-lambda", "kw-lambda",
+    "match-lambda", "match-lambda*", "match-lambda**", "thunk", "thunk*",
 })
 
 #: Heads of a class expression, for `(define C (class object% ...))`.
@@ -11090,7 +11094,8 @@ _RACKET_NON_CALL_HEADS = (
                  "for/product", "for*/product", "for/hasheq", "for/hasheqv",
                  "for*/hash", "for*/vector", "for*/sum", "for*/and", "for*/or",
                  "for*/first", "for*/last", "for*/set", "for/stream",
-                 "for*/stream", "for/async", "let/cc", "let/ec"})
+                 "for*/stream", "for/async", "let/cc", "let/ec",
+                 "thunk", "thunk*"})
 )
 
 
@@ -11604,13 +11609,45 @@ def _parse_racket_symbols(
         named = _racket_named(node)
         return bool(named) and named[0].type == "symbol" and _text(named[0]) in _RACKET_CLASS_HEADS
 
-    def _value_kind(kids, in_class: bool) -> str:
+    def _define_value(form: str, kids):
+        """The VALUE expression of a symbol-named define, and any inline type.
+
+        ⚠ The value is not always ``kids[2]``. `(define/contract name CONTRACT
+        value)` puts the contract there, and Typed Racket's `(define name :
+        TYPE value)` puts a `:`. Reading ``kids[2]`` for both filed every
+        contracted or annotated lambda as a `constant`, which is a false
+        statement about a callable and was KNOWABLE from the text.
+        Returns (value_node_or_None, annotation_text_or_None).
+        """
+        if form == "define/contract":
+            if len(kids) >= 4:
+                return kids[3], _squash(_text(kids[2]))
+            return None, None
+        if len(kids) >= 4 and kids[2].type == "symbol" and _text(kids[2]) == ":":
+            return (kids[4] if len(kids) >= 5 else None), _squash(_text(kids[3]))
+        return (kids[2] if len(kids) >= 3 else None), None
+
+    def _value_kind(value, in_class: bool) -> str:
         """`(define name VALUE)` -- procedure or constant?"""
-        if len(kids) >= 3 and kids[2].type == "list":
-            inner = _racket_named(kids[2])
+        if value is not None and value.type == "list":
+            inner = _racket_named(value)
             if inner and inner[0].type == "symbol" and _text(inner[0]) in _RACKET_LAMBDA_HEADS:
                 return "method" if in_class else "function"
         return "constant"
+
+    def _lambda_shape(value) -> str:
+        """`(lambda (x y) ...)` -> `(lambda (x y))`, for the signature."""
+        inner = _racket_named(value)
+        head = _text(inner[0])
+        if head == "case-lambda":
+            # First clause's parameter list, not the clause with its body.
+            first = _racket_named(inner[1]) if len(inner) >= 2 and inner[1].type == "list" else []
+            plist = _text(first[0]) if first else ""
+        elif head.startswith("match-lambda") or head.startswith("thunk"):
+            plist = ""
+        else:
+            plist = _text(inner[1]) if len(inner) >= 2 else ""
+        return f"({head} {plist})".replace(" )", ")")
 
     def _clause_values(clause_list) -> None:
         """`([x (helper 1)] ...)`: walk each clause's VALUES, never its head."""
@@ -11782,13 +11819,14 @@ def _parse_racket_symbols(
                             # therefore squash every macro to `constant`.
                             kind, sig = "function", f"({form} {name})"
                         else:
-                            kind = _value_kind(kids, in_class)
+                            value, annotation = _define_value(form, kids)
+                            kind = _value_kind(value, in_class)
                             if kind in ("function", "method"):
-                                params = _racket_named(kids[2])
-                                plist = _text(params[1]) if len(params) >= 2 else ""
-                                sig = f"({form} {name} ({_text(params[0])} {plist}))"
+                                sig = f"({form} {name} {_lambda_shape(value)})"
                             else:
                                 sig = f"({form} {name})"
+                            if annotation:
+                                sig = f"{sig} : {annotation}"
                         _emit(node, name, kind, sig, scope, parent_id=parent_id)
                     # ⚠ THE rule: return without descending, so an internal
                     # helper `define` inside this body stays invisible.
@@ -11839,8 +11877,11 @@ def _parse_racket_symbols(
                     # list carries a `dot` node.
                     if names and all(c.type == "symbol" for c in names):
                         sig = f"({form} {_text(kids[1])})"
+                        # `define-syntaxes` binds macros, and a macro is a
+                        # `function` here (same rule as `define-syntax` above).
+                        kind = "function" if form == "define-syntaxes" else "constant"
                         for c in names:
-                            _emit(node, _text(c), "constant", sig, scope)
+                            _emit(node, _text(c), kind, sig, scope)
                     return
 
                 # Project-declared forms, matched AFTER every built-in so a

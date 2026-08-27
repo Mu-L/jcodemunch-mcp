@@ -98,6 +98,23 @@ descended at all. `(send obj method ...)` now records `method` rather than
 `define`-header defaults are a lost call rather than a self-call -- a miss,
 not a fabrication.
 
+### Fixed - Racket: a callable is a `function` when the text says so
+
+The value of a symbol-named define is not always `children[2]`.
+`(define/contract handler (-> any/c any/c) (lambda (x) x))` has the CONTRACT
+there, and Typed Racket's `(define f : (-> Integer Integer) (lambda (x) x))`
+has a `:`; both were filed as `constant`, a false statement about a callable
+that an agent acts on when deciding whether a name can be called. The
+fidelity harness had been listing these under `callable_unknowable` beside
+`(define curry (make-curry #f))`, which genuinely needs an evaluator; these
+never did. The value is now located by the define's shape, the contract or
+type rides in the signature, and `match-lambda`/`match-lambda*`/`thunk`/
+`thunk*` join the lambda heads because their expansion to a lambda is visible
+in the text. `define-syntaxes` binds macros and now emits `function`, the rule
+`define-syntax` already followed two blocks away in the same walker. A
+`case-lambda` signature shows the first parameter list rather than the first
+clause with its body.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

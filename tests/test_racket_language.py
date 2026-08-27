@@ -85,6 +85,55 @@ def test_lambda_valued_define_is_a_function():
     assert _by_name("(define handler (lambda (x) x))")["handler"].kind == "function"
 
 
+# ⚠ The value of a symbol-named define is not always children[2]. Each shape
+# below filed a callable as `constant` -- a false statement an agent acts on
+# when deciding whether a name can be called -- and every one is KNOWABLE from
+# the text, unlike `(define curry (make-curry #f))`, which is not.
+
+def test_define_contract_reads_the_value_after_the_contract():
+    s = _by_name("(define/contract handler (-> any/c any/c) (lambda (x) x))")["handler"]
+    assert s.kind == "function"
+    assert "(-> any/c any/c)" in s.signature
+
+
+def test_define_contract_with_a_non_lambda_value_is_a_constant():
+    s = _by_name("(define/contract limit natural? 10)")["limit"]
+    assert s.kind == "constant"
+    assert "natural?" in s.signature
+
+
+def test_typed_define_reads_the_value_after_the_annotation():
+    s = _by_name("(define f : (-> Integer Integer) (lambda (x) x))")["f"]
+    assert s.kind == "function"
+    assert "(-> Integer Integer)" in s.signature
+
+
+def test_typed_define_of_a_value_is_a_constant_with_its_type():
+    s = _by_name("(define limit : Integer 10)")["limit"]
+    assert s.kind == "constant"
+    assert s.signature.endswith(": Integer")
+
+
+@pytest.mark.parametrize("value", [
+    "(match-lambda [_ 1])", "(match-lambda* [_ 1])", "(thunk 1)", "(thunk* 1)",
+    "(case-lambda [(x) x] [(x y) y])",
+], ids=["match-lambda", "match-lambda*", "thunk", "thunk*", "case-lambda"])
+def test_lambda_shaped_macros_make_a_define_a_function(value):
+    assert _by_name(f"(define f {value})")["f"].kind == "function"
+
+
+def test_case_lambda_signature_shows_the_first_parameter_list_not_a_body():
+    s = _by_name("(define f (case-lambda [(x) (frob x)] [(x y) y]))")["f"]
+    assert s.signature == "(define f (case-lambda (x)))"
+
+
+def test_define_syntaxes_binds_macros_which_are_functions():
+    """The same rule `define-syntax` follows: a macro is invoked in operator
+    position. `constant` contradicted it two blocks away in the same walker."""
+    names = _by_name("(define-syntaxes (m1 m2) (values (lambda (s) s) (lambda (s) s)))")
+    assert names["m1"].kind == "function" and names["m2"].kind == "function"
+
+
 def test_curried_define_finds_the_leftmost_head():
     """A depth-1-only implementation returns `(adder a)` or nothing."""
     names = _by_name("(define ((adder a) b) (+ a b))")
