@@ -22,6 +22,12 @@ import re
 import pytest
 
 from jcodemunch_mcp.cli import init as I
+# ⚠⚠ The policy half lives in `cli.policy`, and patches MUST target it.
+# `init` re-exports these names for ~50 existing callers, but patching the
+# ALIAS is silently ineffective: `active_policy` resolves them through
+# `policy`'s own globals, so a monkeypatch on `init` changes nothing and
+# nothing warns. That is why these are `P.` and not `I.`.
+from jcodemunch_mcp.cli import policy as P
 import jcodemunch_mcp.server as server_module
 
 # Matches the ways the policies name a tool: `name`, `name {`, `name(`.
@@ -38,7 +44,7 @@ def _tools_named_in(policy: str) -> set[str]:
 def surface(monkeypatch):
     """Force an effective tool surface without touching a real config."""
     def _set(value):
-        monkeypatch.setattr(I, "_effective_tool_surface", lambda: value)
+        monkeypatch.setattr(P, "_effective_tool_surface", lambda: value)
     return _set
 
 
@@ -51,8 +57,8 @@ def test_counter_policy_names_only_front_door_tools(surface):
     naming anything else is describing a call the client cannot offer.
     """
     surface("counter")
-    named = _tools_named_in(I.active_policy())
-    reachable = I._front_door_tool_names()
+    named = _tools_named_in(P.active_policy())
+    reachable = P._front_door_tool_names()
     assert named, "the counter policy must still name the tools it wants used"
     assert named <= reachable, (
         f"policy names tools absent from the front door: {sorted(named - reachable)}"
@@ -67,7 +73,7 @@ def test_counter_policy_actually_teaches_the_front_door(surface):
     than a filtered copy.
     """
     surface("counter")
-    policy = I.active_policy()
+    policy = P.active_policy()
     for entry in ("order", "menu", "route"):
         assert f"`{entry}" in policy, f"front-door policy never mentions {entry}"
 
@@ -79,8 +85,8 @@ def test_full_surface_keeps_the_direct_tool_policy(surface):
     satisfy every assertion above.
     """
     surface("full")
-    policy = I.active_policy()
-    assert policy is not I._CLAUDE_MD_POLICY_COUNTER
+    policy = P.active_policy()
+    assert policy is not P._CLAUDE_MD_POLICY_COUNTER
     named = _tools_named_in(policy)
     assert "search_symbols" in named and "get_symbol_source" in named
 
@@ -89,18 +95,18 @@ def test_full_surface_keeps_the_direct_tool_policy(surface):
 
 def test_active_tools_collapses_to_the_front_door_under_counter(surface):
     surface("counter")
-    assert I._get_active_tools() == I._front_door_tool_names() or (
-        I._get_active_tools() <= I._front_door_tool_names()
+    assert P._get_active_tools() == P._front_door_tool_names() or (
+        P._get_active_tools() <= P._front_door_tool_names()
     )
 
 
 def test_active_tools_ignores_profile_when_the_surface_is_the_front_door(surface, monkeypatch):
     """Surface wins over profile: `core` still cannot advertise a direct tool."""
     surface("counter")
-    monkeypatch.setattr(I, "_get_active_tools", I._get_active_tools)
+    monkeypatch.setattr(P, "_get_active_tools", P._get_active_tools)
     from jcodemunch_mcp import config as cfg
     monkeypatch.setattr(cfg, "get", lambda k, d=None: "core" if k == "tool_profile" else d)
-    active = I._get_active_tools()
+    active = P._get_active_tools()
     assert "search_symbols" not in active
 
 
@@ -123,7 +129,7 @@ def test_full_surface_still_honours_profile(surface, monkeypatch):
     monkeypatch.setitem(cfg._GLOBAL_CONFIG, "tool_profile", "core")
     monkeypatch.setitem(cfg._GLOBAL_CONFIG, "disabled_tools", [])
 
-    active = I._get_active_tools()
+    active = P._get_active_tools()
 
     assert active is not None, "a non-full profile must still filter"
     assert active == {t.name for t in _build_tools_list()}

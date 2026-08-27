@@ -15,6 +15,21 @@ from . import generation as _generation
 
 logger = logging.getLogger(__name__)
 
+#: Callables notified after any write to a `symbol_embeddings` table, with the
+#: database path. Registered by whoever holds derived state over the store.
+#:
+#: ⚠ The store deliberately does NOT import its subscribers. That inversion is
+#: the whole point: `embedding_matrix` caches decoded rows and must drop them on
+#: a write, but a cache depending on a store is ordinary while a store
+#: depending on its caches is a cycle.
+_WRITE_LISTENERS: list = []
+
+
+def register_write_listener(fn) -> None:
+    """Subscribe *fn(db_path)* to writes. Idempotent."""
+    if fn not in _WRITE_LISTENERS:
+        _WRITE_LISTENERS.append(fn)
+
 _EMBEDDINGS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS symbol_embeddings (
     symbol_id TEXT PRIMARY KEY,
@@ -431,20 +446,26 @@ class EmbeddingStore:
     # ── Write ──────────────────────────────────────────────────────────────
 
     def _invalidate_matrix(self) -> None:
-        """Drop any cached normalised matrix for this database (#399).
+        """Announce a write so caches over this database can drop it (#399).
 
-        The cache keys itself on the database's mtime/size stamp and would
-        notice a write on its own — every writer here goes through ``_connect``,
-        which bumps the file. This is the belt to that suspenders: a write and a
-        read landing inside the same filesystem mtime granularity is a real
-        window on Windows, and it is cheap to close from the side that knows a
-        write happened.
+        The matrix cache keys itself on the database's mtime/size stamp and
+        would notice a write on its own — every writer here goes through
+        ``_connect``, which bumps the file. This is the belt to that
+        suspenders: a write and a read landing inside the same filesystem
+        mtime granularity is a real window on Windows, and it is cheap to
+        close from the side that knows a write happened.
+
+        ⚠⚠ This used to `from . import embedding_matrix` and call it directly,
+        which made the two modules a CYCLE: the matrix reads the store, and the
+        store reached back into the matrix. The store has no business knowing a
+        cache exists. It now announces the write and lets whoever cares
+        subscribe, so the import arrow points one way.
         """
-        try:
-            from . import embedding_matrix as _matrix
-            _matrix.invalidate(self._db_path)
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("EmbeddingStore matrix invalidation failed", exc_info=True)
+        for listener in tuple(_WRITE_LISTENERS):
+            try:
+                listener(self._db_path)
+            except Exception:  # pragma: no cover - defensive
+                logger.debug("embedding write listener failed", exc_info=True)
 
     def set_many(self, embeddings: dict[str, list[float]]) -> None:
         """Upsert multiple symbol embeddings in one transaction."""

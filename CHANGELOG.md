@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Changed - broke three import cycles; `cycles` axis 5 -> 2
+
+All three were the same shape: **shared code with no home of its own, living in
+whichever module happened to write it first.** Neither side of any pair was
+wrong to want the other.
+
+- **`cli/init.py` <-> `cli/skills.py`** -> new `cli/policy.py` (246 lines: the
+  CLAUDE.md policy text, surface detection, tool filtering, and `active_policy`
+  as the one entry point).
+- **`storage/embedding_matrix.py` <-> `storage/embedding_store.py`** -> a
+  listener registry. The store now ANNOUNCES a write (`register_write_listener`)
+  instead of importing the cache to invalidate it. A cache depending on a store
+  is ordinary; a store depending on its caches is a cycle.
+- **`retrieval/signal_fusion.py` <-> `tools/search_symbols.py`** -> new
+  `retrieval/scoring.py` (218 lines: BM25 constants, tokenizer, stemmer,
+  abbreviation map, identity and cosine scoring).
+
+⚠⚠ **The fourth two-file cycle was left ALONE on purpose.**
+`encoding/schemas/__init__.py` <-> `registry.py` is real -- `registry` does
+`from . import __path__, __name__` to walk submodules with `pkgutil`, and
+`__init__` loads the registry. That is the plugin-discovery idiom. Swapping it
+for `importlib.import_module()` deletes the STATIC edge while the actual
+dependency is unchanged, which is gaming the metric rather than fixing a design.
+**The number is ours, so the temptation to move it is exactly why it stays.**
+
+⚠⚠ **A re-export is a MONKEYPATCH TRAP, and both new modules say so.** Both
+extractions must re-export (~50 call sites in `src/` and `tests/` still import
+the old paths), but patching `init._effective_tool_surface` no longer affects
+`policy.active_policy` -- it resolves through `policy`'s own globals, silently,
+with nothing warning. Two test files were patching the alias and went red
+immediately, which is the good outcome; both are retargeted with a note so
+nobody restores them.
+
+⚠ **The extraction script had the same blind spot as the Rust oracle.** It
+computed the dependency closure from `ast.Assign` and never looked at
+`ast.AnnAssign`, so `_ABBREV_MAP` and `_STEM_RULES` were left behind. `ruff`
+caught it as F821. A walker that only sees what its author remembered, for the
+third time in one session.
+
+⚠ Suite unchanged at 8531 passed / 0 failed, so no test was lost or silently
+skipped by the moves.
+
+
 ### Fixed - `max_nesting` could not see Python's control flow (`PARSER_GENERATION` 5 -> 6)
 
 `_max_nesting_depth` counted BRACKETS, deliberately, to stay language-agnostic

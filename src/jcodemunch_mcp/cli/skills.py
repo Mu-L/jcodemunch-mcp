@@ -64,7 +64,7 @@ def _build_skill_content() -> str:
     """
     # Import inside the function to avoid a circular import at module
     # load: init.py imports from .. and from .skills (eventually).
-    from .init import _CLAUDE_MD_POLICY, _filter_policy_for_tools, _get_active_tools
+    from .policy import _CLAUDE_MD_POLICY, _filter_policy_for_tools, _get_active_tools
 
     body_lines = [
         "---",

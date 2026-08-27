@@ -135,8 +135,11 @@ class TestFilterPolicyForTools:
             "jcodemunch_mcp.cli.init._claude_md_path",
             lambda scope: tmp_path / "CLAUDE.md"
         )
+        # ⚠ `cli.policy`, not `cli.init`. `init` re-exports this name, but
+        # `active_policy` resolves it through `policy`'s globals, so patching
+        # the alias is silently ineffective.
         monkeypatch.setattr(
-            "jcodemunch_mcp.cli.init._get_active_tools",
+            "jcodemunch_mcp.cli.policy._get_active_tools",
             lambda: set(_TOOL_TIER_CORE)
         )
         install_claude_md("project", backup=False)

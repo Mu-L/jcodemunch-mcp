@@ -314,3 +314,20 @@ def cache_stats() -> dict:
             "vectors": sum(len(e.matrix) for e in _cache.values()),
             "numpy": _numpy() is not None,
         }
+
+
+# ⚠⚠ Subscribe rather than being called. `embedding_store` used to import this
+# module to invalidate the cache after a write, which made the pair a cycle. The
+# arrow now points one way -- a cache depends on its store, never the reverse.
+#
+# ⚠ Registration happens on IMPORT of this module. A process that writes
+# embeddings without ever importing the matrix gets no notification, and that is
+# harmless by construction: with no matrix imported there is no cached matrix to
+# drop. The size+mtime stamp in `get_matrix` remains the primary guard; this is
+# the belt to that suspenders, exactly as before.
+try:  # pragma: no cover - registration side effect
+    from .embedding_store import register_write_listener as _register
+
+    _register(invalidate)
+except Exception:  # pragma: no cover - defensive
+    logger.debug("could not subscribe the matrix cache to store writes", exc_info=True)

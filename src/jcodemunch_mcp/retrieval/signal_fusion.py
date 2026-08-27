@@ -246,7 +246,7 @@ def build_identity_channel(
 
     Reuses ``_identity_score`` from search_symbols.
     """
-    from ..tools.search_symbols import _identity_score  # noqa: PLC0415
+    from .scoring import _identity_score  # noqa: PLC0415
 
     query_lower = query.lower()
     scored: list[tuple[float, str]] = []
@@ -283,7 +283,7 @@ def build_similarity_channel(
         weight: Channel weight override.
         min_similarity: Minimum cosine similarity to include in ranked list.
     """
-    from ..tools.search_symbols import _cosine_similarity  # noqa: PLC0415
+    from .scoring import _cosine_similarity  # noqa: PLC0415
 
     scores = {
         sid: _cosine_similarity(query_embedding, emb)
@@ -342,7 +342,7 @@ def _bm25_score_no_identity(
 
     Used by the fusion pipeline so identity is scored separately.
     """
-    from ..tools.search_symbols import _sym_tokens, _BM25_K1, _BM25_B  # noqa: PLC0415
+    from .scoring import _sym_tokens, _BM25_K1, _BM25_B  # noqa: PLC0415
 
     _sym_tokens(sym)
     tf_raw = sym["_tf"]
