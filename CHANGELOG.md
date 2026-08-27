@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [1.108.303] - 2026-08-27 - The measurement was the defect
+
+Five instruments in this release reported a good number about something they
+could not observe, and in four cases the number was ours.
+
+The Rust fidelity harness, six days old, graded a **37.9% name-collision rate**
+as a perfect run because it keyed bare names in a **set**, and a set cannot
+count. The observatory scored eleven public repositories on **one commit of
+history**, so `churn_surface` read churn 1 for every file in every repo and
+ranked nothing but complexity. `max_nesting` counted brackets, which in Python
+measures the deepest **expression** — it reported 3 where the AST says 6, an
+underreport by half that supported the opposite conclusion about the symbol.
+Racket's `extra: 0` was carrying a fabrication behind a named exemption
+(@otherjoel removed the exemption rather than widening it). And the codex
+surface benchmark's cache-hit rate, tried after CacheRouter, turns out to be
+**structurally incapable** of separating its arms: it is a ratio, so the arm
+carrying the least schema scores the highest.
+
+⚠⚠ **A measurement that cannot fail on a defect is not a gate**, and each of
+these looked plausible for months precisely because it was green. Three of the
+five were found by reading a competitor's fix titles against our own tree.
+
+**@otherjoel's #556 is thirteen of the eighteen entries below** — twelve
+findings, one per commit, each measured against Racket's expander, Racket's
+reader, or five real package layouts on disk rather than against our own output.
+
+
 ### Fixed - the JS/TS framework build trees were indexed as source
 
 `build`, `.build` and `_build` were all in `_SKIP_DIRECTORY_NAMES` and the
