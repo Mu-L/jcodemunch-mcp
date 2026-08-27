@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.302] - 2026-08-27 - Nothing we could say about Rust
+
 ### Fixed - three Rust definition classes that yielded no symbol at all (`PARSER_GENERATION` 4 -> 5)
 
 Found by `benchmarks/rust_fidelity/` on its first run, all three reported as
