@@ -2,6 +2,62 @@
 
 ## [Unreleased]
 
+### Fixed - Racket: the `#lang` line is read before the grammar runs
+
+tree-sitter-racket parses S-expressions. A `#lang` line names a READER, and a
+reader can make a `.rkt` file's surface syntax anything at all -- `#lang punct`
+is Markdown, `#lang scribble/manual` is prose, `#lang conscript` is at-exp text
+over Racket -- and every one of them was parsed as if it were `racket/base`.
+
+⚠⚠ **Measured on 207 `#lang conscript` files against Racket's own reader: 39%
+of definitions found, ~100 FABRICATED.** The cause is four characters that are
+prose inside an at-exp text body and tokens to the grammar: `;` opens a
+comment, `"` opens a string that never closes and takes every later definition
+in the file with it, `#` and `|` are reader prefixes. Error recovery then
+re-parents an INTERNAL `define` under a root `ERROR` node (`list -> ERROR ->
+program`, measured on a `(define abc@ (unit ... (define (compute-payment)
+...)))`), and the walker reported it as an importable module-level function.
+On 94 `#lang punct` files the walker emitted one symbol, and that one was
+correct -- but a Markdown document ABOUT Racket carries `(define ...)` in its
+code samples, and those are not bindings.
+
+Three tiers, decided from the `#lang` line before the parser runs:
+
+- **`sexp`** -- the surface syntax is S-expressions (`racket`, `racket/*`,
+  `typed/racket*`, `s-exp`, `info`, `scheme*`, `plai`, `htdp/*`, `eopl`, `br`,
+  `web-server*` ...): walked as before. A file with no `#lang` line is read by
+  the default reader by construction, so a `(module ...)` file is `sexp`.
+- **`at-exp`** -- every `{...}` text body is blanked to spaces, byte for byte,
+  so every offset still names the same position in the original and
+  `content_hash` is still taken from the bytes on disk; the paren skeleton,
+  where every definition lives, is walked. Code mode steps over strings,
+  comments and `#\{` so a brace inside them is not mistaken for a body.
+- **`text`** -- a document language (`scribble/*`, `pollen*`, `punct`,
+  `markdown`, `brag`, `datalog`, `rhombus` ...): no symbols; the file stays
+  text-searchable and is announced at INFO, naming the lang.
+
+⚠ **An UNLISTED lang is `text`**, by the asymmetry the parser is built on: a
+missed definition makes an agent read the file, a fabricated one makes it act
+on a name that does not exist. **`racket_langs` in config promotes a project's
+own lang** -- `{"conscript": "at-exp"}` -- because the project is the only
+party that knows what its reader produces. A key covers its sub-langs
+(`conscript` matches `conscript/with-require`), and a project may demote a
+lang as well as promote one.
+
+With `{"conscript": "at-exp"}` declared, the same 207 files measure **0
+missing, 0 wrong spans** against the reader (13 "extra", every one a
+`define-signature` or `define-runtime-path` binding the comparison did not
+model). The 94 punct files yield 0 symbols. 712 `#lang racket/base` files
+measure exactly as before: 0 parse errors, 0 missing, 0 wrong spans.
+
+⚠ **`ERROR` nodes are skipped in BOTH directions, and the file is named at
+WARNING.** Recovery puts a promoted internal define and every top-level form
+after a stray `)` under the same node, and the two cannot be told apart; a
+miss is recoverable by reading the file, a fabrication is not.
+`tests/test_racket_lang_gate.py` pins the promotion shape structurally (the
+test asserts the `ERROR` ancestry exists before asserting the name is absent),
+and pins the stray-paren direction as a decision rather than an accident.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

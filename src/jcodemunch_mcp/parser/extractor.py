@@ -11204,6 +11204,207 @@ def _racket_declared_forms(repo: Optional[str]) -> dict[str, str]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# The `#lang` gate
+# ---------------------------------------------------------------------------
+#
+# ⚠⚠ tree-sitter-racket parses S-EXPRESSIONS. A `#lang` line names a READER,
+# and a reader can make the file's surface syntax anything at all: `#lang
+# punct` is Markdown, `#lang scribble/manual` is prose, `#lang conscript` is
+# at-exp text over Racket. All of them carry a `.rkt` extension, and none of
+# them were looked at before this gate existed -- the walker parsed every
+# `.rkt` as if it were `racket/base`.
+#
+# Measured on 207 `#lang conscript` files: tree-sitter reported `has_error` on
+# 159, found 39% of the reader-level definitions, and FABRICATED ~100 -- an
+# internal `define` promoted to module level when error recovery flattened
+# the tree. The cause is four characters that are prose inside an at-exp text
+# body and tokens to the grammar: `;` opens a comment, `"` opens a string that
+# never closes (and takes every later definition in the file with it), `#`
+# and `|` are reader prefixes. On 94 `#lang punct` files the walker emitted
+# one symbol, which was correct -- Markdown has no `(define` heads -- but a
+# Markdown document ABOUT Racket carries `(define ...)` in its code samples,
+# and those are not bindings.
+#
+# So the tier is decided from the `#lang` line BEFORE the grammar runs:
+#
+#   sexp    the surface syntax is S-expressions -- walk as-is.
+#   at-exp  blank every `{...}` text body to spaces (offsets preserved) and
+#           walk the paren skeleton, where every definition lives.
+#   text    a document language. Emit nothing; the file stays text-searchable.
+#
+# ⚠ An UNLISTED lang is `text`, by the asymmetry this whole parser is built
+# on: a missed definition makes an agent read the file, a fabricated one makes
+# it act on a name that does not exist. `racket_langs` in config promotes a
+# project's own lang -- `{"conscript": "at-exp"}` -- because the project is the
+# only party that knows what its reader produces.
+
+_RACKET_LANG_RE = re.compile(
+    rb"\A(?:[ \t\r\n]|;[^\n]*\n|#![^\n]*\n)*#lang[ \t]+([^\s]+)(?:[ \t]+([^\s]+))?"
+)
+
+#: Exact names, plus every `name/...` sub-path, whose reader is the default
+#: S-expression reader (or a wrapper over it that keeps the syntax).
+_RACKET_SEXP_LANGS = frozenset({
+    "racket", "typed/racket", "typed-racket", "s-exp", "info", "setup/infotab",
+    "scheme", "mzscheme", "plai", "plait", "htdp", "lang", "eopl", "frtime",
+    "web-server", "br", "lazy", "slideshow", "deinprogramm", "algol60",
+    "racket/gui", "racket/unit", "racket/signature", "racket/load",
+})
+
+#: Document languages whose text is prose. A `(define ...)` in them is a code
+#: sample, not a binding.
+_RACKET_TEXT_LANGS = frozenset({
+    "scribble", "pollen", "punct", "markdown", "brag", "datalog", "frog",
+    "rhombus", "sweet-exp", "honu", "reader",
+})
+
+#: Langs that take ANOTHER lang as their argument. `at-exp` changes the
+#: reader (text bodies); the rest are transparent wrappers whose syntax is
+#: whatever the argument's is.
+_RACKET_ATEXP_WRAPPERS = frozenset({"at-exp"})
+_RACKET_TRANSPARENT_WRAPPERS = frozenset({"debug", "errortrace", "profile"})
+
+_RACKET_TIERS = frozenset({"sexp", "at-exp", "text"})
+
+
+def _racket_lang_of(source_bytes: bytes) -> tuple[Optional[str], Optional[str]]:
+    """The `#lang` line as (lang, argument-lang). (None, None) when absent.
+
+    Only the head of the file is read: a `#lang` line must be the first
+    non-comment form, and a `(module ...)` file has none -- which means the
+    DEFAULT reader, i.e. S-expressions.
+    """
+    m = _RACKET_LANG_RE.match(source_bytes[:4096])
+    if not m:
+        return None, None
+    lang = m.group(1).decode("utf-8", errors="replace")
+    arg = m.group(2).decode("utf-8", errors="replace") if m.group(2) else None
+    return lang, arg
+
+
+def _racket_lang_matches(lang: str, names) -> bool:
+    return lang in names or any(lang.startswith(n + "/") for n in names)
+
+
+def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
+    """`racket_langs` from config, validated entry by entry, as {lang: tier}."""
+    if not repo:
+        return {}
+    try:
+        from ..config import get as _cfg_get
+        declared = _cfg_get("racket_langs", {}, repo=repo) or {}
+    except Exception:
+        logger.debug("racket_langs unavailable", exc_info=True)
+        return {}
+    if not isinstance(declared, dict):
+        return {}
+    out: dict[str, str] = {}
+    for lang, tier in declared.items():
+        if isinstance(lang, str) and isinstance(tier, str) and tier in _RACKET_TIERS:
+            out[lang] = tier
+        else:
+            logger.debug("skipping racket_langs entry %r: %r", lang, tier)
+    return out
+
+
+def _racket_tier(source_bytes: bytes, repo: Optional[str] = None) -> tuple[str, str]:
+    """Decide how the walker may read this file: (tier, lang-as-written).
+
+    Project config wins over the built-in lists so a project can promote its
+    own lang; a wrapper resolves to the tier of its argument, except `at-exp`,
+    which changes the reader itself.
+    """
+    lang, arg = _racket_lang_of(source_bytes)
+    if lang is None:
+        return "sexp", ""
+    configured = _racket_configured_langs(repo)
+
+    def _lookup(name: str) -> Optional[str]:
+        for key, tier in configured.items():
+            if _racket_lang_matches(name, {key}):
+                return tier
+        if _racket_lang_matches(name, _RACKET_SEXP_LANGS):
+            return "sexp"
+        if _racket_lang_matches(name, _RACKET_TEXT_LANGS):
+            return "text"
+        return None
+
+    written = lang if arg is None else f"{lang} {arg}"
+    if lang in _RACKET_ATEXP_WRAPPERS:
+        # `#lang at-exp <X>`: the argument is a code lang (or is unknown, and
+        # at-exp over an unknown lang is still text bodies over parens).
+        inner = _lookup(arg) if arg else None
+        return ("text" if inner == "text" else "at-exp"), written
+    if lang in _RACKET_TRANSPARENT_WRAPPERS and arg:
+        return (_lookup(arg) or "text"), written
+    return (_lookup(lang) or "text"), written
+
+
+def _racket_blank_atexp_bodies(source_bytes: bytes) -> bytes:
+    """Replace the interior of every at-exp `{...}` text body with spaces.
+
+    Byte-for-byte: every replaced byte becomes ``0x20``, so every offset in
+    the result names the same position in the original and the walker's
+    ``byte_offset`` / ``byte_length`` / ``content_hash`` stay correct against
+    the ORIGINAL bytes. The braces themselves are kept so the paren skeleton
+    is unchanged.
+
+    Code mode steps over strings (with escapes), `;` comments, nested `#| |#`
+    blocks and `#\\x` character literals, so a `{` inside any of those is not
+    mistaken for a text body -- that mistake would blank to the next `}` or
+    the end of the file. Inside a body only brace depth is tracked: at-exp
+    text has no string or comment syntax, which is exactly why the grammar
+    cannot read it.
+    """
+    out = bytearray(source_bytes)
+    n = len(out)
+    i = 0
+    depth = 0
+    while i < n:
+        b = out[i]
+        if depth:
+            if b == 0x7B:      # {
+                depth += 1
+                out[i] = 0x20
+            elif b == 0x7D:    # }
+                depth -= 1
+                if depth:
+                    out[i] = 0x20
+            elif b not in (0x0A, 0x0D):
+                out[i] = 0x20
+            i += 1
+            continue
+        if b == 0x22:          # "  string in code mode
+            i += 1
+            while i < n and out[i] != 0x22:
+                i += 2 if out[i] == 0x5C else 1
+            i += 1
+        elif b == 0x3B:        # ;  line comment
+            while i < n and out[i] != 0x0A:
+                i += 1
+        elif b == 0x23 and i + 1 < n and out[i + 1] == 0x7C:   # #| ... |#
+            nest = 1
+            i += 2
+            while i < n and nest:
+                if out[i] == 0x7C and i + 1 < n and out[i + 1] == 0x23:
+                    nest -= 1
+                    i += 2
+                elif out[i] == 0x23 and i + 1 < n and out[i + 1] == 0x7C:
+                    nest += 1
+                    i += 2
+                else:
+                    i += 1
+        elif b == 0x23 and i + 1 < n and out[i + 1] == 0x5C:   # #\x
+            i += 3
+        elif b == 0x7B:        # {  enter a text body
+            depth = 1
+            i += 1
+        else:
+            i += 1
+    return bytes(out)
+
+
 def _parse_racket_symbols(
     source_bytes: bytes, filename: str, repo: Optional[str] = None
 ) -> list[Symbol]:
@@ -11215,6 +11416,11 @@ def _parse_racket_symbols(
     makes that bug class structurally impossible rather than merely avoided.
     Byte offsets survive only where they are correct by construction -- slicing
     ``source_bytes``, which is ``bytes``.
+
+    ⚠ The `#lang` gate runs FIRST (see `_racket_tier`): a document language
+    yields no symbols, and an at-exp file is parsed with its text bodies
+    blanked. Blanking preserves every offset, so `content_hash` below is still
+    taken from the ORIGINAL bytes.
     """
     try:
         parser = get_parser("racket")
@@ -11222,7 +11428,28 @@ def _parse_racket_symbols(
         logger.debug("racket grammar unavailable", exc_info=True)
         return []
 
-    tree = parser.parse(source_bytes)
+    tier, lang = _racket_tier(source_bytes, repo)
+    if tier == "text":
+        logger.info(
+            "racket: %s is `#lang %s`, a reader the walker does not model; "
+            "no symbols emitted (the file stays text-searchable). "
+            "Promote it with `racket_langs` if its syntax is S-expressions or at-exp.",
+            filename, lang,
+        )
+        return []
+    parse_bytes = _racket_blank_atexp_bodies(source_bytes) if tier == "at-exp" else source_bytes
+
+    tree = parser.parse(parse_bytes)
+    if tree.root_node.has_error:
+        # Practice 2: a partial parse is a real event. Definitions inside or
+        # after the first error are not indexed (ERROR subtrees are skipped
+        # below rather than walked, because recovery re-parents INTERNAL
+        # definitions to module level and the walker would report them as
+        # importable), and an unclosed form swallows everything after it.
+        logger.warning(
+            "racket: %s has syntax tree-sitter could not parse; definitions "
+            "inside or after the first error are not indexed", filename,
+        )
     symbols: list[Symbol] = []
     calls: list[tuple[int, str]] = []
     declared = _racket_declared_forms(repo)
@@ -11296,7 +11523,7 @@ def _parse_racket_symbols(
 
     def _collect_calls(node, skip_clause_of: str = "") -> None:
         """Head symbols in operator position, for _attribute_calls_to_symbols."""
-        if node.type in _RACKET_SKIP_WRAPPERS:
+        if node.type in _RACKET_SKIP_WRAPPERS or node.type == "ERROR":
             return
         if node.type == "list":
             named = _racket_named(node)
@@ -11316,7 +11543,14 @@ def _parse_racket_symbols(
             _collect_calls(child)
 
     def _walk(node, scope: str = "", in_class: bool = False) -> None:
-        if node.type in _RACKET_SKIP_WRAPPERS:
+        # ⚠ ERROR is skipped in BOTH directions on purpose. Recovery re-parents
+        # an internal define under a root ERROR node (measured: `list -> ERROR
+        # -> program` for a `(define (compute-payment) ...)` inside a `unit`
+        # body), so walking it fabricates a module-level binding; and a stray
+        # `)` puts every LATER top-level form under ERROR, so skipping it
+        # loses real ones. A miss is recoverable by reading the file, a
+        # fabrication is not, and the WARNING above names the file.
+        if node.type in _RACKET_SKIP_WRAPPERS or node.type == "ERROR":
             return
 
         if node.type == "list":

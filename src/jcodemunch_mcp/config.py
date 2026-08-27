@@ -364,6 +364,13 @@ DEFAULTS = {
     # `<lang>_definition_forms` appears beside this and unification becomes a
     # decision with evidence behind it.
     "racket_definition_forms": {},
+    # Racket only. `#lang` names a READER, and tree-sitter-racket reads
+    # S-expressions, so a `.rkt` whose reader is Markdown (`punct`) or at-exp
+    # text (`conscript`) must be told apart before the grammar runs. Built-in
+    # lists cover the distribution's langs; a project's own lang is unknown to
+    # them and is treated as a document (no symbols) until promoted here:
+    # {"conscript": "at-exp"}. Values: "sexp", "at-exp", "text".
+    "racket_langs": {},
     "context_providers": True,
     "meta_fields": [],  # [] = no _meta (token-efficient; set null in config for all fields)
     "languages": None,  # None = all languages
@@ -524,6 +531,7 @@ CONFIG_TYPES = {
     "exclude_skip_directories": list,
     "extra_extensions": dict,
     "racket_definition_forms": dict,
+    "racket_langs": dict,
     "context_providers": bool,
     "meta_fields": (list, type(None)),
     "languages": (list, type(None)),
@@ -2136,6 +2144,16 @@ def generate_template() -> str:
   //   Example: {{"defstep": "function", "defstudy": "constant"}}
   //   This is an assertion jCodeMunch cannot verify; a wrong entry indexes a
   //   name Racket does not bind. Built-in forms always win over declarations.
+
+  // "racket_langs": {{}},
+  //   Racket only. A `#lang` line names a reader, and the parser reads
+  //   S-expressions, so a `.rkt` in a project's own lang is treated as a
+  //   document (no symbols) until you say what its syntax is:
+  //   "sexp" (plain S-expressions), "at-exp" (at-exp text bodies over
+  //   Racket, e.g. conscript) or "text" (Markdown, Scribble -- never walked).
+  //   Example: {{"conscript": "at-exp", "punct": "text"}}
+  //   A key also matches its sub-langs (`conscript` covers
+  //   `conscript/with-require`). Distribution langs are built in.
 
   // "context_providers": true,
   //   Enable context providers for enhanced AI summarization.
