@@ -95,6 +95,54 @@ def _coerce(raw: str, hint: str) -> Any:
     return raw
 
 
+def _check_undeclared_tables(
+    tool: str,
+    response: dict,
+    tables: list[TableSpec],
+    nested_dicts: dict[str, list[str]],
+    json_blobs: Iterable[str],
+    allow_undeclared: Iterable[str],
+) -> None:
+    """Fail closed when a producer emits a table no schema declares (#555).
+
+    The sibling guard below catches a schema that disagrees with its producer
+    about COLUMNS: rows exist, no declared column populated. It is structurally
+    blind to a disagreement about the KEY, because ``response.get(t.key, [])``
+    returns ``[]``, ``out_rows`` stays empty and the check never runs. That was
+    #553 -- ``search_ast`` declared ``results`` while the tool returned
+    ``matches``, and served an empty table for every language and preset with
+    nothing raised.
+
+    ⚠ Runs on the dict handed to ``encode``, which is POST-transform by
+    construction. A schema that pre-flattens a nested shape into a private key
+    (``search_text._flatten`` turning ``results`` into ``__rows__``) has already
+    removed the public key by the time this sees it, so those need no
+    exemption. That placement is what keeps the exemption list near-empty.
+
+    ⚠ Raising is deliberate and matches the column guard: the dispatcher falls
+    back to JSON, so the real data survives the wire. A warning would leave the
+    agent holding a response with a table silently missing, which is the defect
+    this exists to make impossible.
+    """
+    declared = {t.key for t in tables}
+    declared.update(nested_dicts)
+    declared.update(json_blobs)
+    declared.update(allow_undeclared)
+    for key, value in response.items():
+        if key.startswith("_") or key in declared:
+            continue
+        if not isinstance(value, list) or not value:
+            continue
+        if not all(isinstance(row, dict) for row in value):
+            continue  # list of scalars is not a table
+        raise ValueError(
+            f"schema/producer mismatch: {tool} returned {len(value)} row(s) "
+            f"under {key!r}, which no TableSpec declares "
+            f"(declared: {sorted(t.key for t in tables) or 'none'}). Declare it, "
+            f"or add it to allow_undeclared if dropping it is intended."
+        )
+
+
 def encode(
     tool: str,
     response: dict,
@@ -105,9 +153,13 @@ def encode(
     meta_keys: Iterable[str] = (),
     json_blobs: Iterable[str] = (),
     meta_json_blobs: Iterable[str] = (),
+    allow_undeclared: Iterable[str] = (),
 ) -> tuple[str, str]:
     tables = list(tables)
     nested_dicts = nested_dicts or {}
+    _check_undeclared_tables(
+        tool, response, tables, nested_dicts, json_blobs, allow_undeclared,
+    )
 
     # Build shared path/symbol legend across all string-interned columns.
     legend = Legends(prefix="@")

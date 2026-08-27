@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
+
+Split out of #553, where @RascoApps proposed it. The column guard (#354) raises
+when a table has ROWS but no declared COLUMN was populated. It is structurally
+blind to a disagreement about the KEY: `response.get(t.key, [])` returns `[]`,
+`out_rows` stays empty, and the check never runs. That is how `search_ast`
+served an empty table for every language and preset with nothing raised.
+
+⚠⚠ **The placement is the whole design, and it is what made the exemption list
+near-empty.** The check runs inside `sd.encode`, on the dict handed to it,
+which is POST-transform by construction. A schema that pre-flattens a nested
+shape into a private key -- `search_text._flatten` turning `results` into
+`__rows__` -- has already removed the public key before the guard sees it, so
+that class needs no allowlist at all. **Measured the other way first**: scanning
+the RAW response flags `search_text` on every call, and an allowlist entry for
+it would have been the wrong fix to the right symptom.
+
+⚠ **Raises rather than warns, and this was measured rather than argued.** The
+full suite runs clean with the raising guard active, so nothing in the tree
+legitimately drops a list-of-dicts. Raising matches #354: the dispatcher falls
+back to JSON and the real data survives the wire, where a warning leaves the
+agent holding a response with a table silently missing -- the exact defect this
+exists to prevent.
+
+⚠ `allow_undeclared=(...)` is the escape hatch, explicit and PER KEY, so a
+deliberate drop is declared by name rather than inferred.
+
+⚠ `tests/test_undeclared_table_guard.py` rebuilds the ACTUAL pre-fix
+`search_ast` schema and asserts the guard fires on a real response shape, since
+a green suite is weak evidence for a guard. Two of its nine assertions fail
+without the guard; the other seven are the must-NOT-fire cases (scalar lists,
+empty lists, JSON blobs, `_meta`, the pre-flattened schema) and are regression
+guards against over-firing.
+
+
 ## [1.108.301] - 2026-08-26 - Green on a defect, three times
 
 ### Fixed - `search_ast` encoded to an empty table for every language and preset (#553, @RascoApps)
