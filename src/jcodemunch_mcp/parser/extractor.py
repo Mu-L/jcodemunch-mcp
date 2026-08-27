@@ -11476,14 +11476,32 @@ def _parse_racket_symbols(
         """
         parts: list[str] = []
         prev = node.prev_named_sibling
+        # ⚠ Adjacency is the whole rule. Without it, two wrong docstrings are
+        # served as documentation: a TRAILING comment on the previous form's
+        # line (`(define alpha 1) ;; about alpha` became beta's docstring),
+        # and a file-header block separated from the first define by a blank
+        # line (guards.rkt's "Every form here is something that LOOKS like a
+        # definition..." was live-anchor's). So the chain must end on the line
+        # directly above the form, each link must end on the line directly
+        # above the next, and a link that starts on the line its preceding
+        # non-comment sibling ends on is that sibling's trailing comment.
+        expected_end = node.start_point[0] - 1
         while prev is not None and prev.type in ("comment", "block_comment"):
+            if prev.end_point[0] != expected_end:
+                break
+            before = prev.prev_named_sibling
+            if (before is not None
+                    and before.type not in ("comment", "block_comment")
+                    and before.end_point[0] == prev.start_point[0]):
+                break
             text = _text(prev)
             if text.startswith("#|"):
                 text = text[2:-2] if text.endswith("|#") else text[2:]
             else:
                 text = text.lstrip(";")
             parts.insert(0, text.strip())
-            prev = prev.prev_named_sibling
+            expected_end = prev.start_point[0] - 1
+            prev = before
         return "\n".join(p for p in parts if p).strip()
 
     def _emit(node, name, kind, sig, scope, parent_id=None, docstring=None) -> None:

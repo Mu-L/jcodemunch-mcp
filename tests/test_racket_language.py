@@ -261,6 +261,50 @@ def test_block_comment_becomes_the_docstring():
     assert s.docstring == "Adds two numbers."
 
 
+# ⚠ Adjacency. A docstring is the one place the index serves PROSE as fact,
+# so a comment attached to the wrong form is a false statement, not a miss.
+# Both shapes below shipped: the trailing comment of the previous form became
+# the next form's docstring, and a file's header block became the first
+# define's.
+
+def test_a_trailing_comment_belongs_to_the_form_on_its_line_not_the_next():
+    names = _by_name("(define alpha 1) ;; note about alpha\n(define beta 2)")
+    assert names["beta"].docstring == ""
+
+
+def test_a_comment_block_separated_by_a_blank_line_is_not_a_docstring():
+    """The file-header shape: `#lang`, a description block, a blank line, the
+    first define. guards.rkt's header was live-anchor's docstring."""
+    src = ("#lang racket/base\n"
+           ";; Every form here is something that LOOKS like a definition.\n"
+           ";; The expander agrees none of these bind a name.\n"
+           "\n"
+           "(define live-anchor 1)")
+    assert _by_name(src)["live-anchor"].docstring == ""
+
+
+def test_a_contiguous_block_directly_above_still_attaches_in_full():
+    src = (";; First line.\n"
+           ";; Second line.\n"
+           "(define (documented) 1)")
+    assert _by_name(src)["documented"].docstring == "First line.\nSecond line."
+
+
+def test_a_trailing_comment_does_not_join_the_next_forms_own_block():
+    """`(define a 1) ;; about a` directly above `;; about b` must contribute
+    nothing: the chain stops at the trailing comment, keeping `about b`."""
+    src = ("(define a 1) ;; about a\n"
+           ";; about b\n"
+           "(define b 2)")
+    assert _by_name(src)["b"].docstring == "about b"
+
+
+def test_a_multi_line_block_comment_directly_above_attaches():
+    src = ("#| Spans\n   two lines. |#\n"
+           "(define (spanned) 1)")
+    assert _by_name(src)["spanned"].docstring == "Spans\n   two lines."
+
+
 # ── call references ───────────────────────────────────────────────────────
 
 def test_call_references_name_callees_not_binding_forms():

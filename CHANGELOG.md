@@ -58,6 +58,20 @@ miss is recoverable by reading the file, a fabrication is not.
 test asserts the `ERROR` ancestry exists before asserting the name is absent),
 and pins the stray-paren direction as a decision rather than an accident.
 
+### Fixed - Racket: a comment is a docstring only when it sits directly above the form
+
+`_preceding_comment` walked `prev_named_sibling` while it was a comment, with
+no line-adjacency check. Two wrong docstrings shipped, and a docstring is the
+one place the index serves PROSE as fact: `(define alpha 1) ;; note about
+alpha` made "note about alpha" the docstring of the NEXT define, and a file's
+header block -- `#lang`, a description, a blank line, the first define -- was
+the first define's docstring (guards.rkt's "Every form here is something that
+LOOKS like a definition" was `live-anchor`'s). The chain must now end on the
+line directly above the form, each link must end directly above the next, and
+a comment starting on the line its preceding non-comment sibling ends on is
+that sibling's trailing comment and stops the chain. Contiguous blocks and
+multi-line `#| |#` comments attach exactly as before.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises
