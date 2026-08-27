@@ -11565,9 +11565,13 @@ def _parse_racket_symbols(
     symbols: list[Symbol] = []
     calls: list[tuple[int, str]] = []
     declared = _racket_declared_forms(repo)
-    # Last `(: name type)` seen -- the mutable-container idiom
-    # _parse_clojure_symbols uses for `ns`.
-    pending = {"name": "", "type": ""}
+    seen_modules: set[str] = set()
+    # `(: name type)` annotations not yet attached, by name. Typed Racket
+    # code routinely declares several before defining any -- `(: a Integer)
+    # (: b Integer) (define a 1) (define b 2)` -- and a single "last seen"
+    # slot kept `b`'s and then cleared it against `a`. Keyed by name, an
+    # annotation can only ever attach to the define of the same name.
+    pending: dict[str, str] = {}
 
     def _text(node) -> str:
         return node.text.decode("utf-8", errors="replace")
@@ -11618,11 +11622,9 @@ def _parse_racket_symbols(
 
     def _emit(node, name, kind, sig, scope, parent_id=None, docstring=None) -> None:
         qualified = f"{scope}::{name}" if scope else name
-        if pending["name"] == name and pending["type"]:
-            sig = f"{sig} : {pending['type']}"
-        # Cleared whether or not it matched: a stale annotation must never
-        # attach to a later unrelated define.
-        pending["name"] = pending["type"] = ""
+        annotation = pending.pop(name, "")
+        if annotation:
+            sig = f"{sig} : {annotation}"
         symbols.append(Symbol(
             id=make_symbol_id(filename, qualified, kind),
             file=filename, name=name, qualified_name=qualified,
@@ -11793,8 +11795,12 @@ def _parse_racket_symbols(
                 # `f` would put two same-named symbols of different kinds in one
                 # file, which is strictly worse than ignoring the annotation.
                 if form == ":" and kids[1].type == "symbol" and len(kids) >= 3:
-                    pending["name"] = _text(kids[1])
-                    pending["type"] = _squash(_text(kids[2]))
+                    # `(: f (-> A B))`, or the infix spelling `(: f : A -> B)`,
+                    # whose type is everything after the second colon.
+                    if kids[2].type == "symbol" and _text(kids[2]) == ":":
+                        pending[_text(kids[1])] = _squash(" ".join(_text(k) for k in kids[3:]))
+                    else:
+                        pending[_text(kids[1])] = _squash(_text(kids[2]))
                     return
 
                 if form in _RACKET_OPAQUE_HEADS:
@@ -11802,8 +11808,16 @@ def _parse_racket_symbols(
 
                 if form in _RACKET_MODULE_FORMS and kids[1].type == "symbol":
                     name = _text(kids[1])
-                    _emit(node, name, "class", f"({form} {name})", scope)
                     inner = f"{scope}::{name}" if scope else name
+                    # `(module+ test ...)` may appear many times in one file --
+                    # Racket splices them into ONE submodule, and the docs
+                    # recommend keeping tests beside the code they test. Each
+                    # block emitted a `class` with the same id, and `symbols.id`
+                    # is a PRIMARY KEY. The first block carries the symbol; the
+                    # others contribute members under the same parent.
+                    if inner not in seen_modules:
+                        seen_modules.add(inner)
+                        _emit(node, name, "class", f"({form} {name})", scope)
                     for c in kids[2:]:
                         # Submodule members are module-level definitions, not
                         # object members: they stay function/constant.

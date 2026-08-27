@@ -365,6 +365,34 @@ def test_stale_annotation_does_not_attach_to_a_later_define():
     assert "Integer" not in g.signature
 
 
+def test_several_annotations_before_their_defines_all_attach():
+    """Typed Racket routinely declares a block of `(: ...)` first. A single
+    last-seen slot kept `b`'s annotation and cleared it against `a`."""
+    names = _by_name("(: a Integer)\n(: b String)\n(define a 1)\n(define b \"x\")")
+    assert names["a"].signature.endswith(": Integer")
+    assert names["b"].signature.endswith(": String")
+
+
+def test_infix_annotation_spelling_keeps_the_whole_type():
+    """`(: g : Integer -> Integer)` used to render as `... : :`."""
+    s = _by_name("(: g : Integer -> Integer)\n(define (g n) n)")["g"]
+    assert s.signature == "(define (g n)) : Integer -> Integer"
+
+
+def test_repeated_module_plus_blocks_share_one_submodule_symbol():
+    """`(module+ test ...)` may appear many times; Racket splices them into
+    ONE submodule. Each block emitted a `class` with the same id, and
+    `symbols.id` is a PRIMARY KEY."""
+    syms = _parse("#lang racket/base\n(define (f) 1)\n(module+ test (define (t1) 1))\n"
+                  "(define (g) 2)\n(module+ test (define (t2) 2))")
+    tests = [s for s in syms if s.name == "test"]
+    assert len(tests) == 1
+    assert tests[0].line == 3, "the first block carries the symbol"
+    members = {s.qualified_name for s in syms if s.qualified_name.startswith("test::")}
+    assert members == {"test::t1", "test::t2"}
+    assert len({s.id for s in syms}) == len(syms), "every id in the file is unique"
+
+
 # ── docstrings ────────────────────────────────────────────────────────────
 
 def test_preceding_semicolon_comment_becomes_the_docstring():

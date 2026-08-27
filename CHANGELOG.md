@@ -225,6 +225,18 @@ importer; congame **304 -> 624**. `tests/test_racket_collections.py` goes
 through `resolve_specifier` for every added edge, because an edge nothing
 downstream can resolve is indistinguishable from no edge.
 
+### Fixed - Racket: repeated `module+` blocks share one symbol; annotations attach by name
+
+`(module+ test ...)` may appear many times in one file -- Racket splices them
+into ONE submodule, and the docs recommend keeping tests beside the code
+they test -- and each block emitted a `class` with the SAME id, where
+`symbols.id` is a PRIMARY KEY. The first block carries the symbol; later
+blocks contribute members under the same parent. Typed Racket's `(: name
+type)` annotations were held in a single last-seen slot, so a block of
+declarations before their defines kept only the last and then cleared it
+against the wrong define; they are keyed by name now, and the infix spelling
+`(: g : Integer -> Integer)` renders its type instead of `: :`.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises
