@@ -72,6 +72,32 @@ a comment starting on the line its preceding non-comment sibling ends on is
 that sibling's trailing comment and stops the chain. Contiguous blocks and
 multi-line `#| |#` comments attach exactly as before.
 
+### Fixed - Racket: a binding position is not a call
+
+`_collect_calls` recorded every list head not on a stop-list, so every
+BINDING position in the language was a phantom call reference: `(lambda (item
+acc) ...)` made `item` a callee, `(for/sum ([elem lst]) ...)` made `elem` one
+(only 7 of the `for/...` forms were on the clause list, and `for/fold`'s
+second clause list never was), `(let loop ([i 0]) ...)` made `i` one, a
+`match` pattern `(list a b)` made `list` one, and `(provide (contract-out [f
+...]))` made `f` a call of itself. A struct form's field list and `#:guard`
+lambda parameters were attributed to whichever synthesised accessor was
+emitted last: `posn-y calls=['x', 'a', 'values']`. Those references feed
+`get_call_hierarchy`, `get_blast_radius` (callers by name) and
+`get_untested_symbols`' name match, where a parameter named like the function
+under test counted as coverage.
+
+Headers and parameter lists are skipped whole; every `for` and `for*` variant
+is matched by prefix so none can be left off a list again; `let`/`for`/`do`/
+`with-syntax`/`match-let` clause heads are bindings and their values are
+walked; `match`/`case-lambda`/`syntax-case`/`syntax-parse` clause patterns are
+skipped and their bodies walked; the struct family, `provide`/`require` and
+class-body declarations (`init-field`, `field`, `inherit` ...) are not
+descended at all. `(send obj method ...)` now records `method` rather than
+`send`, and `(new cls% [init val])` records `cls%` and not the init names.
+`define`-header defaults are a lost call rather than a self-call -- a miss,
+not a fabrication.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

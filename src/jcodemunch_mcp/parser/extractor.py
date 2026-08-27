@@ -11013,12 +11013,85 @@ _RACKET_NON_CALL_HEADS = (
 
 #: Binding-clause holders: `(let ([x (helper 1)]) ...)`. The head of
 #: `[x (helper 1)]` is a binding, not a call, so the clause list is skipped for
-#: head collection while its VALUE expressions are still walked.
+#: head collection while its VALUE expressions are still walked. `for` and
+#: `for*` are here; every `for/...` and `for*/...` variant is matched by
+#: prefix in `_collect_calls`, so `for/sum` cannot be forgotten the way it
+#: was. `match-let` and friends fit the same shape: a clause's first element
+#: is a PATTERN, its rest is walked.
 _RACKET_BINDING_CLAUSE_FORMS = frozenset({
     "let", "let*", "letrec", "let-values", "let*-values", "letrec-values",
-    "let-syntax", "letrec-syntax", "parameterize", "for", "for*", "for/list",
-    "for*/list", "for/fold", "for*/fold", "do",
+    "let-syntax", "letrec-syntax", "parameterize", "for", "for*", "do",
+    "with-syntax", "with-syntax*", "match-let", "match-let*", "match-letrec",
+    "match-let-values", "match-let*-values",
 })
+
+#: `for/fold`-shaped: an accumulator clause list AND an iteration clause list.
+_RACKET_TWO_CLAUSE_FORMS = frozenset({
+    "for/fold", "for*/fold", "for/foldr", "for*/foldr", "for/lists", "for*/lists",
+})
+
+#: Forms whose children[1] is a HEADER or a parameter list, never a call:
+#: `(define (f x) ...)`, `(lambda (x y) ...)`, `(define-values (a b) ...)`.
+#: ⚠ Measured before this existed: every lambda's first parameter was a
+#: "call" of the enclosing function, so a parameter named like a function
+#: under test made `get_untested_symbols` count it tested.
+_RACKET_HEADER_FORMS = (
+    _RACKET_DEFINE_FORMS | _RACKET_SYNTAX_FORMS | _RACKET_VALUES_FORMS
+    | _RACKET_METHOD_FORMS
+    | frozenset({"lambda", "λ", "opt-lambda", "kw-lambda", "match-define",
+                 "match-define-values", "define-syntax-parameter",
+                 "define-match-expander", "define-inline", "define-check",
+                 "define-simple-check", "define-binary-check", "define-unit",
+                 "define-sequence-syntax", "define-syntax-class",
+                 "define-splicing-syntax-class"})
+)
+
+#: Clause forms whose clauses START with a pattern or a parameter list:
+#: `(match v [(list a b) ...])`, `(case-lambda [(x) x] [(x y) y])`. The
+#: pattern's head (`list`, `cons`, `?`) is not a call; the clause body is.
+#: Value is the index of the first clause in the named children.
+_RACKET_PATTERN_CLAUSE_FORMS = {
+    "match": 2, "match*": 2, "match-lambda": 1, "match-lambda*": 1,
+    "match-lambda**": 1, "case-lambda": 1, "syntax-case": 3, "syntax-case*": 4,
+    "syntax-parse": 2, "syntax-parser": 1, "syntax-rules": 2,
+}
+
+#: Not descended for calls at all. `provide`/`require` name bindings, not
+#: calls (`(contract-out [f ...])` made `f` a call of itself); the struct
+#: family holds a field list and option lambdas whose parameters landed on
+#: whichever synthesised accessor was emitted last; class-body declarations
+#: hold `[name default]` clauses.
+_RACKET_CALL_OPAQUE = (
+    frozenset(_RACKET_NAMED_FORMS)
+    | frozenset({"provide", "require", "quote-syntax", "init", "init-field",
+                 "field", "inherit", "inherit-field", "inherit/super",
+                 "inherit/inner", "rename-super", "rename-inner", "public",
+                 "private", "override", "augment", "abstract", "inspect",
+                 "define-signature", "define-generics", "define-logger",
+                 "struct-out", "all-defined-out", "all-from-out"})
+)
+
+#: `(send obj method arg ...)`: the reference that matters is METHOD.
+_RACKET_SEND_FORMS = frozenset({
+    "send", "send/apply", "send/keyword-apply", "dynamic-send", "send*", "send+",
+})
+
+#: `(new cls% [init val] ...)`: constructing is a use of CLS%; the init
+#: clauses are bindings.
+_RACKET_INSTANCE_FORMS = frozenset({"new", "instantiate", "make-object"})
+
+#: None of the clause / header / send / instance forms is itself a call.
+_RACKET_NON_CALL_HEADS = (
+    _RACKET_NON_CALL_HEADS
+    | _RACKET_BINDING_CLAUSE_FORMS | _RACKET_TWO_CLAUSE_FORMS
+    | _RACKET_HEADER_FORMS | frozenset(_RACKET_PATTERN_CLAUSE_FORMS)
+    | _RACKET_SEND_FORMS | _RACKET_INSTANCE_FORMS
+    | frozenset({"for/foldr", "for*/foldr", "for/lists", "for*/lists",
+                 "for/product", "for*/product", "for/hasheq", "for/hasheqv",
+                 "for*/hash", "for*/vector", "for*/sum", "for*/and", "for*/or",
+                 "for*/first", "for*/last", "for*/set", "for/stream",
+                 "for*/stream", "for/async", "let/cc", "let/ec"})
+)
 
 
 def _racket_named(node) -> list:
@@ -11539,26 +11612,92 @@ def _parse_racket_symbols(
                 return "method" if in_class else "function"
         return "constant"
 
-    def _collect_calls(node, skip_clause_of: str = "") -> None:
-        """Head symbols in operator position, for _attribute_calls_to_symbols."""
+    def _clause_values(clause_list) -> None:
+        """`([x (helper 1)] ...)`: walk each clause's VALUES, never its head."""
+        for clause in _racket_named(clause_list):
+            if clause.type == "list":
+                for value in _racket_named(clause)[1:]:
+                    _collect_calls(value)
+            # A bare symbol in clause position (`#:result acc`) is a reference
+            # to a binding, not a call: nothing to collect.
+
+    def _is_for_head(head: str) -> bool:
+        return head in ("for", "for*") or head.startswith("for/") or head.startswith("for*/")
+
+    def _collect_calls(node) -> None:
+        """Head symbols in operator position, for _attribute_calls_to_symbols.
+
+        ⚠ Every branch below exists because a BINDING position was being read
+        as a call: parameter lists, `let`/`for` clause heads, `match`
+        patterns, struct field lists, `provide` specs. Those references were
+        attributed to the enclosing function -- or, for a struct's option
+        lambdas, to whichever synthesised accessor was emitted last -- and
+        fed `get_call_hierarchy`, blast radius and `get_untested_symbols`.
+        """
         if node.type in _RACKET_SKIP_WRAPPERS or node.type == "ERROR":
             return
-        if node.type == "list":
-            named = _racket_named(node)
-            if named and named[0].type == "symbol":
-                head = _text(named[0])
-                if head not in _RACKET_NON_CALL_HEADS:
-                    calls.append((node.start_byte, head))
-                if head in _RACKET_BINDING_CLAUSE_FORMS and len(named) >= 2:
-                    # Walk the clause list's VALUES but never its binding heads.
-                    for clause in _racket_named(named[1]):
-                        for value in _racket_named(clause)[1:]:
-                            _collect_calls(value)
-                    for rest in named[2:]:
-                        _collect_calls(rest)
-                    return
-        for child in node.children:
-            _collect_calls(child)
+        if node.type != "list":
+            for child in node.children:
+                _collect_calls(child)
+            return
+        named = _racket_named(node)
+        if not named or named[0].type != "symbol":
+            # `((f a) b)` or `(#:kw ...)`: no head to record, walk everything.
+            for child in node.children:
+                _collect_calls(child)
+            return
+        head = _text(named[0])
+        if head in _RACKET_CALL_OPAQUE:
+            return
+        if head in _RACKET_SEND_FORMS:
+            if len(named) >= 3 and named[2].type == "symbol":
+                calls.append((node.start_byte, _text(named[2])))
+            for c in named[1:2] + named[3:]:
+                _collect_calls(c)
+            return
+        if head in _RACKET_INSTANCE_FORMS:
+            if len(named) >= 2 and named[1].type == "symbol":
+                calls.append((node.start_byte, _text(named[1])))
+            for clause in named[2:]:
+                if clause.type == "list":
+                    for value in _racket_named(clause)[1:]:
+                        _collect_calls(value)
+            return
+        if head not in _RACKET_NON_CALL_HEADS and not _is_for_head(head):
+            calls.append((node.start_byte, head))
+        rest = named[1:]
+        if head in _RACKET_HEADER_FORMS or head in declared:
+            # `(define (f [x (default)]) body)`: the header is skipped whole. A
+            # default-value expression inside it is a lost call, which is a
+            # miss; reading `f` as a call of itself was a fabrication.
+            rest = named[2:]
+        elif head in _RACKET_BINDING_CLAUSE_FORMS or _is_for_head(head):
+            i = 1
+            if head in ("let", "let*", "letrec") and rest and rest[0].type == "symbol":
+                i = 2   # named let: `(let loop ([i 0]) ...)`
+            n_clause_lists = 2 if head in _RACKET_TWO_CLAUSE_FORMS else 1
+            for _ in range(n_clause_lists):
+                if i < len(named) and named[i].type == "list":
+                    _clause_values(named[i])
+                    i += 1
+            rest = named[i:]
+        elif head in _RACKET_PATTERN_CLAUSE_FORMS:
+            first = _RACKET_PATTERN_CLAUSE_FORMS[head]
+            if head == "match*" and len(named) > 1 and named[1].type == "list":
+                # `(match* (a (f b)) ...)`: a LIST of scrutinees, not a call.
+                for sub in _racket_named(named[1]):
+                    _collect_calls(sub)
+            elif head in ("syntax-case", "syntax-case*", "syntax-parse") and len(named) > 1:
+                _collect_calls(named[1])   # the scrutinee; literals hold no calls
+            elif head in ("match",) and len(named) > 1:
+                _collect_calls(named[1])
+            for clause in named[first:]:
+                if clause.type == "list":
+                    for value in _racket_named(clause)[1:]:
+                        _collect_calls(value)
+            return
+        for c in rest:
+            _collect_calls(c)
 
     def _walk(node, scope: str = "", in_class: bool = False) -> None:
         # ⚠ ERROR is skipped in BOTH directions on purpose. Recovery re-parents

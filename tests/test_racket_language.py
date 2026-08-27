@@ -317,6 +317,105 @@ def test_call_references_name_callees_not_binding_forms():
         assert not_a_call not in refs
 
 
+# ⚠ Binding positions are not calls. Each shape below was measured producing
+# a phantom reference: a parameter, a clause head, a pattern head or a struct
+# field was attributed as a CALL of the enclosing function, and for a struct
+# form, of whichever synthesised accessor was emitted last. Those references
+# feed get_call_hierarchy, blast radius and get_untested_symbols' name match.
+
+def _refs(src: str, name: str) -> set:
+    return set(_by_name("#lang racket/base\n" + src)[name].call_references)
+
+
+def test_lambda_parameters_are_not_calls():
+    refs = _refs("(define (f lst) (map (lambda (item acc) (helper item)) lst))", "f")
+    assert {"map", "helper"} <= refs
+    assert "item" not in refs and "acc" not in refs
+
+
+def test_every_for_variant_treats_its_clause_heads_as_bindings():
+    src = ("(define (f lst)\n"
+           "  (for/sum ([elem lst]) (score elem))\n"
+           "  (for/vector ([v lst]) (shape v))\n"
+           "  (for*/hash ([k lst] [w lst]) (values k (weigh w)))\n"
+           "  (for/fold ([acc 0]) ([x lst]) (fold-step acc x)))")
+    refs = _refs(src, "f")
+    assert {"score", "shape", "weigh", "fold-step"} <= refs
+    for binding in ("elem", "v", "k", "w", "acc", "x", "for/sum", "for/vector",
+                    "for*/hash", "for/fold"):
+        assert binding not in refs
+
+
+def test_named_let_bindings_and_case_lambda_params_are_not_calls():
+    src = ("(define (f)\n"
+           "  (let loop ([i 0]) (when (< i 3) (loop (add1 i))))\n"
+           "  ((case-lambda [(x) (one x)] [(x y) (two x y)]) 1))")
+    refs = _refs(src, "f")
+    assert {"loop", "add1", "<", "one", "two"} <= refs
+    assert "i" not in refs and "x" not in refs
+
+
+def test_match_patterns_are_not_calls_but_clause_bodies_are():
+    src = ("(define (f v)\n"
+           "  (match v\n"
+           "    [(list a b) (pair-case a b)]\n"
+           "    [(cons x _) (cons-case x)]\n"
+           "    [(? number? n) (num-case n)]))")
+    refs = _refs(src, "f")
+    assert {"pair-case", "cons-case", "num-case"} <= refs
+    for pattern_head in ("list", "cons", "?", "a", "x", "n"):
+        assert pattern_head not in refs
+
+
+def test_send_records_the_method_not_the_dispatcher():
+    refs = _refs("(define (f obj) (send obj compute (arg-of obj)))", "f")
+    assert {"compute", "arg-of"} <= refs
+    assert "send" not in refs and "obj" not in refs
+
+
+def test_new_records_the_class_and_not_the_init_names():
+    refs = _refs("(define (f) (new widget% [width (measure)] [height 2]))", "f")
+    assert {"widget%", "measure"} <= refs
+    assert "width" not in refs and "height" not in refs and "new" not in refs
+
+
+def test_struct_fields_and_option_lambdas_leave_the_accessors_clean():
+    """A struct's synthesised accessors share the form's byte range, so the
+    field list `(x y)` and the `#:guard (lambda (a b n) ...)` parameters were
+    attributed to whichever accessor was emitted last."""
+    syms = _parse("#lang racket/base\n"
+                  "(struct posn (x y) #:guard (lambda (a b n) (values a b)))")
+    for s in syms:
+        assert s.call_references == [], (s.name, s.call_references)
+
+
+def test_provide_specs_and_define_values_names_are_not_calls():
+    src = ("(provide (contract-out [f (-> integer? integer?)]) (rename-out [f g]))\n"
+           "(define-values (p q) (values 1 2))\n"
+           "(define (f x) (h x))")
+    refs = _refs(src, "f")
+    assert refs == {"h"}
+
+
+def test_class_body_declarations_are_not_calls():
+    src = ("(define c%\n"
+           "  (class object%\n"
+           "    (init-field [w 1])\n"
+           "    (field [h (initial-height)])\n"
+           "    (define/public (area) (* w h))\n"
+           "    (super-new)))")
+    names = _by_name("#lang racket/base\n" + src)
+    assert names["area"].call_references == ["*"]
+
+
+def test_a_define_header_default_is_not_a_call_of_itself():
+    """`(define (f [x (default)]) ...)`: `f` used to be recorded as calling
+    `f`. The header is skipped whole; `default` is a lost call, which is a
+    miss rather than a fabrication."""
+    refs = _refs("(define (f [x 1]) (use x))\n(define (g) (f))", "g")
+    assert refs == {"f"}
+
+
 # ── imports ───────────────────────────────────────────────────────────────
 
 def test_require_extraction():
