@@ -11218,6 +11218,9 @@ def _racket_struct_derived(form: str, name: str, kids: list, text) -> list[tuple
         "#:extra-constructor-name": ("constructor", "function", True),
         "#:name": ("type name", "type", False),
         "#:extra-name": ("type name", "type", False),
+        # Typed Racket: `(struct posn ([x : Real]) #:type-name Posn)` binds
+        # `Posn` as the TYPE and keeps `posn` as the constructor.
+        "#:type-name": ("type name", "type", False),
     }
     for i, c in enumerate(kids):
         if c.type != "keyword":
@@ -11832,14 +11835,68 @@ def _parse_racket_symbols(
                     # helper `define` inside this body stays invisible.
                     return
 
-                if form in _RACKET_NAMED_FORMS and kids[1].type == "symbol":
+                if form == "define-generics" and kids[1].type == "symbol":
+                    # ⚠ `(define-generics stack (stack-push s v) ...)` binds
+                    # `gen:stack`, `stack?`, `stack/c` and each METHOD -- and
+                    # not `stack`. The walker used to emit the bare stem (a
+                    # name Racket does not bind, forgiven by a named exemption
+                    # in the fidelity harness) and none of the methods, which
+                    # are the names callers write. Emitted from the source
+                    # the way struct accessors are; all share the form's range.
                     name = _text(kids[1])
+                    gen_id = make_symbol_id(filename, f"{scope}::gen:{name}" if scope else f"gen:{name}", "type")
+                    _emit(node, f"gen:{name}", "type", f"(define-generics {name})", scope)
+                    _emit(node, f"{name}?", "function", f"({name}? v)", scope,
+                          parent_id=gen_id, docstring=f"predicate of (define-generics {name})")
+                    _emit(node, f"{name}/c", "function", f"({name}/c [method contract] ...)", scope,
+                          parent_id=gen_id, docstring=f"contract combinator of (define-generics {name})")
+                    skip = 0
+                    for i, c in enumerate(kids[2:]):
+                        if skip:
+                            skip -= 1
+                            continue
+                        if c.type == "keyword":
+                            kw = _text(c)
+                            nxt = kids[2:][i + 1] if i + 1 < len(kids[2:]) else None
+                            if kw in ("#:defined-predicate", "#:defined-table") and nxt is not None and nxt.type == "symbol":
+                                _emit(node, _text(nxt), "function", f"({_text(nxt)} v)", scope,
+                                      parent_id=gen_id, docstring=f"{kw[2:]} of (define-generics {name})")
+                            # `#:derive-property prop expr` takes two values.
+                            skip = 2 if kw == "#:derive-property" else 1
+                            continue
+                        if c.type == "list":
+                            spec = _racket_named(c)
+                            if spec and spec[0].type == "symbol":
+                                _emit(node, _text(spec[0]), "function", _text(c), scope,
+                                      parent_id=gen_id, docstring=f"generic method of (define-generics {name})")
+                    return
+
+                if form in _RACKET_NAMED_FORMS and (
+                        kids[1].type == "symbol"
+                        or (kids[1].type == "list" and _RACKET_NAMED_FORMS[form] == "class")):
+                    if kids[1].type == "list":
+                        # ⚠ `(define-struct (child parent) (a b))` -- the OLD
+                        # supertype form, still the commonest way to write a
+                        # struct with a parent in HtDP-era code: 130 uses in 36
+                        # collects files, 283 in 66 pkgs files. Requiring a
+                        # symbol there yielded NOTHING: not the struct, not its
+                        # predicate, not its accessors.
+                        header = _racket_named(kids[1])
+                        if not header or header[0].type != "symbol":
+                            return
+                        name = _text(header[0])
+                    else:
+                        name = _text(kids[1])
                     kind = _RACKET_NAMED_FORMS[form]
                     extra = ""
                     if kind == "class":
                         # First list child (the field list) + keyword children
                         # only, so a `#:methods` body is not dragged in.
                         bits = []
+                        if kids[1].type == "list":
+                            header = _racket_named(kids[1])
+                            if len(header) >= 2 and header[1].type == "symbol":
+                                bits.append(_text(header[1]))  # supertype, old form
                         seen_list = False
                         for c in kids[2:]:
                             if c.type == "list" and not seen_list:

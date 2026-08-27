@@ -50,15 +50,16 @@ HARD_FAIL = ("extra", "wrong_span")
 #: jCodeMunch kinds that assert "you can call this".
 CALLABLE_KINDS = frozenset({"function", "method"})
 
-#: Named exemptions, each with its reason. Never a category -- an exemption
-#: that covers a class hides the next member of it.
-#:
-#: `(define-generics async-channel-type ...)` binds `gen:async-channel-type`,
-#: `async-channel-type?` and `async-channel-type/c`, but NOT the bare stem. We
-#: index the stem anyway because it is the human-facing handle and its line is
-#: correct, so treat the oracle knowing `gen:<name>` as knowing `<name>`.
+#: ⚠ There are NO named exemptions, and there used to be one. `(define-generics
+#: async-channel-type ...)` binds `gen:async-channel-type`,
+#: `async-channel-type?`, `async-channel-type/c` and each method, and NOT the
+#: bare stem -- the walker emitted the stem anyway, and this function forgave
+#: it by treating the oracle knowing `gen:<name>` as knowing `<name>`. That is
+#: an `extra` hidden by the harness built to find it. The walker now emits
+#: what the expander binds and the comparison is plain membership; any future
+#: exemption goes here with its reason, and must be for one NAME, never a class.
 def _oracle_knows(name: str, known: set) -> bool:
-    return name in known or f"gen:{name}" in known
+    return name in known
 
 
 def racket_version() -> str:

@@ -685,6 +685,75 @@ def test_a_struct_with_no_fields_still_binds_a_predicate():
     assert _names("(struct posn ())") == {"posn", "posn?"}
 
 
+def test_old_define_struct_with_a_supertype_header_binds_everything():
+    """⚠ `(define-struct (child parent) (a b))` is the OLD supertype form and
+    the commonest way HtDP-era code writes a struct with a parent: 130 uses in
+    36 collects files, 283 in 66 pkgs files. Requiring a symbol in the name
+    slot yielded NOTHING -- not the struct, not the predicate, not the
+    accessors, not `make-child`."""
+    syms = {s.name: s for s in _parse("#lang racket/base\n(struct parent (p))\n"
+                                      "(define-struct (child parent) (a b))")}
+    assert {"child", "child?", "child-a", "child-b", "make-child"} <= set(syms)
+    assert syms["child"].kind == "class"
+    assert "parent" in syms["child"].signature
+    assert "child-p" not in syms, "inherited fields keep the supertype's accessors"
+
+
+def test_old_define_struct_contract_form_with_a_supertype_header():
+    n = _names("(struct parent (p))\n(define-struct/contract (son parent) ([d number?]))")
+    assert {"son", "son?", "son-d", "make-son"} <= n
+
+
+def test_type_name_binds_a_type():
+    syms = {s.name: s for s in _parse(
+        "#lang typed/racket\n(struct posn ([x : Real] [y : Real]) #:type-name Posn)")}
+    assert syms["Posn"].kind == "type"
+    assert syms["posn"].kind == "class"
+    assert {"posn?", "posn-x", "posn-y"} <= set(syms)
+
+
+# ── define-generics: emit what the expander binds ─────────────────────────
+#
+# ⚠ `(define-generics stack (stack-push s v) (stack-pop s))` binds `gen:stack`,
+# `stack?`, `stack/c` and each METHOD -- and not `stack`. The walker emitted
+# the bare stem, a name Racket does not bind, and the fidelity harness forgave
+# it by name; the methods, which are what callers write, were not emitted.
+
+def test_define_generics_binds_the_interface_predicate_contract_and_methods():
+    syms = {s.name: s for s in _parse(
+        "#lang racket/base\n(require racket/generic)\n"
+        "(define-generics stack\n  (stack-push s v)\n  [stack-pop s])")}
+    assert {"gen:stack", "stack?", "stack/c", "stack-push", "stack-pop"} <= set(syms)
+    assert "stack" not in syms, "the bare stem is not a binding"
+    assert syms["gen:stack"].kind == "type"
+    for callable_ in ("stack?", "stack/c", "stack-push", "stack-pop"):
+        assert syms[callable_].kind == "function"
+        assert syms[callable_].parent == syms["gen:stack"].id
+    assert syms["stack-push"].signature == "(stack-push s v)"
+
+
+def test_define_generics_keyword_arguments_are_not_methods():
+    """`#:fallbacks [...]` and `#:defaults (...)` hold `define` forms and
+    method-shaped lists; `#:derive-property` takes TWO values."""
+    n = _names("(require racket/generic)\n"
+               "(define-generics stack\n"
+               "  #:defaults ([list? (define (stack-push s v) (cons v s))])\n"
+               "  #:fallbacks [(define (stack-pop s) s)]\n"
+               "  #:derive-property prop:sequence (lambda (s) s)\n"
+               "  #:requires [stack-push]\n"
+               "  (stack-push s v)\n  (stack-pop s))")
+    assert {"gen:stack", "stack-push", "stack-pop"} <= n
+    for not_a_method in ("list?", "prop:sequence", "lambda", "define", "cons"):
+        assert not_a_method not in n
+
+
+def test_define_generics_defined_predicate_and_table_bind_their_names():
+    n = _names("(require racket/generic)\n"
+               "(define-generics dict #:defined-predicate dict-implements? "
+               "#:defined-table dict-def-table (dict-ref d k))")
+    assert {"dict-implements?", "dict-def-table", "dict-ref"} <= n
+
+
 @pytest.mark.parametrize("kw", ["#:name", "#:extra-name"])
 def test_name_keywords_bind_a_type_not_a_callable(kw):
     """Both bind their argument as a struct-type transformer. Emitting it as a

@@ -115,6 +115,34 @@ in the text. `define-syntaxes` binds macros and now emits `function`, the rule
 `case-lambda` signature shows the first parameter list rather than the first
 clause with its body.
 
+### Fixed - Racket: `define-generics` emits what the expander binds, not a name it does not
+
+`(define-generics stack (stack-push s v) (stack-pop s))` binds `gen:stack`,
+`stack?`, `stack/c` and each METHOD -- and not `stack`. The walker emitted the
+bare stem as a `type` and none of the methods, which are the names callers
+write. ⚠⚠ **The fidelity harness knew, and forgave it by name**:
+`_oracle_knows` treated the oracle knowing `gen:<name>` as knowing `<name>`,
+so the one bucket the harness exists for -- `extra`, a name Racket does not
+bind -- read 0 while carrying a fabrication. The exemption is gone; the
+comparison is plain membership; `extra` is 0 against the expander on the
+committed corpus without it. The methods, `#:defined-predicate` and
+`#:defined-table` names are synthesised from the form the way struct accessors
+are, sharing its range and parented to `gen:<name>`; `#:defaults`,
+`#:fallbacks` and `#:derive-property` (which takes TWO values) are stepped
+over, so a `define` inside them stays internal.
+
+### Fixed - Racket: `(define-struct (child parent) (a b))` no longer yields nothing
+
+The old supertype form puts a LIST in the name slot, and the struct branch
+required a symbol there, so the whole form fell through to the descent guard
+and produced no symbol at all -- not the struct, not `child?`, not the
+accessors, not `make-child`. That form is still the commonest way HtDP-era
+code writes a struct with a parent: 130 uses in 36 collects files, 283 in 66
+pkgs files. `define-struct/contract` has the same header. Own fields only, as
+for `(struct child parent (a b))`. Typed Racket's `#:type-name Posn` binds
+`Posn` as a `type` alongside. Fidelity corpus: `missing` 475 -> 430, coverage
+86.5% -> 87.8%, `extra` and `wrong_span` 0.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises
