@@ -264,6 +264,31 @@ key for Racket files. `tests/test_racket_config_reparse.py` goes through
 run, and a project without Racket never escalating -- because the defect was
 never in the parser.
 
+### Changed - Racket: an index that predates the `#lang` gate re-parses once, instead of a `PARSER_GENERATION` bump
+
+Every Racket change above alters extraction for UNCHANGED content, and the
+`#lang` gate REMOVES fabricated symbols that an index built by
+1.108.297-.301 still holds; the project's rule for that is a
+`PARSER_GENERATION` bump. ⚠ **Deliberately not bumped.** The counter is one
+integer for the whole tree, so a bump re-parses every language for everybody
+-- the bill gen 3 and gen 4 already sent this week -- and Racket support was
+three days old with, as far as anyone knows, one user.
+
+The narrower mechanism is the stamp the config-change fix introduced: every
+LOCAL index is now stamped with `racket_config_digest` at save (`""` when
+unconfigured), so an index with NO such meta key is one that predates the
+stamp. `racket_reparse_reason(index)` -- which replaces `racket_config_changed`
+-- returns `racket_index_predates_gate` for a local index holding Racket files
+with no key, and `racket_config_changed` for a stamp that differs; either
+escalates to one full re-parse of that index with its own `rebuild_reason` and
+warning. That reaches exactly the indexes that need it, and unlike a skipped
+bump it stays repairable at any later date: an absent key is detectable
+forever, a stamp equal to the constant is not. Restoring the global bump is
+one line in `index_store.py`, noted beside the constant, if the maintainer
+prefers the rule. `tests/test_racket_config_reparse.py` deletes the meta key
+from a real store and asserts the single escalation; a non-Racket index with
+no key is left alone; a remote index never qualifies.
+
 ### Changed - Racket: two fidelity fixtures; artifacts regenerated
 
 Two fixtures join the CI-safe fidelity gate, each with its frozen expander

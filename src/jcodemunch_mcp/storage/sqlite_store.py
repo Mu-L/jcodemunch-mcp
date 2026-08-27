@@ -277,15 +277,15 @@ _INDEX_VERSION: Optional[int] = None
 _PARSER_GENERATION: Optional[int] = None
 
 
-def _racket_config_digest_for(source_root: str, languages: Optional[dict]) -> str:
+def _racket_config_digest_for(source_root: str, languages: Optional[dict]) -> Optional[str]:
     """The Racket config fingerprint to stamp on a freshly built index.
 
-    Only a local index holding Racket files carries one; anything else is
-    `""`, which is also what an unconfigured project produces, so nothing
-    differs for the common case.
+    Every LOCAL index is stamped -- `""` for an unconfigured project -- so
+    that an absent key means exactly one thing: the index predates the stamp.
+    A remote index has no source root, no project config, and no stamp.
     """
-    if not source_root or "racket" not in (languages or {}):
-        return ""
+    if not source_root:
+        return None
     try:
         from .. import config as _config
         return _config.racket_config_digest(source_root)
@@ -1307,7 +1307,7 @@ class SQLiteIndexStore:
             symbols=composed_symbols,
             index_version=base_index.index_version,
             parser_generation=getattr(base_index, "parser_generation", 0),
-            racket_config_digest=getattr(base_index, "racket_config_digest", "") or "",
+            racket_config_digest=getattr(base_index, "racket_config_digest", None),
             file_hashes=composed_hashes,
             git_head=delta.get("git_head", base_index.git_head),
             file_summaries=composed_summaries,
@@ -3073,7 +3073,7 @@ class SQLiteIndexStore:
             symbols=patched_symbols,
             index_version=old.index_version,
             parser_generation=getattr(old, "parser_generation", 0),
-            racket_config_digest=getattr(old, "racket_config_digest", "") or "",
+            racket_config_digest=getattr(old, "racket_config_digest", None),
             file_hashes=new_file_hashes,
             git_head=meta.get("git_head", old.git_head),
             file_summaries=new_file_summaries,
@@ -3173,7 +3173,7 @@ class SQLiteIndexStore:
             symbols=symbols,
             index_version=int(meta.get("index_version", "0")),
             parser_generation=int(meta.get("parser_generation", "0") or 0),
-            racket_config_digest=meta.get("racket_config_digest", "") or "",
+            racket_config_digest=meta.get("racket_config_digest"),  # None = never stamped
             file_hashes=file_hashes,
             git_head=meta.get("git_head", ""),
             file_summaries=file_summaries,
@@ -3202,7 +3202,11 @@ class SQLiteIndexStore:
             "indexed_at": index.indexed_at,
             "index_version": str(index.index_version),
             "parser_generation": str(getattr(index, "parser_generation", 0)),
-            "racket_config_digest": getattr(index, "racket_config_digest", "") or "",
+            # Written ONLY when stamped: an absent key is what marks an index
+            # that predates the stamp, and writing "" for it would certify a
+            # re-parse that never happened.
+            **({"racket_config_digest": index.racket_config_digest}
+               if getattr(index, "racket_config_digest", None) is not None else {}),
             "git_head": index.git_head,
             "source_root": index.source_root,
             "git_root": getattr(index, "git_root", "") or "",

@@ -122,6 +122,66 @@ def test_a_project_without_racket_never_escalates(tmp_path):
     _config.invalidate_project_config_cache(str(src))
 
 
+# ── an index that predates the stamp ─────────────────────────────────────
+#
+# ⚠ This is the narrow substitute for a PARSER_GENERATION bump. Every Racket
+# extraction change of 2026-08-27 alters what unchanged `.rkt` content yields,
+# and the #lang gate REMOVES fabricated symbols a 1.108.297-.301 index still
+# holds. A bump re-parses every language for everybody; an absent stamp
+# reaches exactly the local indexes that hold Racket files, and stays
+# detectable at any later date.
+
+def _unstamp(store):
+    """Make the stored index look like one built before the stamp existed."""
+    import sqlite3
+    dbs = list(store.rglob("*.db"))
+    assert dbs, "no index db under the store"
+    for db in dbs:
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("DELETE FROM meta WHERE key = 'racket_config_digest'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def test_an_unstamped_racket_index_re_parses_once(project):
+    src, store = project
+    r1 = _index(src, store)
+    _, idx = _names(r1, store)
+    assert idx.racket_config_digest == "", "a fresh local index is stamped, even unconfigured"
+    _unstamp(store)
+    _, idx = _names(r1, store)
+    assert idx.racket_config_digest is None, "non-vacuity: the stamp must really be gone"
+    r2 = _index(src, store)
+    assert r2.get("rebuild_reason") == "racket_index_predates_gate"
+    assert any("#lang gate" in w for w in r2.get("warnings", []))
+    r3 = _index(src, store)
+    assert r3.get("rebuild_reason") is None, "stamped now; no second escalation"
+
+
+def test_an_unstamped_index_without_racket_files_is_left_alone(tmp_path):
+    src = tmp_path / "src"
+    store = tmp_path / "store"
+    src.mkdir()
+    store.mkdir()
+    (src / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _index(src, store)
+    _unstamp(store)
+    r2 = _index(src, store)
+    assert r2.get("rebuild_reason") is None
+
+
+def test_a_remote_index_never_qualifies():
+    """No source root means no project config and no stamp to compare."""
+    from jcodemunch_mcp.storage.index_store import CodeIndex
+    from jcodemunch_mcp.tools._utils import racket_reparse_reason
+    idx = CodeIndex(repo="o/r", owner="o", name="r", indexed_at="", symbols=[],
+                    source_files=["a.rkt"], languages={"racket": 1})
+    assert idx.racket_config_digest is None
+    assert racket_reparse_reason(idx) is None
+
+
 def test_digest_is_stable_and_order_independent():
     """The stamp must not differ between two runs over the same config."""
     import json
