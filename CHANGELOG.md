@@ -264,6 +264,28 @@ key for Racket files. `tests/test_racket_config_reparse.py` goes through
 run, and a project without Racket never escalating -- because the defect was
 never in the parser.
 
+### Changed - Racket: two fidelity fixtures; artifacts regenerated
+
+Two fixtures join the CI-safe fidelity gate, each with its frozen expander
+answer: `forms.rkt` holds one instance of every form that yielded nothing,
+the wrong kind or an unbound name (`begin-encourage-inline`, the old
+`define-struct` header, `define-generics`, `define-logger`, `define/contract`,
+`match-lambda`, `define-syntax-parse-rule`, `define-syntax-class`,
+`define-inline`, `define-check`, `define-unit`, two `module+` blocks) and must
+come back with nothing missing and none of the unbound stems present;
+`atexp.rkt` carries the four hazard characters inside text bodies, asserts
+the raw bytes STILL fail the grammar (non-vacuity), and must come back
+complete with its internal helper not promoted.
+
+`benchmarks/racket_fidelity/results.json` is regenerated on the same 211-file
+corpus at Racket v9.2: **`missing` 475 -> 362, coverage 86.5% -> 89.7%, 171
+of 211 files clean (was 153), `extra` 0 and `wrong_span` 0 with the
+`define-generics` exemption removed.** `LANGUAGE_SUPPORT.md` and the harness
+README restate the figures; `tests/test_racket_fidelity_artifacts.py` binds
+them. The harness README no longer says the bulk of `missing` is macro output
+-- 113 of the 475 were table entries -- and says which part of
+`callable_unknowable` is a labelling choice rather than an unknowable.
+
 ### Fixed - `schema_driven` now fails closed on a table under an undeclared key (#555)
 
 Split out of #553, where @RascoApps proposed it. The column guard (#354) raises

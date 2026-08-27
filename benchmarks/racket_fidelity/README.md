@@ -21,22 +21,32 @@ Those deserve different treatment, so they get different bars.
 | `generated_only` | A name a macro introduced. No static parser can reach it. | reported |
 | `export_only` | Reachable under a different name than we indexed, because of `rename-out` or `struct-out`. | reported |
 
-`callable_unknowable` is reported rather than required to be zero because it
-cannot be fixed by parsing more carefully. `racket/function.rkt` writes
-`(define curry (make-curry #f))` — `curry` is callable, and nothing in the
-source text says so. Knowing would take running the program.
+`callable_unknowable` is reported rather than required to be zero because
+most of it cannot be fixed by parsing more carefully. `racket/function.rkt`
+writes `(define curry (make-curry #f))` — `curry` is callable, and nothing in
+the source text says so. Knowing would take running the program. ⚠ The
+bucket is not pure: it also counts a plain `struct` name (kind `class`, and
+the name *is* the constructor, so `procedure?` is true) and a whole-file
+`(module name …)` wrapper that shares its name with an export. Those are
+kind-labelling choices, not unknowables, and they are most of the 212. Read
+the per-file list, not the total.
 
-`missing` is reported rather than required to be zero for the same reason: the
-bulk of it is names created by invoking a macro, which are not in the file's
-text at all.
+`missing` is reported rather than required to be zero because part of it is
+names created by invoking a macro, which are not in the file's text at all.
+⚠ Part, not the bulk: 113 of the 475 misses on the 1.108.301 run were
+binding forms the extractor simply did not list (`begin-encourage-inline`
+bodies, `define-sequence-syntax`, `(define-struct (name super) …)`,
+`define-generics` methods), and listing them moved the run to 362 with the
+hard-fail buckets still at zero. Treat a large `missing` as a work list
+before treating it as a ceiling.
 
 ## Reading the result
 
 The corpus average is the least useful view. On the committed run — 3,526
-definitions across 211 files — 475 were not found, but **153 of the 211 files
-have nothing missing at all**, and the 10 worst files account for 311 of the
-475. The gap sits in a handful of heavily macro-driven files rather than
-spreading evenly, so "86.5%" understates how most files behave.
+definitions across 211 files — 362 were not found, but **171 of the 211 files
+have nothing missing at all**, and the 10 worst files account for 258 of the
+362. The gap sits in a handful of heavily macro-driven files rather than
+spreading evenly, so "89.7%" understates how most files behave.
 
 ## The oracle
 

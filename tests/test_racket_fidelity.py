@@ -60,7 +60,7 @@ def _result(classify, frozen, name: str) -> dict:
     return classify(FIXTURES / name, frozen[name])
 
 
-FIXTURE_NAMES = ["basics.rkt", "guards.rkt", "macros.rkt"]
+FIXTURE_NAMES = ["basics.rkt", "guards.rkt", "macros.rkt", "forms.rkt", "atexp.rkt"]
 
 
 def test_frozen_data_covers_every_fixture(frozen):
@@ -119,6 +119,34 @@ def test_macro_defined_names_are_the_named_ceiling(classify, frozen):
     names = {s.name for s in _parse_racket_symbols(
         (FIXTURES / "macros.rkt").read_bytes(), "macros.rkt")}
     assert {"define-constants", "reachable-by-static-parsing"} <= names
+
+
+def test_forms_fixture_is_fully_covered(classify, frozen):
+    """Every form in forms.rkt yielded nothing, the wrong kind, or an unbound
+    name before gen 5. Each is one instance, so a regression in any of them
+    is a named miss here rather than a fraction of a corpus average."""
+    result = _result(classify, frozen, "forms.rkt")
+    assert result["missing"] == [], f"a form regressed: {result['missing']}"
+    from jcodemunch_mcp.parser.extractor import _parse_racket_symbols
+    names = {s.name for s in _parse_racket_symbols(
+        (FIXTURES / "forms.rkt").read_bytes(), "forms.rkt")}
+    # Synthesised names the expander confirms, and the stems it does not bind.
+    assert {"child?", "child-a", "make-child", "gen:stack", "stack?", "stack/c",
+            "stack-push", "app-logger", "log-app-debug"} <= names
+    assert not {"stack", "app", "unit-internal"} & names
+
+
+def test_atexp_fixture_is_fully_covered_although_the_grammar_fails_on_it(classify, frozen):
+    """The raw bytes fail tree-sitter (non-vacuity); every definition is found
+    anyway, and the internal helper inside a text body is not promoted."""
+    from jcodemunch_mcp.parser.extractor import _parse_racket_symbols, get_parser
+    raw = (FIXTURES / "atexp.rkt").read_bytes()
+    assert get_parser("racket").parse(raw).root_node.has_error, \
+        "non-vacuity: the fixture must still break the grammar"
+    result = _result(classify, frozen, "atexp.rkt")
+    assert result["missing"] == []
+    names = {s.name for s in _parse_racket_symbols(raw, "atexp.rkt")}
+    assert "internal-helper" not in names
 
 
 def test_basics_fixture_is_fully_covered(classify, frozen):
