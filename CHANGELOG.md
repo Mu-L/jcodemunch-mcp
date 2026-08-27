@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+### Fixed - the JS/TS framework build trees were indexed as source
+
+`build`, `.build` and `_build` were all in `_SKIP_DIRECTORY_NAMES` and the
+framework spellings were not. **`.next/server/**` holds a TRANSPILED copy of
+the pages the user wrote**, so a Next.js project indexed here got its own source
+twice, with the machine-generated copy competing against the original in
+ranking. That is the v1.108.234 duplicate-source-tree defect for the fourth
+time, wearing a fourth name.
+
+Added: `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.angular`, `.turbo`,
+`.parcel-cache`, `.dart_tool`.
+
+⚠ **DOTTED spellings only, deliberately.** `out`, `bin`, `obj`, `coverage` and
+`public` all name real source directories in real projects; the list already
+carries that risk for `backup`/`old`/`archive` and does not need a fourth
+instance. Nobody ships a package directory called `.next`.
+`tests/test_framework_build_trees_are_skipped.py` asserts their ABSENCE as
+firmly as it asserts the eight additions.
+
+⚠ Each is in its framework's standard `.gitignore` and gitignore is honoured, so
+this bites a project without one or indexed outside git -- the identical bound
+`_build` carries. Counted in `discovery_skip_counts`, and removable per-project
+via `exclude_skip_directories`.
+
+⚠ Found by reading GitNexus's fix titles against our tree (`fix(ingestion):
+ignore emitted Next.js build output`).
+
+
 ### Fixed - Rust impl methods had no owner, and the harness could not tell
 
 `impl Foo { fn new }` and `impl Bar { fn new }` both emitted a bare `new`, kind

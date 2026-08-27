@@ -304,6 +304,33 @@ _SKIP_DIRECTORY_NAMES: list[str] = [
     # (`fix(ingest): skip _build, the underscore spelling of a build tree`),
     # which is the third time that probe has paid.
     "_build",
+    # v1.108.303: the JS/TS build trees, which are the same defect a FOURTH
+    # time -- `build`, `.build` and `_build` were all listed and the framework
+    # spellings were not. `.next/server/**` holds a TRANSPILED copy of the
+    # pages the user wrote, so a Next.js project indexed here got its own
+    # source twice, with the machine-generated copy competing against the
+    # original in ranking.
+    #
+    # ⚠ DOTTED spellings only, deliberately. `out`, `bin`, `obj` and `coverage`
+    # name real source directories in real projects; the entries above already
+    # carry that risk for `backup`/`old`/`archive` and it needs no fourth
+    # instance. Nobody ships a package directory called `.next`.
+    #
+    # ⚠ Each of these is in its framework's standard .gitignore and gitignore
+    # is honoured, so this bites a project without one or indexed outside git
+    # -- the identical bound `_build` carries, and the argument for one is the
+    # argument for the others.
+    #
+    # ⚠ Found by reading GitNexus's fix titles against our tree
+    # (`fix(ingestion): ignore emitted Next.js build output`).
+    ".next",         # Next.js
+    ".nuxt",         # Nuxt 2
+    ".output",       # Nuxt 3 / Nitro
+    ".svelte-kit",   # SvelteKit
+    ".angular",      # Angular CLI cache
+    ".turbo",        # Turborepo
+    ".parcel-cache", # Parcel
+    ".dart_tool",    # Dart / Flutter
 ]
 
 # Glob-style patterns — matched by regex in index_folder, by suffix in index_repo.
