@@ -769,6 +769,30 @@ FIRST command a new contributor ran failed. And jcm's
 docs give a human**, which is why this survived: the thing we test is not the
 thing they do.
 
+## Registry verification reads a NESTED row (2026-08-27)
+
+⚠⚠ **The MCP registry API nests each row as `{server: {...}, _meta: {...}}`**
+(schema `2025-12-11`). `name`, `version` and `packages[]` sit under `server`;
+`isLatest` and `publishedAt` sit under
+`_meta["io.modelcontextprotocol.registry/official"]`. **A flat `row["name"]`
+read returns ZERO rows on a publish that completely succeeded** — measured
+minutes after `mcp-publisher` confirmed 1.108.301, where the flat parse found
+0 of 45 rows and the nested parse found all 45 with `isLatest: 1.108.301`.
+
+⚠⚠ **This is a SECOND false negative on top of the known paging trap, and
+unlike that one it SURVIVES `&limit=100`** — so the documented remedy does not
+help and the symptom is indistinguishable from a failed publish. **Never
+re-publish on a zero-row read; fix the parse.** Also confirm
+`server.packages[].version` advanced, not only `server.version` — an entry can
+move one and not the other.
+
+⚠ **The release checklist itself lives at `.claude/skills/release/SKILL.md`,
+which is GITIGNORED** (`.gitignore:58`, the v0.2.6 credential-leak fix, with
+the matching sdist exclusion asserted by `tests/test_sdist_exclusions.py`). So
+corrections there are MACHINE-LOCAL: not in git, not in CI, gone on a fresh
+checkout. That is why this note is here instead. **Do not un-ignore `.claude/`
+to fix that** — it reintroduces the vector that got five releases yanked.
+
 ## Maintenance Practices
 
 1. **Document every tool before shipping.** Any PR adding a new tool to `server.py`
