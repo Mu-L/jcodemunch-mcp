@@ -954,3 +954,24 @@ to fix that** — it reintroduces the vector that got five releases yanked.
    it will dispatch" is the property. ⚠ A red suite invites fixing the tests; run
    the non-vacuity pass on the OLD test too — if it passes only against the
    pre-fix tree, it was the defect's witness, not its guard.
+10. **Run the touched test files BEFORE the full suite** (jjg, 2026-08-28). The
+   suite is a RELEASE gate, not an edit loop. Measured on #558: full suite 12:55
+   (6 failures) -> fix -> 10:47 -> CI 9:21 = **33 minutes of blocking wait**,
+   where `pytest` on the three affected files reproduces all six failures in
+   **3 seconds**. Order: touched files, then `uv run ruff check src/` (it catches
+   the syntax class without running anything), then the suite once as the gate.
+   ⚠ **The exception is narrow: a change whose blast radius cannot be named** —
+   a shared primitive like `PARSER_GENERATION`, a store schema, a skip-list
+   constant reaches files no import graph predicts, and there the suite IS the
+   first check. Say which case applies; `get_blast_radius` answers it directly.
+   ⚠⚠ **APPENDED as 10, not inserted at 8 where it fits by topic.** The first
+   attempt slotted it beside the other testing practices and renumbered the two
+   below it, which silently broke live cross-references in
+   `tests/test_build_tree_spellings.py`, `tests/test_hook_steering_fixes.py`
+   and `tests/test_hardening.py`, plus dated CHANGELOG and ISSUE-HISTORY
+   entries that were correct when written. **These numbers are an index, not a
+   ranking, and nothing fails a build when one drifts** — so a new practice
+   goes on the END.
+   ⚠ **Measure a wait, never estimate it.** I reported this as "two suite runs,
+   that's the whole 40 minutes"; 2x13 is 26, and jjg did the arithmetic.
+
