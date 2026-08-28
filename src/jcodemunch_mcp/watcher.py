@@ -488,13 +488,42 @@ async def _watch_single(
                         quiet=quiet, log_file_handle=log_file_handle,
                     )
                     mark_reindex_done(repo_id, result)
-                    # Rebuild hash cache from the index that index_folder just wrote.
-                    # Previously this re-read each changed file to compute the new hash,
-                    # but that introduced a double-read race: if the file changed again
-                    # between index_folder's read and the watcher's re-read, the cache
-                    # would record the wrong hash and silently skip the next change (T6).
-                    # Reading from the store is the single authoritative source of truth.
-                    _build_hash_cache()
+                    # Refresh the hash cache from what index_folder actually
+                    # STORED, rather than loading every symbol in the index to
+                    # read a dict of strings.
+                    #
+                    # ⚠ NOT because the reload was slow in the steady state --
+                    # it is not, `incremental_save` keeps the LRU entry
+                    # coherent and it measures 0.001 s. This removes a CLIFF
+                    # that a shipped setting can reach: JCODEMUNCH_INDEX_CACHE_TTL
+                    # evicts an index that has sat unused, and a watcher is
+                    # idle between edits BY DEFINITION. Measured at TTL=1 with a
+                    # 1.5 s gap: 0.001 s -> 0.19 s per event on 15,075 symbols,
+                    # and #370 clocked a cold 665k-symbol hydration at 7.5-11.4
+                    # MINUTES. Anything else that moves the .db mtime between
+                    # the save and the read does the same (#557, @Ticki84).
+                    #
+                    # ⚠ Re-reading the changed files instead is what this used
+                    # to do and it is NOT the alternative: the file can change
+                    # again between index_folder's read and ours, so the cache
+                    # records a hash nobody indexed and the next edit is
+                    # skipped as unchanged (T6). The delta has no second read
+                    # to race with.
+                    #
+                    # ⚠⚠ ABSENT is not EMPTY. A run that cannot report its
+                    # delta (older code path, full walk, an exit added later)
+                    # must fall back to the full reload -- treating a missing
+                    # key as "nothing changed" would freeze the cache and
+                    # silently stop reindexing, which is the failure this cache
+                    # exists to prevent.
+                    _delta = result.get("file_hashes_delta")
+                    if isinstance(_delta, dict):
+                        _hash_cache.update(_delta)
+                        for _gone in result.get("file_hashes_removed") or []:
+                            _hash_cache.pop(_gone, None)
+                        _hash_cache_built = True
+                    else:
+                        _build_hash_cache()
                     # Report re-index activity (only if it actually did work)
                     if on_reindex is not None:
                         on_reindex()

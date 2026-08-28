@@ -2,6 +2,60 @@
 
 ## [Unreleased]
 
+### Fixed - the watcher reloaded the whole index to learn one file's hash (#557)
+
+Reported by **@Ticki84**: on Windows a single-file edit took ~10s to reach the
+index while `index_file` on the same file took ~0.2s.
+
+After each successful reindex the watcher called `_build_hash_cache()`, a full
+`load_index` that hydrates **every symbol** in order to refresh a dict of file
+hashes -- hashes `index_folder` had just computed and stored. It now returns
+them (`file_hashes_delta` / `file_hashes_removed`) and the watcher applies the
+delta.
+
+⚠⚠ **The first version of this entry, and the first comment on the issue, said
+the reload cost 0.36 s per event. That was WRONG and the correction is the more
+useful half.** `incremental_save` keeps the LRU entry coherent, so re-loading
+straight after saving measures **0.001 s**. The 0.36 s was a cold load in a
+fresh process -- a startup cost, paid once. **Measured only after asserting the
+opposite in public.**
+
+⚠⚠ **What this removes is a CLIFF, and a setting we ship reaches it.**
+`JCODEMUNCH_INDEX_CACHE_TTL` evicts an index that has sat unused, and **a
+watcher is idle between edits by definition** -- so with the TTL set, every edit
+pays a cold hydration. Measured at `TTL=1` with a 1.5 s gap between edits:
+**0.001 s -> 0.19 s per event on 15,075 symbols**, and #370 clocked a cold
+665k-symbol hydration at **7.5-11.4 minutes**. Anything else that moves the .db
+mtime between the save and the read does the same: a second server instance, the
+embedding store, `refresh`. Reading what we already computed depends on none of
+it. ⚠ That interaction was undocumented; the env var is recommended for hosts
+that leak stdio processes, which is exactly where a watcher also runs.
+
+⚠ **Re-reading the changed file is NOT the alternative** and the full reload was
+there to prevent it: the file can change again between `index_folder`'s read and
+the watcher's, so the cache records a hash for content nobody indexed and the
+next edit is skipped as unchanged (T6). A delta has no second read to race with.
+
+⚠ **ABSENT is not EMPTY.** A run that reports no delta (older code, a full walk,
+an exit added later) falls back to the full reload; only an explicit empty delta
+means "nothing moved". Treating a missing key as "no changes" would freeze the
+cache and stop reindexing silently -- the failure the cache exists to prevent.
+The type check, not a truth check, is what keeps those apart, and
+`tests/test_watcher_hash_delta.py` pins it. All 8 tests fail against the
+pre-fix tree.
+
+⚠ **Withheld unless `changed_paths` was supplied.** `index_folder` is an MCP
+tool and the delta is unbounded in the size of the change set; a full walk would
+put every hash in the repo on the wire against a response cap that refuses
+rather than truncates. Only the watcher passes `changed_paths`, so the tool
+response is unchanged.
+
+⚠ **This is not yet shown to be @Ticki84's 10 s** -- the watcher path reproduces
+at **0.36 s** here on a repo larger than theirs (895 files / 15,265 symbols vs
+570 / 6,000). Their version and a per-event duration are outstanding on the
+thread. The defect above is real and worth fixing either way.
+
+
 ## [1.108.303] - 2026-08-27 - The measurement was the defect
 
 Five instruments in this release reported a good number about something they
