@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### Fixed - the machine's timezone chose the input format, so 3.10 broke in CI only
+
+The shallow-boundary probe read `git log --format=%aI`. **git renders a UTC
+offset as `Z`, and `datetime.fromisoformat` could not parse `Z` until 3.11**, so
+on 3.10 every boundary date came back unparseable.
+
+⚠⚠ **It could not be reproduced on the developer box, and the reason is the
+lesson.** git emits `Z` only where the offset IS zero. Every CI runner is UTC;
+this box is CDT and got `-05:00`, which 3.10 parses fine. **The host's timezone
+selected which spelling git produced**, so the integration tests were green
+locally on all versions and red on 3.10 across both operating systems.
+`uv run --python 3.13` could not have caught it either -- it was never a version
+the local clock could break.
+
+⚠ `test_parse_iso_accepts_both_offset_spellings` pins all four spellings as a
+UNIT, with no repository, no clock and no timezone. An integration test is
+structurally incapable of guarding this: it can only observe whichever spelling
+its host happens to produce. Two of the four cases fail against the old parser
+under 3.10 on the non-vacuity pass.
+
+⚠ **The tri-state held under the fault and that is worth recording.** An
+unparseable boundary reported `complete: None` -- could not establish -- rather
+than a confident coverage answer off a date nobody read. The design degraded
+instead of lying, which is what the CI failure looked like: `assert None is
+False`, not a wrong verdict.
+
+⚠ `uv run ruff check src/` passed against the broken parser. Lint is not a
+correctness signal, and a green lint on a hand-edited revert is not a restore.
+
 ### Fixed - a scratch file shipped inside the published 1.108.304 sdist
 
 `relnotes.md` -- a temporary copy of the CHANGELOG entry, written for

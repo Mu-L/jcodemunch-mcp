@@ -144,8 +144,29 @@ def history_coverage(cwd: str, window_days: int) -> dict:
 
 
 def _parse_iso(s: str) -> Optional[datetime]:
+    """Parse git's ``%aI`` on every supported Python.
+
+    ⚠⚠ **git renders a UTC offset as ``Z``, and ``datetime.fromisoformat``
+    could not parse ``Z`` until 3.11.** So the boundary date came back
+    unparseable on 3.10 -- but ONLY on a machine whose git chose the ``Z``
+    spelling, which means UTC. Every CI runner is UTC; a developer box on a
+    non-zero offset gets ``-05:00`` and cannot reproduce it at all. The
+    integration tests here were green locally and red on 3.10 in CI for exactly
+    that reason: **the machine's timezone selected the input format.**
+
+    ⚠ Which is why ``test_parse_iso_accepts_both_offset_spellings`` pins BOTH
+    spellings as a unit, with no repository and no clock involved. An
+    integration test cannot guard this -- it can only observe whichever
+    spelling the host happens to produce.
+
+    ⚠ The tri-state held under the defect: an unparseable boundary reported
+    ``complete: None``, not a confident answer. It degraded rather than lied.
+    """
     if not s:
         return None
+    # 3.11+ handles "Z" natively; normalising first is correct on every version.
+    if s.endswith(("Z", "z")):
+        s = s[:-1] + "+00:00"
     try:
         dt = datetime.fromisoformat(s)
     except ValueError:

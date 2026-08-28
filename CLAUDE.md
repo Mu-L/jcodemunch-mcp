@@ -478,6 +478,14 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   0.0 it would have supplied was worse than the crash: a ~77-point regression
   reported against a side nobody measured. Same shape as
   [[a-module-that-imports-clean-has-been-tested-for-nothing]].
+- **The host's timezone can select a test's INPUT FORMAT.** 08-28: git renders
+  a UTC offset as `Z`, which `datetime.fromisoformat` could not parse before
+  3.11 — so a boundary date was unreadable on 3.10, in CI only. Every runner is
+  UTC; this box is CDT and got `-05:00`, which parses everywhere. ⚠⚠ **No local
+  run on any version could reproduce it, `uv run --python 3.13` included** —
+  the version matrix was not the axis that mattered. Pin format-sensitive
+  parsing with a UNIT test over every spelling; an integration test can only
+  observe the one its host emits. [[a-module-that-imports-clean-has-been-tested-for-nothing]]
 - **A denylist catches the instance; an allowlist catches the class.** 08-28:
   `relnotes.md`, a scratch copy of the release notes, was swept up by
   `git add -A` and shipped inside the published sdist. The sdist canary tests
@@ -501,193 +509,166 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
 
 ## Issue + release policy (2026-07-28)
 
+⚠⚠ **The forensics behind every rule here are in `ISSUE-HISTORY.md` §
+"issue + release policy forensics (2026-08-28)" — measurements, dates and the
+incidents that produced each one. READ THEM BEFORE ARGUING WITH A POLICY.**
+Several were written after we broke them ourselves; 2e is recorded in the first
+person because the wrong call sounded reasonable at the time.
+
 **1. One issue, one verdict.** A multi-finding report gets SPLIT at triage into
 one issue per finding, cross-linked, credit on each. Nothing is dropped and no
 detail is discouraged. The reason is closure mechanics: a 4-finding issue closes
 only when the last one settles, so three finished fixes sit behind one
-unfinished conversation and the tracker cannot say which is which.
-
-⚠ **This is the correction to a mistake we made deliberately.** On 2026-07-27 we
-CONSOLIDATED five jdoc issues (#80/#89/#90/#93) into one gate, #95. It cut the
-open count from 5 to 1 and manufactured a single artifact with the power to
-block a release. **Tracker-tidiness and granularity pull in opposite directions;
-do not optimize the count.**
+unfinished conversation. ⚠ This corrects a mistake we made deliberately —
+consolidating five jdoc issues into one gate cut the open count from 5 to 1 and
+manufactured a single artifact with the power to block a release.
+**Tracker-tidiness and granularity pull in opposite directions; do not optimize
+the count.**
 
 **2. A release is NEVER blocked on an open issue**, including a verification we
 asked for. Done + tested + green ships on schedule, carrying a plain-language
-verification-status line (the #95 disclosure sentence is the template; it is
-deliberately weaker than a sign-off and the changelog must never blur the two).
-Late re-verification counts IN FULL and is announced retroactively. Nothing
-expires. **Every timebox names its default action** ("verification by X, or Y
-ships with disclosure Z"); a date with no stated consequence is a wish.
-
+verification-status line. Late re-verification counts IN FULL and is announced
+retroactively. Nothing expires. **Every timebox names its default action** ("verification
+by X, or Y ships with disclosure Z"); a date with no stated consequence is a wish.
 ⚠ **The point is that a reviewer's thoroughness must never become a veto.** If
-being careful can stall a release, careful review becomes expensive to accept,
-which is backwards.
+being careful can stall a release, careful review becomes expensive to accept.
 
 **2e. NEVER BATCH OUR RELEASE BEHIND SOMEONE ELSE'S CLOCK** (jjg, 2026-08-18,
-after it happened). Policy 2 says a release is never blocked on an open issue.
-**The way that rule gets broken is not by someone overruling it — it is by an
-apparently sensible batching argument that never mentions it.**
-
-⚠⚠ **The exact failure, recorded because it was MINE and it sounded reasonable.**
-On 2026-08-18, five fixes were merged and green (#488/#489/#490's siblings,
-#495). I recommended holding the release until 08-19/08-20 so it could include
-#504 and #447, on the grounds that each of our releases re-conflicts elfrost's
-CLA-blocked #443 and batching means resolving once instead of three times. jjg
-accepted it. **That recommendation coupled our shipping schedule to a
-contributor's CLA signature and a first-time reporter's availability, which is
-the precise outcome policy 2 exists to prevent.**
-
-⚠⚠ **It was also wrong ON THE MERITS, which is the part that generalises.**
-Batching reduces the NUMBER of conflict resolutions, not whether they happen —
-#443 conflicts on whatever release comes next, whenever that is. Each resolution
-is a scripted three-way merge plus one suite run, measured at minutes. **The
-trade was "finished, tested, user-facing fixes sit unreleased for two days" in
-exchange for "we do a cheap chore once instead of three times." Weigh the cost
-of the chore against the cost of the delay before proposing a batch; here it was
-not close.**
-
-⚠ **The timeboxes are NOT the problem and must not be "fixed".** Every one names
-a default that ships the work regardless (policy 3a). A posted window decides
-whose commit it is, never whether the fix ships or whether we can release. If a
-window ever appears to block a release, the batching decision is what is
-blocking it, not the window.
-
+after it happened). ⚠⚠ **Policy 2 does not get broken by someone overruling it —
+it gets broken by an apparently sensible batching argument that never mentions
+it.** I once recommended holding five merged, green, user-facing fixes for two
+days so a release could absorb a contributor's CLA-blocked PR and save three
+conflict resolutions. jjg accepted it. That coupled our schedule to a
+contributor's signature, which is exactly what policy 2 exists to prevent — and
+it was wrong on the merits, because batching reduces the NUMBER of resolutions,
+not whether they happen, and each is minutes.
 ⚠ **The test, before proposing to hold a release:** name the thing being waited
 for, and whether it is OURS. If it is anyone else's action — a signature, a PR, a
-reply, a re-run — the answer is ship now and let them ride the next one.
-Contributor work is never worse off for this: their default still fires, their
-credit is unchanged, and their PR merges into a smaller diff.
-
+reply, a re-run — ship now and let them ride the next one.
 ⚠ **Corollary: "reduce OUR churn" is not a release criterion.** Conflict
-resolution, re-runs and re-merges are our costs to absorb. The moment avoiding
-them starts shaping WHEN users get fixes, the optimisation has inverted — we are
-spending their latency to buy our convenience. [[never-batch-a-release-behind-someone-elses-clock]]
+resolution and re-merges are our costs to absorb. The moment avoiding them shapes
+WHEN users get fixes, the optimisation has inverted.
+⚠ **The timeboxes are NOT the problem and must not be "fixed".** Every one names
+a default that ships the work regardless. If a window appears to block a release,
+the batching decision is what is blocking it. [[never-batch-a-release-behind-someone-elses-clock]]
 
 **2f. THE ONE CASE WHERE NOT CUTTING A RELEASE IS LEGAL — and it is narrow**
-(jjg, 2026-08-20). 2e forbids holding a release behind someone else's clock.
-This is not that, and the difference has to be stated precisely or 2f becomes
-the loophole that kills 2e.
-
-⚠⚠ **THE DISCRIMINATOR IS WHETHER A USER IS WAITING FOR ANYTHING IN THE BLOCK.**
-In #443 we held a SECURITY FIX behind a contributor's CLA: real users, real
-exposure, eight days. In 1.108.289 the entire `[Unreleased]` block is licence
-metadata whose ONLY beneficiary is the customer we would be waiting on.
-**Shipping it gets no user anything.** So the timing question is not "do we make
-users wait" — it is "what serves the one party this release is for", which is a
-different question with a different answer.
-
-⚠ **The asymmetry that decides it: released metadata is PERMANENT per version,
-unreleased metadata is FREE.** Cutting .289 before the customer confirms the
-identifier form risks a THIRD spelling (.288 `-1.1`, .289 `-1`, .290 whatever),
-and their allowlist fans out across all three. **This is the same immutability
-argument that justified deciding FAST, pointing the other way at the release
-step.** Deciding early is cheap; publishing early is not.
-
-⚠⚠ **THE TEST, and it must be applied every time before invoking 2f: name what
-is in the block and who is waiting for it. If ANY entry is a fix, a feature or a
-correctness change, 2f does not apply and 2e governs — cut it now.** A block that
-is entirely metadata for one named recipient is the only shape this covers.
-
-⚠ **Both triggers fire independently and neither can be deferred**: the next
-content update ships it regardless of any reply, and a reply ships it regardless
-of what else is ready. **A held release with no trigger is a forgotten release**,
-which is why the hold is recorded in Current State where it is read every
-session, not only here.
-
-⚠ **"We never wait for a reply to ship a fix; we can decline to CUT a release
-whose only content is a thing the recipient has not confirmed."** Those are
-different acts. Only the first is what 2 and 2e protect against.
+(jjg, 2026-08-20). ⚠⚠ **THE DISCRIMINATOR IS WHETHER A USER IS WAITING FOR
+ANYTHING IN THE BLOCK.** A block that is entirely metadata for one named
+recipient is the only shape this covers, because shipping it gets no user
+anything. ⚠ The asymmetry that decides it: **released metadata is PERMANENT per
+version, unreleased metadata is FREE** — the same immutability argument that
+justifies deciding fast, pointing the other way at the release step.
+⚠⚠ **THE TEST, applied every time before invoking 2f: name what is in the block
+and who is waiting for it. If ANY entry is a fix, a feature or a correctness
+change, 2f does not apply and 2e governs — cut it now.**
+⚠ A held release with no trigger is a forgotten release, so record the hold in
+Current State, not only here. [[declining-to-cut-is-not-holding-a-fix]]
 
 **3. A contributor's PR is never the only path.** Timebox it and keep our own
 path warm (#388 taught this the expensive way).
 
 **3a. NO TIMEBOX WE OFFER RUNS LONGER THAN 24 HOURS** (jjg, 2026-08-14, widened
-the same day from the CLA-only version). It covers **every** shape: signing the
-CLA, opening a PR already written, and taking an issue to implement. The CLA case
-is the easiest to justify — CLA Assistant prompts the moment a PR opens and
-signing takes about 30 seconds, so a longer window parks a finished, green,
-reviewed fix behind a form — but the rule is not limited to it.
-
+same day; **made ABSOLUTE 2026-08-20 — "Not again. 24 hour. Tops. Ever."**). It
+covers every shape: signing the CLA, opening a PR already written, taking an
+issue to implement.
 ⚠⚠ **The window is only fair BECAUSE the default action preserves credit.** At
-expiry we implement the fix ourselves and credit them in the CHANGELOG, the
-release notes and the close comment. So the 24 hours decide whose COMMIT it is,
-never whether they are credited and never whether the fix ships. Quote the
-default in the same comment as the deadline — a 24-hour clock with an unstated
-consequence reads as a threat, and it is not one.
+expiry we implement it ourselves and credit them in the CHANGELOG, the release
+notes and the close comment. So the 24 hours decide whose COMMIT it is, never
+whether they are credited and never whether the fix ships. **Quote the default in
+the same comment as the deadline** — a clock with an unstated consequence reads
+as a threat.
+⚠⚠ **The failure mode has a name: a CLA hostage negotiation.** #443 went eight
+days — a real security fix, reviewed and green, held behind a 30-second form,
+while seven of our own merges conflicted its branch. **A window longer than 24
+hours purchases exactly one thing: the chance the contributor's commit is theirs
+— and it pays for that chance in the user's exposure to an unfixed defect.**
+⚠ An extension the contributor ASKS FOR is different from a default we hand out;
+CONTRIBUTING.md invites the ask. Hold it when they ask.
+⚠ **Do not shorten a timebox already posted**, and **re-read the thread for the
+operative date — never quote one from here or from memory.** A thread can carry
+two. The grandfathering clause is spent and must not be revived.
+[[re-read-the-thread-for-the-operative-timebox]] [[timebox-comments-state-deadline-and-default-only]]
 
-⚠ **An extension the contributor ASKS FOR is not the same as a default we hand
-out**, and CONTRIBUTING.md invites the ask by name. Hold it when they ask; the
-clock exists to stop work going quiet, not to catch anyone out.
-
-⚠ **Stated consequence, not hidden**: on an IMPLEMENTATION handoff, 24 hours
-means in practice that we implement it and they are credited, because nobody
-lands an additive-schema-plus-dispatcher change around a job in a day. That is a
-change in what a handoff IS, not only in how long it lasts. It is the intended
-trade — our throughput over their commit — and it should be made in the open
-rather than discovered at expiry.
-
-**3d. `license/cla` IS A REQUIRED STATUS CHECK ON THE DEFAULT BRANCH OF ALL
-THREE REPOS** (jjg, 2026-08-17 for jcm; extended suite-wide 2026-08-21).
-Enabled because it was NOT one: until this date the repo had **no branch
-protection, no rulesets and no required checks**, so the CLA was read but never
-enforced and one distracted click could have merged unsigned code. Open PRs now
-read `MERGEABLE/BLOCKED` rather than `MERGEABLE/UNSTABLE`.
-
-⚠⚠ **For four days this was fixed in ONE repo of three, which is the recurring
-shape.** jdoc was protected but required NOTHING; jdata had **no protection at
-all**. Measured 2026-08-21 on jdata PR #5: the CLA was genuinely unsigned, the PR
-read `MERGEABLE/UNSTABLE`, and nothing would have stopped the merge. **A setting
-fixed in one repo of a suite is fixed in one repo** — the same sentence jdata's
-own brief already carried about `fork-pr-contributor-approval`, written after a
-contributor hit it first. All three now read identically: `contexts
-["license/cla"]`, `strict false`, `enforce_admins false`, force-push and deletion
-off.
+**3b. A MERGEABLE contributor PR merges BEFORE any changelog-touching work of
+our own** (jjg, 2026-08-14), including a release commit.
 
 ```bash
-# All three; the default branch is `main` for jcm and `master` for jdoc/jdata.
+GITHUB_TOKEN="" gh pr list --state open --json number,author,mergeable,mergeStateStatus \
+  --jq '.[] | select(.author.login != "jgravelle") | "#\(.number) \(.author.login) \(.mergeable) \(.mergeStateStatus)"'
+```
+
+Any row reading `MERGEABLE CLEAN` goes in before ours. ⚠⚠ The reason is
+mechanical: our `[Unreleased]` edits land in the same block a contributor's entry
+occupies, so each of our merges conflicts their branch, and **a CONFLICTING fork
+PR has no `refs/pull/N/merge` and therefore gets NO CI AT ALL** — their branch
+goes dark for a reason unrelated to their change. Measured: #443 conflicted FIVE
+TIMES IN ONE DAY, which is one wrong merge order repeated, not five incidents.
+⚠ **The boundary:** a BLOCKED PR cannot go first. Then we ship anyway (policy 2)
+and **we own the resolution** — push the merge to their branch and say on the
+thread that the conflict was ours. **This rule governs ORDER when we have a
+choice; it never holds our work behind someone else's form.**
+⚠⚠ **Do NOT answer "an issue is stuck" with aggregate stats.** jcm's median
+time-to-close is 0 days; that is TRUE and it is NOT a response. The cost of a
+blocked issue is CONCENTRATED, not distributed. Design the fix at the OUTLIER.
+[[feedback_dont_answer_pain_with_aggregates]] [[push-to-the-fork-remote-by-name]]
+
+**3c. PROFILE THE AUTHOR BEFORE REVIEWING A VENDOR-SHAPED PR** (jjg,
+2026-08-17). Any PR adding a named third-party provider, gateway, SDK or endpoint
+gets three queries FIRST, before a line of the diff is read:
+
+```bash
+GITHUB_TOKEN="" gh api users/<login> --jq '"created=\(.created_at[0:10]) repos=\(.public_repos) company=\(.company) bio=\(.bio)"'
+GITHUB_TOKEN="" gh api "search/issues?q=is:pr+author:<login>&per_page=1" --jq .total_count
+GITHUB_TOKEN="" gh api "search/issues?q=is:pr+author:<login>+<vendor>+in:title&per_page=1" --jq .total_count
+```
+
+⚠⚠ **The discriminator is the RATIO, not the volume.** #485's author had 3,089
+PRs, 2,242 with "minimax" in the title (73%), ~19/day. Found in under a minute;
+the PR had been reviewed in depth twice before anyone looked.
+⚠ Also check whether we have a DEMAND signal, the actual #380 bar:
+`gh api "search/issues?q=repo:jgravelle/jcodemunch-mcp+<vendor>"`.
+⚠⚠ **Quality is NOT the discriminator and must not be used as one.** #485's diff
+was better than most human PRs. **Good work aimed at something nobody asked for
+is still something nobody asked for.** Close on demand, credit the finding, and
+say plainly that quality was not the reason.
+⚠ Do not assert employment you cannot prove — state the numbers and ask.
+⚠ **A posted timebox's default can be RETRACTED IN THE OPEN when the facts
+change, but never silently.** [[profile-the-author-before-reviewing-a-vendor-pr]]
+
+**3d. `license/cla` IS A REQUIRED STATUS CHECK ON THE DEFAULT BRANCH OF ALL
+THREE REPOS** (jjg, 2026-08-17 for jcm; suite-wide 2026-08-21). ⚠⚠ **A setting
+fixed in one repo of a suite is fixed in one repo** — for four days jdoc required
+nothing and jdata had no protection at all.
+
+```bash
 for r in jcodemunch-mcp:main jdocmunch-mcp:master jdatamunch-mcp:master; do
-  GITHUB_TOKEN="" gh api "repos/jgravelle/${r%%:*}/branches/${r##*:}/protection"     --jq '{contexts:.required_status_checks.contexts, strict:.required_status_checks.strict, enforce_admins:.enforce_admins.enabled}'
+  GITHUB_TOKEN="" gh api "repos/jgravelle/${r%%:*}/branches/${r##*:}/protection" \
+    --jq '{contexts:.required_status_checks.contexts, strict:.required_status_checks.strict, enforce_admins:.enforce_admins.enabled}'
 done
 ```
 
-⚠ **`enforce_admins: false` and `strict: false` are both deliberate.** The admin
-override is what lets jjg land a merge pushed to a contributor's fork; `strict`
-would force every PR to be up-to-date with `main` before merging, i.e. a rebase
-after every release — the exact churn that kept #443 dark for five days.
-⚠ Enabling protection also turned OFF force-push and deletion on `main`.
-⚠⚠ **This composes with the missing-status hazard and now FAILS CLOSED.** ANY
-new head — our push to a fork, or the contributor's own merge of `main` —
-arrives with `license/cla` absent, and with the check required that reads as
-`BLOCKED` until the bot posts on that SHA. Correct, and it will look like a new
-problem the first time.
-⚠⚠ **NOTHING IS ERASED AND THE WORD MATTERS — corrected 2026-08-24 on #535.**
-This entry said a push "wipes" the status, which frames a per-SHA reporting
-model as an act of destruction and sends you chasing the bot or the
-contributor's signature. **Measured:** `license/cla` is a **legacy commit
-status**, not a check run — every other check on the PR is a `check-run` from
-the `github-actions` app, which GitHub re-runs per head automatically; a legacy
-status is a record posted to ONE SHA by an external service, and a new commit
-starts life with zero of them. On #535 the old head `0db4478` still read
-`license/cla success` while the new head `ea12029` read `count=0`. **The old
-status was untouched, and the signature — stored per ACCOUNT at
-cla-assistant.io — was never in question.**
-⚠ **The consequence is the useful part: the gate cannot tell "not signed" from
-"not reported", so it fails closed to the same `BLOCKED` for both.** Absent
-still means DO NOT MERGE. But the remedy is to get a status posted on the
-current head, never to re-verify an agreement that did not change.
-⚠ **"Usually under a minute" was optimistic.** On #535 the bot had not posted
-30+ minutes after the new head, and it has never commented on that PR at all —
-it posted the status directly, which is what it does when the author signed on
-an earlier PR.
+⚠ `enforce_admins: false` and `strict: false` are both deliberate: the admin
+override lets jjg land a merge pushed to a contributor's fork, and `strict` would
+force a rebase after every release.
+⚠⚠ **NOTHING IS ERASED — `license/cla` is a legacy commit STATUS, not a check
+run.** Every other check is a check-run that GitHub re-runs per head; a legacy
+status is posted to ONE SHA, so a new commit starts with zero of them. The old
+head keeps its status and the signature (stored per ACCOUNT at cla-assistant.io)
+was never in question. **The gate cannot tell "not signed" from "not reported",
+so it fails closed to `BLOCKED` for both. Absent still means DO NOT MERGE — but
+the remedy is to get a status posted on the current head, never to re-verify an
+agreement that did not change.**
 
-⚠⚠ **THE RE-TRIGGER, AND IT IS OURS — no contributor action, ~25 seconds**
-(established 2026-08-24, #535). `license/cla` comes from a REPO WEBHOOK to
-`https://cla-assistant.io/github/webhook/<repo>` on `pull_request`, not from
-any in-repo workflow. **The event is not lost and the bot is not down** — the
-deliveries list showed his `synchronize` arriving and answering `200 OK`, with
-no status posted. **Redelivering that same event makes it post.**
+```bash
+# count=0 means NOT SIGNED or NOT REPORTED. Never merge on absence.
+GITHUB_TOKEN="" gh api "repos/jgravelle/<repo>/commits/<head-sha>/status" --jq '"state=\(.state) count=\(.statuses|length)"'
+```
+
+⚠⚠ **THE RE-TRIGGER IS OURS — no contributor action, ~25 seconds.** The status
+comes from a repo WEBHOOK to cla-assistant.io on `pull_request`, not an in-repo
+workflow. A delivery can arrive, answer `200 OK`, and post nothing; redelivering
+that same event makes it post.
 
 ```bash
 HID=$(GITHUB_TOKEN="" gh api repos/jgravelle/<repo>/hooks --jq '.[0].id')
@@ -697,157 +678,30 @@ python -c "import json;[print(x['delivered_at'][5:16],x['event']+'/'+str(x.get('
 GITHUB_TOKEN="" gh api --method POST "repos/jgravelle/<repo>/hooks/$HID/deliveries/<exact-id>/attempts"
 ```
 
-⚠ **Diagnose before reaching for it.** Both #535 deliveries were `synchronize`
-on a `draft: true` PR and only the later one stayed silent, so **draft is NOT
-the discriminator** — the distinguishing feature was a MERGE COMMIT pulling in
-commits authored by us. Check the deliveries list first; a delivery that never
-arrived is a different problem from one that arrived and did nothing.
-
+⚠ Diagnose first — a delivery that never arrived is a different problem from one
+that arrived and did nothing. ⚠ CLA Assistant can also fail to fire on PR OPEN,
+which reads identically and has the opposite cause; check comments as well as
+statuses. ⚠ Our own push to their branch is a `synchronize` and provokes a
+missing status.
 ⚠⚠ **NEVER POST THE STATUS OURSELVES.** We hold admin and the Status API would
 clear the gate in one call. `license/cla` is a legal assertion about an
-agreement, and a maintainer-authored `success` is a forged one — it would also
-be indistinguishable from the genuine article afterwards. **Redelivering makes
-CLA Assistant reach its OWN verdict, which is the whole difference.** If a
-redeliver does not produce a status, the answer is a `recheck` comment or a
-contributor push, never a hand-written status.
-⚠⚠ **It does NOT solve vendor time-wasting and must not be sold as if it does.**
-Signing costs a campaign nothing — #485's author has 748 merged PRs across
-GitHub, so they clear CLAs routinely. The only contributor this gate blocked in
-its first hour was **elfrost**, who found a real security defect. **Legal
-exposure and spam are different problems; this closes the first, 3c closes the
-second.**
-
-**3c. PROFILE THE AUTHOR BEFORE REVIEWING A VENDOR-SHAPED PR** (jjg,
-2026-08-17). Any PR adding a named third-party provider, gateway, SDK or
-endpoint gets three queries FIRST, before a line of the diff is read:
-
-```bash
-GITHUB_TOKEN="" gh api users/<login> --jq '"created=\(.created_at[0:10]) repos=\(.public_repos) company=\(.company) bio=\(.bio)"'
-GITHUB_TOKEN="" gh api "search/issues?q=is:pr+author:<login>&per_page=1" --jq .total_count
-GITHUB_TOKEN="" gh api "search/issues?q=is:pr+author:<login>+<vendor>+in:title&per_page=1" --jq .total_count
-```
-
-⚠⚠ **The discriminator is the RATIO, not the volume.** A prolific contributor
-is fine. #485's author had **3,089 PRs, 2,242 with "minimax" in the title
-alone (73%), ~19/day since March**, and a profile reading
-`company: Independent Developer`. #487's had 87 forks, 86 PRs, all OrcaRouter,
-on a 7-day-old account. **Both were found in under a minute; #485 was reviewed
-in depth twice before anyone looked.** That is the cost this rule removes.
-
-⚠ **Also check whether we have a DEMAND signal**, which is the actual #380 bar
-and is one query:
-`gh api "search/issues?q=repo:jgravelle/jcodemunch-mcp+<vendor>"`. MiniMax
-cleared it honestly as a summarizer (#184, a user asking); MiniMax TTS did not,
-and the only tracker mention was the PR itself.
-
-⚠⚠ **Quality is NOT the discriminator and must not be used as one.** #485's
-diff was better than most human PRs — a real `output_format`-versus-container
-finding, a three-point review addressed in hours, a self-corrected test count.
-**Good work aimed at something nobody asked for is still something nobody asked
-for.** Close on demand, credit the finding, and say plainly that quality was not
-the reason.
-
-⚠ **Do not assert employment you cannot prove.** State the numbers, ask the
-affiliation question on the thread, and let the ratio speak. #487's author
-volunteered their affiliation unprompted and it cost them nothing — that is the
-contrast worth drawing, not an accusation.
-
-⚠⚠ **A posted timebox's default can be RETRACTED IN THE OPEN when the facts
-change, but never silently.** #485's clock promised that at expiry "we implement
-the same change ourselves" and that the window "never decides whether the
-feature ships." The authorship-and-credit half was honoured; the feature half
-was withdrawn ON THE THREAD, with the reason, because it was written before the
-campaign was known. **Letting a promise lapse quietly is the failure mode;
-retracting it out loud is not.**
-
-**3b. A MERGEABLE contributor PR merges BEFORE any changelog-touching work of
-our own** (jjg, 2026-08-14). Not a courtesy and not a preference — a measured
-cost. Every entry we add lands in the same `[Unreleased]` block a contributor's
-entry occupies, so each of our merges puts their PR into conflict, and a
-CONFLICTING fork PR has **no `refs/pull/N/merge`** and therefore gets no CI at
-all. Their branch goes dark for a reason that has nothing to do with their
-change.
-
-⚠⚠ **Measured 2026-08-14: #443 conflicted FIVE TIMES IN ONE DAY** — twice from
-our own PR merges, twice from releases, once from the docs work — and every one
-was resolved by us pushing to their fork. **Five is not five incidents, it is
-one wrong merge order repeated.**
-
-⚠ **The boundary, or the rule fails on its first real case.** A BLOCKED
-contributor PR cannot go first: #443 was unsigned-CLA the whole time, so
-"contributor first" was never available. When it is blocked we ship anyway
-(policy 2 — a release is never blocked on an open issue) and **we own the
-resolution**: push the merge to their branch, resolve it ourselves, and say on
-the thread that the conflict was ours. **This rule is about ORDER when we have a
-choice, never about holding our work behind someone else's form.**
-
-⚠⚠ **RE-READ THE THREAD FOR THE OPERATIVE DATE; DO NOT QUOTE ONE FROM HERE OR
-FROM MEMORY.** Measured 2026-08-17 on #443: **2026-08-26 was posted 08-12
-18:19**, elfrost accepted it on 08-13 13:05 quoting that date, and **08-20 was
-posted 85 minutes later at 14:30** and reaffirmed thirteen times since. The
-contributor never acknowledged the change and may still be planning around the
-older date — which is the concrete harm, not the six days. **A thread can carry
-two dates; only the query settles which is in force:**
-
-```bash
-GITHUB_TOKEN="" gh api repos/jgravelle/<repo>/issues/<n>/comments \
-  --jq '.[] | select(.user.login=="jgravelle") | "\(.created_at[0:16])"' # then grep bodies for dates
-```
-
-⚠ The 08-12 wording also promised **"your authorship on the commit"** where the
-08-20 wording promises **"credit"** — a second, quieter downgrade in the same
-swap. When restating a default, restate the STRONGER posted version or say
-explicitly that it changed. jjg's call on 2026-08-17 was that **08-20 stands**;
-the lesson recorded here is the silent substitution, not the date.
-
-⚠ **Do not shorten a timebox already posted.** State the new window on new PRs.
-A public promise to a contributor outlives the policy that produced it, and
-retracting one to save six days costs more than the six days. ⚠⚠ **Reaffirmed by
-jjg when this rule widened: #447 (2026-08-20), #465 (2026-08-21) and #456
-(2026-08-27) stand AS POSTED.** The new ceiling applies to timeboxes offered
-after that date, and to nothing already promised.
-
-⚠⚠ **CLOSED OUT 2026-08-20, and 3a is now ABSOLUTE: 24 hours, no exceptions,
-never again.** jjg, on reading the 08-12 comment on #443 offering **2026-08-26**:
-"Not again. 24 hour. Tops. Ever." Every grandfathered window above has since
-expired or closed and there are no live long timeboxes; **the grandfathering
-clause is spent and must not be revived as precedent for a new one.** The next
-posted window that exceeds 24 hours is a mistake regardless of what produced it.
-
-⚠⚠ **The failure mode has a NAME now and naming it is the point: a CLA hostage
-negotiation.** #443 went eight days — a real security fix, reviewed and green,
-held behind a 30-second form, while SEVEN of our own merges conflicted its
-branch. Not one of those days bought anything. The window never decides whether
-the fix ships (the default action ships it) and never decides credit (the default
-preserves it), so **a window longer than 24 hours purchases exactly one thing:
-the chance the contributor's commit is theirs — and it pays for that chance in
-the user's exposure to an unfixed defect.** Twenty-four hours is already generous
-for that trade; eight days is not a trade at all.
-
-⚠⚠ **Do NOT answer "an issue is stuck" with aggregate stats.** Measured
-2026-07-28: jcm median 0 days to close (80 issues, 70 within a day, 2 ever past
-a week); jdoc median 1 day. **Those numbers are TRUE and they are NOT a
-response.** jjg: a fraction of an eyelash commands full attention and impairs
-binocularity; "it is a small fraction of your body" helps nobody. The cost of a
-blocked issue is CONCENTRATED, not distributed. Design the fix at the OUTLIER
-(policy 2), never at the median. See
-[[feedback_dont_answer_pain_with_aggregates]].
+agreement, and a maintainer-authored `success` is a forged one —
+indistinguishable from the genuine article afterwards. **Redelivering makes CLA
+Assistant reach its OWN verdict, which is the whole difference.**
+⚠ It does NOT solve vendor time-wasting and must not be sold as if it does;
+signing costs a campaign nothing. Legal exposure and spam are different problems.
+[[a-push-reprovokes-a-missing-cla-status]] [[org-forks-cannot-be-pushed-to]]
 
 Surfaces: `CONTRIBUTING.md` ("One issue, one verdict" + "A release is never
-blocked on an open issue") and `.github/ISSUE_TEMPLATE/` (bug_report,
-multi_finding_report, config.yml pointing parked design at ROADMAP.md).
-
-⚠ **CONTRIBUTING.md is now IDENTICAL suite-wide** (jcm/jdoc/jdata differ only by
-product name, repo slug, and jcm's extra quality-gates section). Two pre-existing
-bugs fell out of normalizing it: **the documented install command
-`pip install -e ".[test]"` was WRONG IN ALL THREE REPOS** — no repo declares a
-`test` extra; dev deps live in a PEP 735 `[dependency-groups]` block, so the
-FIRST command a new contributor ran failed. And jcm's
-`README.md#license-dual-use` anchor pointed at a heading that does not exist
-(`## License`). ⚠ **CI installs with `uv sync` and never runs the command the
-docs give a human**, which is why this survived: the thing we test is not the
-thing they do.
-
+blocked on an open issue") and `.github/ISSUE_TEMPLATE/`.
+⚠ **CONTRIBUTING.md is IDENTICAL suite-wide** (differing only by product name,
+repo slug, and jcm's quality-gates section). Two pre-existing bugs fell out of
+normalizing it: the documented `pip install -e ".[test]"` was WRONG IN ALL THREE
+REPOS (no repo declares a `test` extra; dev deps are a PEP 735
+`[dependency-groups]` block), and jcm's `README.md#license-dual-use` anchor
+pointed at a heading that does not exist. ⚠ **CI installs with `uv sync` and
+never runs the command the docs give a human**, which is why it survived: the
+thing we test is not the thing they do.
 ## Registry verification reads a NESTED row (2026-08-27)
 
 ⚠⚠ **The MCP registry API nests each row as `{server: {...}, _meta: {...}}`**
@@ -920,6 +774,20 @@ to fix that** — it reintroduces the vector that got five releases yanked.
    ⚠ When an entry rotates out, ask what LESSON it earned and put that one line in
    **Standing lessons** with its date. An entry with no reusable lesson needs no
    line; an entry whose lesson is already there needs no second one.
+   ⚠⚠ **MEASURE THE SECTIONS BEFORE CHOOSING WHAT TO ROTATE — the answer has
+   twice been a section nobody suspected.** On 2026-08-28 at 139,184/140,000 I
+   proposed rotating **Standing lessons** and was wrong: it was 6.4% of the
+   file, where **Key Files was 40.1% (55,643 chars)** and the issue/release
+   policy 15.4%. Rotating what I proposed would have recovered almost nothing.
+   Split by heading and sort by size first; it is one script and it settles it.
+   ⚠ **Key Files at 40% is the NEXT rotation target and the hardest**, because
+   it is also the most load-bearing — the per-file ⚠⚠ warnings are what stop a
+   defect recurring. Rotate its dated INCIDENT prose, never its rules.
+   ⚠ The 2026-08-28 pass took the issue/release policy from 21,448 to 12,391 by
+   keeping every rule, every operational command and every prohibition, and
+   moving only the forensics — verified by asserting all nine policy numbers,
+   six commands and seven prohibitions still resolve. **Write that check as a
+   script; a rotation reviewed by eye is how a command goes missing.**
 6. **A CI step that produces a PUBLIC verdict is product surface — test its text.**
    `tests/test_health_radar_action.py` opened by asserting that the Action's shell
    and YAML steps "can only be exercised by running the Action in a real CI

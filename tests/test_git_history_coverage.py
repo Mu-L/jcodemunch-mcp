@@ -215,3 +215,61 @@ def test_diff_radar_survives_a_withheld_composite():
     assert "current" in d["grade_change"], "name WHICH side could not be graded"
     d2 = diff_radar(withheld, graded)
     assert "baseline" in d2["grade_change"]
+
+
+# --------------------------------------------------------------------------- #
+# ⚠⚠ The 3.10 guard. THIS is the test the integration cases could not be.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("spelling", [
+    "2026-04-01T00:00:00Z",        # git's rendering when the offset is UTC
+    "2026-04-01T00:00:00z",        # lowercase, tolerated by the same rule
+    "2026-04-01T00:00:00+00:00",   # git's rendering on a non-zero-offset host
+    "2026-04-01T00:00:00-05:00",
+])
+def test_parse_iso_accepts_both_offset_spellings(spelling):
+    """⚠⚠ `datetime.fromisoformat` could not parse a `Z` suffix until 3.11.
+
+    git renders a UTC offset as `Z`, so on 3.10 the shallow boundary came back
+    unparseable and coverage degraded to `complete: None` -- but ONLY on a host
+    whose git chose that spelling, which means a host in UTC.
+
+    ⚠⚠ **Every CI runner is UTC; this developer box is CDT.** The integration
+    tests above were green locally and red on 3.10 in CI, because *the machine's
+    timezone selected the input format*. An integration test can only observe
+    whichever spelling its host happens to produce -- it is structurally
+    incapable of guarding this. A unit test over both spellings is.
+    """
+    parsed = gh._parse_iso(spelling)
+    assert parsed is not None, f"{spelling!r} must parse on every supported Python"
+    assert parsed.tzinfo is not None, "a git timestamp is never naive"
+
+
+def test_parse_iso_returns_none_rather_than_guessing():
+    """⚠ Unparseable is UNKNOWN, which is what makes the tri-state hold.
+
+    The 3.10 defect degraded to `complete: None` instead of asserting a
+    coverage answer off an unread date. That is the design working under a real
+    fault, and it is worth a test of its own.
+    """
+    for junk in ("", "not-a-date", "2026-13-45T99:99:99Z"):
+        assert gh._parse_iso(junk) is None
+
+
+def test_an_undated_boundary_degrades_it_does_not_lie(monkeypatch, tmp_path):
+    """⚠ With every boundary date unreadable, coverage must be None, not False.
+
+    False would send a user chasing a shallow clone they may not have; None says
+    we could not establish it, which is the truth.
+    """
+    src = _repo(tmp_path / "src", commits=4, span_days=300)
+    dst = tmp_path / "shallow"
+    _git(["clone", "-q", "--depth=1", f"file://{src.as_posix()}", str(dst)], tmp_path)
+    if _git(["rev-parse", "--is-shallow-repository"], dst).stdout.strip() != "true":
+        pytest.skip("git did not produce a shallow clone here")
+    monkeypatch.setattr(gh, "_parse_iso", lambda _s: None)
+    gh._CACHE.clear()
+    cov = gh.history_coverage(str(dst), 90)
+    assert cov["complete"] is None
+    assert cov["reason"] == "shallow_boundary_undated"
+    assert "remedy" not in cov, "an unknown must not prescribe a fix for a guess"
