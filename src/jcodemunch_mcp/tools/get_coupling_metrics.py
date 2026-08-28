@@ -6,6 +6,7 @@ from typing import Optional
 from ..storage import IndexStore
 from ._utils import index_status_to_tool_error, resolve_repo
 from .get_dependency_graph import _build_adjacency
+from ._entry_points import entry_point_spec
 
 
 def get_coupling_metrics(
@@ -35,6 +36,9 @@ def get_coupling_metrics(
           "ce": int,
           "instability": float,       # 0.0–1.0; null when ca+ce == 0
           "assessment": str,          # "stable" | "neutral" | "unstable"
+                                      # | "isolated" | "framework_entry_point"
+          "is_framework_entry_point": bool,
+          "framework_profile": str | None,  # None = no profile detected
           "importers": [str, ...],    # files that import this module
           "dependencies": [str, ...], # files this module imports
           "_meta": {"timing_ms": float}
@@ -80,6 +84,14 @@ def get_coupling_metrics(
     ce = len(dependencies)
     total = ca + ce
 
+    # ⚠⚠ A framework entry point has Ca=0 BY CONSTRUCTION -- Next.js invokes
+    # `app/api/**/route.ts` over HTTP and no module imports it -- so I=1.0 and
+    # the verdict "unstable" carries no code-health content (#561, @lilubot).
+    # Calling it `framework_entry_point` says the metric does not apply here,
+    # which is a different claim from "this module is badly coupled".
+    spec = entry_point_spec(index)
+    is_entry_point = spec.matches(module_path)
+
     if total == 0:
         instability = None
         assessment = "isolated"
@@ -89,6 +101,12 @@ def get_coupling_metrics(
             assessment = "stable"
         elif instability <= 0.7:
             assessment = "neutral"
+        elif is_entry_point and ca == 0:
+            # ⚠ Only when Ca is actually 0. An entry point that IS imported by
+            # other modules has a real, measured Ca, and its instability then
+            # means what it always meant -- the exemption is for the structural
+            # zero, not for the file's name.
+            assessment = "framework_entry_point"
         else:
             assessment = "unstable"
 
@@ -100,6 +118,8 @@ def get_coupling_metrics(
         "ce": ce,
         "instability": instability,
         "assessment": assessment,
+        "is_framework_entry_point": is_entry_point,
+        "framework_profile": spec.profile_name,
         "importers": importers,
         "dependencies": dependencies,
         "_meta": {"timing_ms": round(elapsed, 1)},

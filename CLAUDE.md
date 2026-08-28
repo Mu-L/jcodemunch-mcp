@@ -109,6 +109,7 @@ src/jcodemunch_mcp/
     get_project_intel.py      # get_project_intel: auto-discover+parse non-code knowledge (Dockerfiles, CI configs, compose, K8s, .env templates, Makefiles, scripts); cross-references to code symbols; 6 categories. v1.108.0 adds `scope_path` arg to restrict discovery to a monorepo subpath (use list_workspaces.path values); validates against source_root (traversal/absolute/non-existent all error).
     list_workspaces.py        # (v1.108.0) Enumerate monorepo workspace members. Detects pnpm (pnpm-workspace.yaml), yarn/npm (package.json `workspaces:`), turborepo (turbo.json), lerna (lerna.json), rush (rush.json), Go (go.work `use (...)`, module name from go.mod), Cargo (Cargo.toml `[workspace] members`). Returns `[{path, package_name, manager}, ...]` plus `is_monorepo` + `managers`. Read-only, dependency-free (hand-rolled minimal TOML/YAML readers).
     get_repo_health.py        # get_repo_health: one-call triage snapshot (delegate aggregator); includes six-axis `radar` field (v1.87.0)
+    _entry_points.py          # (#561/#562) `entry_point_spec(index)` -- reads the framework profile `detect_framework` persisted into `context_metadata` at index time. ⚠⚠ **That key was WRITTEN in one place and READ IN NONE for its whole life**, so `find_dead_code`, `get_dead_code_v2` and the coupling axis each reproduced their own answer to "is this a root?" and every one of them was Python -- `_ENTRY_POINT_FILENAMES` has no JS entry at all. A Next.js repo therefore detected ZERO entry points: signal 1 fired on every symbol, v2 returned `dead_symbols: []`, and 203 of 366 "unstable" files were `route.ts` handlers whose Ca is 0 BY CONSTRUCTION. ⚠⚠ **The Flask and FastAPI profiles shipped `"*.py"` in that list**, and under fnmatch `*` crosses `/` -- consuming it naively would have declared EVERY Python file in a Flask repo a live root, i.e. switched dead-code detection off across an ecosystem, silently. Catch-alls are removed at the source AND refused by `_is_catch_all`, with a test over every shipped profile; `routes/*.php` is NOT a catch-all (directory scope saves it) and `**/*.php` is. ⚠ Three pattern dialects, all shipped: glob, bare filename (ROOT-LEVEL only -- `main.py` must not claim `src/vendor/main.py`), and directory prefix (`cmd/`, which fnmatch never matches). ⚠⚠ **`matches()` returning False is NOT "an ordinary module"** -- no detected profile means no declaration was available; `profile_name is None` is the tell
     _git_history.py           # (#shallow) `history_coverage(cwd, days)` -- does the history REACH BACK past the window a churn tool is about to read? ⚠⚠ **Nine tools run `git log --since=N days` and none could tell a TRUNCATED history from a QUIET one**; git answers exit 0 with a short log, so `churn_surface` ranked nothing but complexity and the grade came out FLATTERING. ⚠⚠ **Fixed twice in the CLONERS (Practice 6, the observatory) and never in a READER** -- `actions/checkout` defaults to `fetch-depth: 1`, so every user kept it. ⚠ Asks COVERAGE, not shallowness: `--is-shallow-repository` is the mechanism, "reaches past the window" is the property -- a `--depth=900` clone at 90 days is shallow AND complete, and flagging it would teach people to ignore the flag. A young repo is not a truncated one. ⚠ TRI-STATE (`complete: None` = could not establish, never False); `churn_is_measurable()` collapses None to do-not-publish at the grade gate. ⚠ `attach_history_coverage` is SILENT on a covered window by design, and discloses an UNKNOWN
     health_radar.py           # Six-axis health radar (complexity/dead_code/cycles/coupling/test_gap/churn_surface) + diff_health_radar pure-function tool for PR-time diff-grade reporting (v1.87.0). Phase 7 (v1.100.0): optional 7th axis runtime_coverage when caller passes runtime_coverage_pct; axis is omitted otherwise so the composite stays comparable against pre-Phase-7 baselines. diff_radar walks the axes dict generically — picks up the new axis automatically.
     get_untested_symbols.py   # get_untested_symbols: find functions with no test-file reachability (import graph + name matching)
@@ -510,6 +511,24 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   root. A release cut while one existed ships it, and a pytest log carries
   absolute paths and usernames. **Redirect gate runs to the scratchpad, never
   the repo.**
+- **A field written by nobody's reader is a defect with no symptom.** 08-28
+  (#561/#562): `detect_framework` persisted `entry_point_patterns` into
+  `context_metadata` at index time, and a tree-wide search found that key
+  written in ONE place and read in NONE. Three tools each reproduced their own
+  "is this a root?" answer and every one was Python, so a Next.js repo detected
+  zero entry points. ⚠⚠ **An unconsumed field also rots unnoticed**: Flask and
+  FastAPI carried `"*.py"` there, which under fnmatch declares the whole tree —
+  the first naive reader would have switched dead-code detection off across an
+  ecosystem. **Grep a persisted field for its readers before trusting it, and
+  before adding one.** [[a-module-that-imports-clean-has-been-tested-for-nothing]]
+- **A count taken after the page is cut describes the page.** 08-28 (#559):
+  `untested_count = len(symbols)` ran after the `max_results` slice, so
+  `get_repo_health`'s `max_results=1` published ~100% test reach on every repo
+  with untested code. ⚠ **Invisible to any single-call test** — one call's
+  number is self-consistent; only two page sizes over the SAME repo can see it.
+  ⚠ And the paired half: **a refusal is not a zero.** `get_dead_code_v2`
+  returning `[]` WITH a `signal_warning` became `dead_code_pct: 0.0` and an axis
+  of 100. [[a-one-directional-check-certifies-its-blind-side]]
 - **A competitor's fix list is a free defect probe.** 08-22: a rival's
   `fix(gini): measure a file's lines as its own span, not the sum of every node`
   named our defect precisely enough to confirm in one query —

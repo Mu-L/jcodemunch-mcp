@@ -13,6 +13,7 @@ from ..storage import IndexStore
 from ..parser.imports import resolve_specifier
 from ._utils import index_status_to_tool_error, resolve_repo
 from ..parser.context._route_utils import ENTRY_POINT_DECORATOR_RE
+from ._entry_points import entry_point_spec
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +37,46 @@ _ENTRY_POINT_FILENAMES = frozenset({
     "Makefile",
 })
 
+# ⚠⚠ Toolchain manifests and lockfiles (#562, @lilubot). These are indexed as
+# source (JSON/YAML/TOML are real languages here) and NOTHING IMPORTS THEM BY
+# DESIGN, so `zero_importers` fires on every one and the tool reported
+# `pnpm-lock.yaml`, `package.json` and `tsconfig.json` as dead code. It is the
+# same structural zero as a Next.js route handler in #561: an external runner
+# invokes them, so absence of importers is a tautology rather than a finding.
+#
+# ⚠⚠ `package.json` is the sharpest instance -- `_package_json_entries` READS
+# it to discover the repo's entry points and the same run then reported it
+# dead.
+#
+# ⚠ `Makefile` was already in the set above for exactly this reason, which is
+# why these belong beside it rather than in a new mechanism. Names only, never
+# an extension rule: a genuinely orphaned `data/fixtures.json` is a real
+# finding and must keep being reported.
+_TOOLCHAIN_MANIFESTS = frozenset({
+    # JS / TS
+    "package.json", "package-lock.json", "pnpm-lock.yaml", "pnpm-workspace.yaml",
+    "yarn.lock", "npm-shrinkwrap.json", "bun.lockb", "tsconfig.json",
+    "jsconfig.json", "turbo.json", "lerna.json", "rush.json", "deno.json",
+    "deno.lock",
+    # Python
+    "pyproject.toml", "setup.cfg", "Pipfile", "Pipfile.lock", "poetry.lock",
+    "uv.lock", "requirements.txt",
+    # Rust / Go / Ruby / PHP / Elixir / Dart
+    "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "go.work",
+    "Gemfile", "Gemfile.lock", "composer.json", "composer.lock",
+    "mix.exs", "mix.lock", "pubspec.yaml", "pubspec.lock",
+    # JVM / .NET
+    "build.gradle", "build.gradle.kts", "settings.gradle", "pom.xml",
+    # Containers / CI
+    "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+})
+
 _MAIN_GUARD_RE = re.compile(r'if\s+__name__\s*==\s*["\']__main__["\']')
 
 
 def _is_entry_point_filename(file_path: str) -> bool:
     filename = file_path.replace("\\", "/").rsplit("/", 1)[-1]
-    return filename in _ENTRY_POINT_FILENAMES
+    return filename in _ENTRY_POINT_FILENAMES or filename in _TOOLCHAIN_MANIFESTS
 
 
 def _is_init_file(file_path: str) -> bool:
@@ -236,6 +271,15 @@ def find_dead_code(
     # Phase 1: identify live roots by filename pattern + package.json (no I/O
     # for the filename pass; package.json parsing is bounded by # of manifests).
     # -----------------------------------------------------------------------
+    # ⚠⚠ `_ENTRY_POINT_FILENAMES` is Python and nothing else -- `main.py`,
+    # `app.py`, `__main__.py` and eleven siblings. On a Next.js repo it names
+    # nothing, so every signal fired on every symbol and `get_dead_code_v2`
+    # answered `dead_symbols: []` with a warning, which a downstream consumer
+    # reads as proof of zero dead code (#562, @lilubot). The framework profile
+    # detected at index time already declares the right roots -- `route.ts`,
+    # `page.tsx`, `layout.tsx`, `middleware.ts` for Next -- and had no reader
+    # in the tree. Ask the authority.
+    fw_spec = entry_point_spec(index)
     live_roots: set[str] = set()
     for f in index.source_files:
         if _is_entry_point_filename(f):
@@ -245,6 +289,8 @@ def find_dead_code(
         elif include_tests and _is_test_file(f):
             live_roots.add(f)
         elif entry_point_patterns and _matches_any_pattern(f, entry_point_patterns):
+            live_roots.add(f)
+        elif fw_spec.matches(f):
             live_roots.add(f)
     # JS-library entry points: whatever package.json declares as main/module/
     # exports/bin. Without this, library files like Express's lib/express.js
@@ -398,6 +444,16 @@ def find_dead_code(
         analysis_notes.append(
             f"Reachable via render edges (not imports): {len(render_reachable)}"
         )
+    # ⚠ Which framework supplied the roots is part of the verdict, not trivia:
+    # "42 entry points" and "42 entry points, because we recognised Next.js"
+    # are different claims, and only the second lets a reader see that the
+    # answer would change on a framework we do not profile.
+    if fw_spec.profile_name:
+        fw_roots = sum(1 for f in live_roots if fw_spec.matches(f))
+        analysis_notes.append(
+            f"Framework profile '{fw_spec.profile_name}' declared "
+            f"{fw_roots} of them"
+        )
 
     result: dict = {
         "repo": f"{owner}/{name}",
@@ -408,6 +464,7 @@ def find_dead_code(
         "dead_file_count": len(dead_files),
         "dead_symbol_count": len(dead_symbols),
         "live_root_count": len(live_roots),
+        "framework_profile": fw_spec.profile_name,
         "render_reachable_count": len(render_reachable),
         "analysis_notes": analysis_notes,
         "_meta": {"timing_ms": round(elapsed, 1)},

@@ -25,6 +25,7 @@ from ._utils import resolve_repo as _resolve_repo
 from ._call_graph import _word_match, build_symbols_by_file
 # One matcher, not two: entry_point_patterns must mean the same thing in
 # both dead-code tools or #436 gets replaced by a subtler version of itself.
+from ._entry_points import entry_point_spec
 from .find_dead_code import _matches_any_pattern, unmatched_patterns
 from ..parser.context._route_utils import ENTRY_POINT_DECORATOR_RE
 
@@ -617,6 +618,21 @@ def get_dead_code_v2(
             f for f in index.source_files
             if _matches_any_pattern(f, entry_point_patterns)
         }
+
+    # (d) framework-declared roots (#562). ⚠⚠ Without these, a Next.js repo
+    # detected NO entry point, so signal 1 (`unreachable_file`) fired on every
+    # symbol, all three signals were ruled non-discriminating, and this tool
+    # returned `dead_symbols: []` -- which a downstream consumer reads as
+    # "no dead code" rather than "could not tell". The advice in the warning
+    # ("pass entry_point_patterns") asked the user to hand-type a list the
+    # index was already carrying, detected at index time and never read.
+    #
+    # ⚠ Ordered AFTER the caller's own patterns and unioned, never substituted:
+    # an explicit `entry_point_patterns` argument is a stronger statement than
+    # our detection and must not be narrowed by it.
+    fw_spec = entry_point_spec(index)
+    fw_entries = {f for f in index.source_files if fw_spec.matches(f)}
+    declared_entries |= fw_entries
 
     extra_entries = pkg_entries | declared_entries
     entry_point_count = (

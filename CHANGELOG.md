@@ -2,6 +2,139 @@
 
 ## [Unreleased]
 
+### Fixed - a count taken after the page was cut (#559, @lilubot)
+
+`get_untested_symbols` computed `untested_count = len(symbols)` **after** the
+`max_results` slice, and derived `reached_pct` from it. `get_repo_health` calls
+it with `max_results=1` under the comment *"we only need the count"*.
+
+⚠⚠ **So the published health/radar test axis read one untested symbol on every
+repository that had any, and scored ~100% reach.** Measured by the reporter:
+**4,893 untested of 6,352 non-test functions (23.0% reached), published as
+100** -- with the contradiction visible inside a single payload, since the same
+response carried `_meta.truncated`. The axis feeds `radar`, so it reached the
+grade and the observatory.
+
+The count and the rate are now measured over the corpus; the page length is
+reported under its own name, `returned_count`.
+
+⚠⚠ **The sweep for other instances found none, and that is the finding.**
+`find_importers`, `find_references` and `get_dead_code_v2` all count before
+slicing -- `find_references` carries a comment explaining why the two lists must
+stay separate. `tests/test_counts_survive_truncation.py` holds the property
+across all four: **a defect like this is invisible to any single call, because
+one call's number is self-consistent. Only two page sizes over the same repo
+can see it.**
+
+⚠⚠ **Three consumers were reading keys their producers have never emitted, and
+two of them are in one renderer.** `hook-taskcomplete` asked
+`get_untested_symbols` for `untested_symbols` and `assemble_task_context` asked
+for `untested`/`results`, where the response says `symbols` -- both fell through
+to `[]`, so the post-task untested diagnostic and the `audit` intent's untested
+stage **were dark for their whole lives**. The same renderer's orphan block read
+`name` and `line` off `find_dead_code` rows, which carry `symbol_id`/`file`/
+`kind`/`confidence`/`reason` and neither of those -- printing ``- `?`
+(src/a.py:0)`` for every orphan, a diagnostic naming nothing beside a line
+number that was always a lie rather than a miss.
+
+⚠⚠ **The test guarding the first one was the reason nobody noticed.** Its mock
+returned `{"untested_symbols": [...]}` -- **the invented key**. A fabricated
+producer makes an absent-key defect structurally invisible to a test written
+about that exact code path: the standing "a mock broad enough to satisfy an
+assertion can bypass what the assertion is about" lesson at its sharpest, since
+the mock did not paper over the check, it asserted a contract the producer does
+not have. `tests/test_taskcomplete_real_contract.py` mocks no producer at all.
+
+⚠ **And the first version of that unmocked test passed against the reintroduced
+defect.** It asserted `"session_sym" in message`, and the name appears in three
+sections, so `Unreferenced:` satisfied it while the untested block rendered
+nothing. It now asserts *within* the block each producer fills. **An assertion
+that does not name which producer put the string there proves nothing about that
+producer.**
+
+### Fixed - framework entry points, declared at index time and read by nobody (#561, #562, @lilubot)
+
+`detect_framework` runs during indexing and `profile_to_meta` persists the
+profile's `entry_point_patterns` into `context_metadata`. For Next.js that is
+exactly `src/app/**/route.ts`, `page.tsx`, `layout.tsx` and `middleware.ts`.
+
+⚠⚠ **A tree-wide search found that key written in one place and read in none.**
+Every consumer answered "is this file a root?" from
+`find_dead_code._ENTRY_POINT_FILENAMES`, which is `main.py`, `app.py`,
+`__main__.py` and eleven other Python names -- **no JS entry in it at all.** So
+on a Next.js repo:
+
+- `get_dead_code_v2` detected zero entry points, signal 1 fired on every symbol,
+  all three signals were ruled non-discriminating, and it returned
+  `dead_symbols: []`. The warning beside it advised passing
+  `entry_point_patterns` -- **asking the user to hand-type a list the index was
+  already carrying.**
+- the coupling axis counted route handlers as unstable modules. `Ca` is 0 by
+  construction (the framework invokes them over HTTP; nothing imports them), so
+  `I` is 1.0 with no code-health content. Measured on the reporting repo:
+  **203 of 366 unstable files were route handlers, 126 with zero importers.**
+
+`tools/_entry_points.py` is the read half of that write. The rule it applies to
+route handlers is the one `_count_unstable_modules` already applied to tests,
+whose comment says they have "Ca=0 by construction" and so "trivially meet the
+instability > 0.7 threshold".
+
+⚠⚠ **Excluded from the coupling denominator as well as the numerator, and that
+is the load-bearing half.** Numerator-only would shrink a count without
+shrinking what it is a fraction of -- a silent, self-flattering adjustment, the
+same sign error that took a tree from 84.0 B to 88.8 B against a truth of
+77.3 C in 1.108.305. An entry point with a real `Ce` problem is therefore not
+graded by this axis at all, so the excluded count and the profile name are
+disclosed on the response.
+
+⚠⚠ **The Flask and FastAPI profiles shipped `"*.py"` in their entry-point lists
+for their whole lives, and consuming it naively would have been far worse than
+the defect.** Under `fnmatch` a `*` crosses `/`, so the first reader would have
+declared **every Python file in a Flask repo a live root** -- switching
+dead-code detection off across a whole ecosystem, silently, and emptying those
+repos' coupling denominators. Harmless only while nothing read the field; the
+NestJS profile carries a comment saying exactly that. The catch-alls are removed
+at the source **and** refused by the reader, because a profile is a list of
+literals anyone can extend and the failure is invisible from the edit: adding
+`"*.ts"` looks like widening coverage and is actually turning a subsystem off.
+
+⚠ Only the DETECTED profile excludes. Widening to `_ENTRY_POINT_FILENAMES` would
+move the published coupling score of every Python repository we have graded,
+including the observatory's baselines, on a heuristic rather than a detection.
+That is a separate decision with its own before/after measurement.
+
+### Fixed - a manifest cannot be dead, and a refusal is not a zero (#562, @lilubot)
+
+JSON, YAML and TOML are indexed as source, and **nothing imports a lockfile by
+design** -- so `zero_importers` fired on every one and `find_dead_code` reported
+`pnpm-lock.yaml`, `tsconfig.json` and `package.json` as dead files. ⚠⚠ The last
+is the sharpest: `_package_json_entries` **reads** `package.json` to discover
+the repo's entry points, and the same run reported it dead. Excluded by NAME,
+never by extension -- an orphaned `data/fixtures.json` is a real finding and is
+still reported.
+
+⚠⚠ **`get_repo_health` turned v2's honest refusal into `dead_code_pct: 0.0` and
+a dead_code axis of 100** -- the strongest possible claim, built from an explicit
+admission that nothing was established. It now withholds the composite and the
+grade through 1.108.305's `unmeasurable_axes` mechanism rather than adding a
+second one. The number is still reported; `dead_code_measurable` and
+`dead_code_signal_warning` say what it is worth.
+
+### Verified - TypeScript type-only imports are indexed like value imports (#560, @lilubot)
+
+Not reproduced, and nothing changed. `import type { X } from`, inline
+`import { type X, value }`, the multi-line `import type { ... } from` form and
+the `export type { X } from` barrel all resolve, in both `find_references` and
+`find_importers`.
+
+⚠ `tests/test_ts_type_only_imports.py` exists because the claim previously
+rested on nothing: no test named the syntax, so removing the optional
+`type` group from `_JS_IMPORT_FROM`, or the `type` strip in `_clean_names`,
+would have left every suite green. Its deliberate negative -- a global
+`declare type` in a `.d.ts` used with no import, correctly invisible -- is the
+most likely explanation for an audit seeing a type reference it expected, since
+the documented scope is import sites rather than every textual usage.
+
 ## [1.108.305] - 2026-08-28 - Only the reader was never fixed
 
 ### Fixed - the release checklist's CI-environment reproduce never built it
