@@ -199,7 +199,11 @@ class TestCountUnstableModules:
             "tests/test_b.py":     "from lib import helper\ndef test_b(): assert helper()\n",
             "tests/test_c.py":     "from lib import helper\ndef test_c(): assert helper()\n",
         })
-        unstable, production_total = _count_unstable_modules(idx)
+        unstable, production_total, excluded, profile = _count_unstable_modules(idx)
+        # No framework detected on a bare two-file layout, so nothing is
+        # excluded on that ground and the test/denominator property below is
+        # measured exactly as before (#561 widened the return, not the rule).
+        assert (excluded, profile) == (0, None)
         assert production_total == 2, f"expected 2 production files, got {production_total}"
         # main.py has Ca=0, Ce=1 → instability=1.0 → unstable. lib.py has
         # Ca>=1 (main + tests credit it), Ce=0 → stable.
@@ -208,4 +212,4 @@ class TestCountUnstableModules:
     def test_returns_pair_for_empty_index(self, tmp_path):
         from types import SimpleNamespace
         empty = SimpleNamespace(imports=[], source_files=[])
-        assert _count_unstable_modules(empty) == (0, 0)
+        assert _count_unstable_modules(empty) == (0, 0, 0, None)

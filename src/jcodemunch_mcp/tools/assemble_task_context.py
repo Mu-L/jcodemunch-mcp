@@ -585,10 +585,17 @@ def assemble_task_context(
                 repo_id, min_confidence=0.5, max_results=8, storage_path=storage_path,
             )
             if isinstance(out, dict) and "error" not in out:
-                untested = out.get("untested", []) or out.get("results", []) or []
+                # ⚠⚠ The key is `symbols` (#559). Both spellings tried here
+                # were invented; neither has ever been in the response, so the
+                # `audit` intent's untested stage emitted nothing at all.
+                untested = out.get("symbols", []) or []
                 if untested:
                     _add_entry("untested", "get_untested_symbols", {
-                        "count": len(untested),
+                        # Repo-wide, not the page length (#559): `untested`
+                        # here is capped at max_results=8, so `len()` would
+                        # report 8 for a repo with thousands.
+                        "count": out.get("untested_count", len(untested)),
+                        "shown": len(untested[:5]),
                         "top": [
                             {"id": u.get("symbol_id", "") or u.get("id", ""),
                              "confidence": u.get("confidence", 0)}

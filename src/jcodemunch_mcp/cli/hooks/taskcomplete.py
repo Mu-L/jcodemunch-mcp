@@ -17,6 +17,22 @@ logger = logging.getLogger(__name__)
 _FINDING_KEYS = ("dead_symbols", "untested_symbols", "unreferenced_symbols")
 
 
+def _row_name(row: dict) -> str:
+    """Best-effort symbol name from a tool row.
+
+    ⚠ `find_dead_code` emits `symbol_id` (``file::name#kind``) and no `name`,
+    while `get_untested_symbols` emits both. Deriving from the id covers the
+    first without pretending the second is missing.
+    """
+    name = row.get("name")
+    if name:
+        return str(name)
+    sid = str(row.get("symbol_id", ""))
+    if "::" in sid:
+        return sid.split("::", 1)[1].split("#", 1)[0] or "?"
+    return "?"
+
+
 def run_taskcomplete() -> int:
     """TaskCompleted hook: surface dead code, untested symbols, and dangling refs.
 
@@ -114,7 +130,15 @@ def run_taskcomplete() -> int:
                     repo_id, file_pattern=sf.replace("\\", "/"), max_results=5
                 )
                 if untested and not untested.get("error"):
-                    syms = untested.get("untested_symbols", [])
+                    # ⚠⚠ The key is `symbols` (#559). This read asked for
+                    # `untested_symbols`, which the tool has never emitted, so
+                    # `.get(..., [])` returned empty on every invocation and
+                    # this diagnostic was dark for its whole life. Same shape
+                    # as #553's encoder key and `suggest_corrections`'
+                    # `f["type"]`: a consumer naming a key its producer does
+                    # not emit fails SILENTLY, because absent and empty are
+                    # the same value here.
+                    syms = untested.get("symbols", [])
                     if syms:
                         diag.setdefault("untested_symbols", []).extend(syms[:5])
         except Exception:
@@ -156,13 +180,19 @@ def run_taskcomplete() -> int:
     for diag in diagnostics:
         parts.append(f"\n### {diag['repo']} ({diag['files_checked']} files checked)")
         if "dead_symbols" in diag:
+            # ⚠⚠ `find_dead_code` rows carry `symbol_id`/`file`/`kind`/
+            # `confidence`/`reason` -- NO `name` and NO `line` (#559 family).
+            # This rendered "`?` (src/a.py:0)" for every orphan: a diagnostic
+            # that names nothing, and a line number that was always a lie
+            # rather than a miss. Third consumer in this one renderer reading
+            # a key its producer does not emit.
             parts.append(f"**Possibly orphaned:** {len(diag['dead_symbols'])} symbol(s)")
             for s in diag["dead_symbols"][:5]:
-                parts.append(f"  - `{s.get('name', '?')}` ({s.get('file', '?')}:{s.get('line', 0)})")
+                parts.append(f"  - `{_row_name(s)}` ({s.get('file', '?')})")
         if "untested_symbols" in diag:
             parts.append(f"**No test coverage:** {len(diag['untested_symbols'])} symbol(s)")
             for s in diag["untested_symbols"][:5]:
-                parts.append(f"  - `{s.get('name', '?')}` ({s.get('file', '?')})")
+                parts.append(f"  - `{_row_name(s)}` ({s.get('file', '?')})")
         if "unreferenced_symbols" in diag:
             parts.append(f"**Unreferenced:** {', '.join(f'`{s}`' for s in diag['unreferenced_symbols'][:5])}")
 

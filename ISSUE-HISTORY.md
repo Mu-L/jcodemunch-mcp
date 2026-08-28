@@ -14,6 +14,105 @@ The standing lessons drawn from these entries live in `CLAUDE.md` under
 
 ---
 
+**2026-07: Codex tool-surface benchmark forensics.** Rotated out of CLAUDE.md
+on 2026-08-28 under Maintenance Practice 5. The STANDING warnings stay there;
+this is the full original section, verbatim.
+
+### Codex tool-surface benchmark (`benchmarks/codex_surface/`) — NEGATIVE result
+
+⚠ Shipped in 1.108.271. Kept here rather than in the rotation because it is a
+STANDING warning about a measurement, not a release note that ages out.
+
+⚠⚠ **Do not quote the arm numbers; the honesty gate fired.** Four arms x three
+repeats on FastAPI at a pinned commit, answering an
+[r/codex benchmark](https://www.reddit.com/r/codex/comments/1vjfepe/) that put
+jCodeMunch at **+28.45% on Codex** and **-3.34% on OpenCode**. Largest arm
+difference 568,617 tokens against a baseline varying against ITSELF by
+1,143,229. Directions were incoherent too (`full`, carrying 24,007 tokens of
+schema, came out CHEAPER than baseline). The hypothesis is **untested, not
+disproven** — the instrument cannot resolve an effect that size.
+
+⚠⚠ **The finding that outlived the arms, and it corrects a claim this project
+made: 86% of baseline input is CACHED.** The schema block is stable across
+requests, so it is paid at full rate roughly ONCE and at cache-read rates after.
+Any framing of "24,007 tokens in every request" is wrong, and that framing was
+used here before measuring. **The fixed-cost story is a WEAKER explanation for
+the r/codex result than the raw number suggests, not a stronger one.**
+`--surface-only` still measures the schema exactly (90 tools / 24,007 tokens at
+default `full`, 6 / 1,030 at `counter`) and needs no API credits; what it does
+not measure is what that costs in practice.
+
+⚠ **Those two numbers are a 2026-07 snapshot from THIS harness and are not the
+canonical figures.** `benchmarks/schema_baseline.json` is, written by
+`benchmarks/harness/capture_schema_baseline.py` and guarded by
+`tests/test_schema_budget.py`; it counts a different payload shape, so the two
+sets will never agree digit for digit and neither is wrong. Quote the baseline
+file. ⚠⚠ **Reconciled 2026-08-14: the Counter avoids 95.9%, not the ~98% that
+`run_route_recall.py` asserted for two months** — that literal is now computed
+from the baseline at runtime, with a test that fails if any schema-saving
+percentage returns to that file. **The gap existed because the budget guardrail
+only walked `tool_profile`, which does not apply to the front door at all**, so
+the single largest lever in the project had no test under it.
+
+⚠⚠ **The same run killed `tool_profile: "standard"` as a token lever: it drops 9
+of 91 tools and 5.7% of the payload.** Anyone selecting it as the safe middle
+setting gets nothing measurable. `core` (74.0%) and `counter` (95.9%) are the
+only two settings that move the number; there is no gradient between them, and
+the config surface currently implies there is. ⚠ Where the rest sits, from
+`--breakdown`: under `full`, tool DESCRIPTIONS are 36% of the payload and
+`compact_schemas` rewrites input schemas only, never descriptions. Schema
+compaction is near its floor; descriptions are untouched ground.
+
+⚠ Design flaw recorded so nobody repeats it: summing per-invocation input across
+a RESUMED conversation counts accumulated context on every step, so the total is
+dominated by how much the agent read early on, which compounds.
+
+---
+
+**2026-08-24: #536 closed MANUALLY against the PUBLISHED artifact, and the first
+probe was wrong.** Rotated out of CLAUDE.md's `server.py` Key Files entry on
+2026-08-28 under Maintenance Practice 5; the rule it earned stays there.
+
+A real stdio handshake to `jcodemunch-mcp==1.108.293` in a clean venv returns
+`serverInfo {"name":"jcodemunch-mcp","version":"1.108.293"}` and a non-empty
+`instructions`. This had to be done by hand because `__version__` is `"unknown"`
+under `PYTHONPATH=src` — so a green test does not prove the wire carries a real
+number, **and CI cannot close that gap either, because it runs from source too.**
+
+⚠⚠ **The first probe was WRONG and the reason generalises: `uvx jcodemunch-mcp`
+served a CACHED 1.108.275**, which predates both fixes, so the wire showed the
+SDK's own version and no instructions — i.e. **exactly the pre-fix symptoms,
+from a stale cache rather than a defect.** Pin the version and build a fresh venv
+(`uv venv` + `uv pip install "jcodemunch-mcp==X.Y.Z"`); never probe through bare
+`uvx` and never read its output as evidence about what we ship.
+
+---
+
+**2026-08-25: `refresh.py`'s coverage check asked only whether the corpus GREW,
+and for its whole life could not see the opposite failure.** Rotated out of
+CLAUDE.md's Key Files entry on 2026-08-28 under Maintenance Practice 5; the RULE
+it earned stays there, this is the incident.
+
+A source root that has moved, been unmounted, or been cleaned makes discovery
+return `[]`, so `current` and `known` are both empty, nothing drifts, nothing
+errors, and the campaign stamps the target `parser_generation` having re-parsed
+ZERO files. **UNREPAIRABLE — a stamp equal to the constant is indistinguishable
+from a genuine one, so the tool built to prevent the exempt bucket was putting
+indexes INTO it.** It now refuses on `corpus_unreadable` (discovery empty, index
+not) and `index_unreadable` (`_index_files` returned None — UNKNOWN blocks, the
+same rule as `has_any()`).
+
+⚠ EMPTY-vs-NON-EMPTY deliberately, NOT a shrink threshold: a repo may
+legitimately lose most of its files, so partial shortfall is DISCLOSED as
+`indexed_files_not_reparsed` rather than guessed at.
+
+⚠ **Found by running the documented command on the three pinned benchmark
+corpora** — bare `.git` dirs, 8,220 stale symbols, all three stamped in under a
+second. The lesson is in Standing lessons as
+"a one-directional check certifies its blind side".
+
+---
+
 **2026-08-18: #488 DECIDED BY JJG — OPTION A, "explicit config outranks the
 zero-config ONNX default", with disclosure.** NOT YET IMPLEMENTED; queued behind
 #495. `_detect_provider` will check `embed_model` / `JCODEMUNCH_EMBED_MODEL` and

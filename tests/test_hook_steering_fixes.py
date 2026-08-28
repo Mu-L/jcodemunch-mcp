@@ -280,7 +280,7 @@ class TestTaskCompleteLiveJournal:
         )
         monkeypatch.setattr(
             "jcodemunch_mcp.tools.get_untested_symbols.get_untested_symbols",
-            lambda *a, **kw: {"untested_symbols": []},
+            lambda *a, **kw: {"symbols": [], "untested_count": 0},
         )
         monkeypatch.setattr(
             "jcodemunch_mcp.tools.check_references.check_references",
@@ -322,7 +322,18 @@ class TestTaskCompleteDiagnosticQuality:
         its result before the session filter, so the session file's symbols
         vanished in exactly the worst-tested repos. This mock is an honest
         oracle: the session symbol ranks LAST among 150, so any capped
-        corpus-wide read loses it and any lossless read keeps it."""
+        corpus-wide read loses it and any lossless read keeps it.
+
+        ⚠⚠ **The mock returned `untested_symbols` until #559, and the real tool
+        has never emitted that key -- it emits `symbols`.** So this test was
+        green against a hook that produced NOTHING in production: the consumer
+        asked for the invented key, `.get(..., [])` answered empty, and the
+        diagnostic this test exists to protect was dark for its whole life.
+        **The mock was not merely broad enough to bypass the assertion; it
+        supplied a contract the producer does not have**, which is the only
+        way an absent-key defect can hide from a test written about it.
+        `TestTaskCompleteReadsTheRealContract` below closes that by using no
+        producer mock at all."""
         corpus = [
             {"name": f"other_{i}", "file": "other.py", "line": i}
             for i in range(149)
@@ -331,7 +342,7 @@ class TestTaskCompleteDiagnosticQuality:
         def fake_untested(repo_id, file_pattern=None, max_results=50, **kw):
             pool = ([u for u in corpus if u["file"] == file_pattern]
                     if file_pattern else corpus)
-            return {"untested_symbols": pool[:max_results]}
+            return {"symbols": pool[:max_results], "untested_count": len(pool)}
 
         monkeypatch.setattr(
             "jcodemunch_mcp.tools.get_untested_symbols.get_untested_symbols",
@@ -349,7 +360,7 @@ class TestTaskCompleteDiagnosticQuality:
         must reach the agent-facing message."""
         monkeypatch.setattr(
             "jcodemunch_mcp.tools.get_untested_symbols.get_untested_symbols",
-            lambda *a, **kw: {"untested_symbols": []},
+            lambda *a, **kw: {"symbols": [], "untested_count": 0},
         )
         monkeypatch.setattr(
             "jcodemunch_mcp.tools.check_references.check_references",

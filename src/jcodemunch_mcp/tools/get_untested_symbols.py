@@ -101,11 +101,15 @@ def get_untested_symbols(
         repo: Repository identifier (owner/repo or just repo name).
         file_pattern: Optional glob to narrow which source files are analysed.
         min_confidence: Minimum confidence to include (0.0–1.0, default 0.5).
-        max_results: Cap on returned symbols (default 100).
+        max_results: Cap on returned symbols (default 100). Bounds the
+            `symbols` page only -- `untested_count` and `reached_pct` are
+            measured over the whole repository regardless (#559).
         storage_path: Custom storage path.
 
     Returns:
-        Dict with untested_count, reached_pct, and a symbols list sorted by file.
+        Dict with untested_count (repo-wide, NOT capped by max_results),
+        returned_count (the length of the returned page), total_non_test_symbols,
+        reached_pct, and a symbols list sorted by file.
     """
     start = time.perf_counter()
 
@@ -188,10 +192,18 @@ def get_untested_symbols(
     # Sort by file, then line
     symbols.sort(key=lambda s: (s["file"], s["line"]))
 
-    # Apply max_results cap
-    truncated = len(symbols) > max_results
-    symbols = symbols[:max_results]
-
+    # ⚠⚠ The count is taken BEFORE the page is cut (#559, @lilubot).
+    # `untested_count` used to be `len(symbols)` computed after the slice, so
+    # it described the PAGE and not the repository -- and `reached_pct`
+    # divided by it. `get_repo_health` asks for `max_results=1` because it
+    # "only needs the count", which made every repo with untested code score a
+    # perfect test axis: measured 4,893 untested of 6,352 (23.0% reached)
+    # published as 100.
+    #
+    # ⚠ The page size is still reported, under `returned_count`, which is the
+    # name that says what it is. A caller wanting the page length has it; a
+    # caller wanting the repository's number can no longer get the page's by
+    # accident.
     untested_count = len(symbols)
     reached_pct = round(
         ((total_non_test - untested_count) / total_non_test * 100)
@@ -199,10 +211,15 @@ def get_untested_symbols(
         1,
     )
 
+    # Apply max_results cap
+    truncated = untested_count > max_results
+    symbols = symbols[:max_results]
+
     elapsed = (time.perf_counter() - start) * 1000
     result: dict = {
         "repo": f"{owner}/{name}",
         "untested_count": untested_count,
+        "returned_count": len(symbols),
         "total_non_test_symbols": total_non_test,
         "reached_pct": reached_pct,
         "symbols": symbols,

@@ -269,3 +269,74 @@ class TestBlastRadiusEnrichment:
         for entry in result.get("confirmed", []):
             if "untested_caller" in entry["file"]:
                 assert entry["has_test_reach"] is False
+
+
+# ---------------------------------------------------------------------------
+# #559 — the reported count must not be a property of max_results
+# ---------------------------------------------------------------------------
+
+class TestCountIsIndependentOfMaxResults:
+    """`untested_count` / `reached_pct` describe the REPO, not the page.
+
+    ⚠⚠ `untested_count` was `len(symbols)` computed AFTER the `max_results`
+    slice, and `reached_pct` divided by it. `get_repo_health` calls this with
+    `max_results=1` and the comment "we only need the count", so the health
+    test axis read one untested symbol on every repo and published ~100%
+    reach. @lilubot measured 4,893 untested of 6,352 (23.0% reached) reported
+    as 100 (#559).
+
+    ⚠ The tell is that the two assertions below are about the SAME repo. A
+    count that moves when only the page size moves is not a count of anything
+    in the repo.
+    """
+
+    @pytest.fixture
+    def repo(self, tmp_path):
+        files = {
+            "src/a.py": "\n".join(f"def untested_{i}():\n    return {i}\n" for i in range(12)),
+            "src/covered.py": "def covered():\n    return 1\n",
+            "tests/test_covered.py": (
+                "from src.covered import covered\n\n"
+                "def test_covered():\n    assert covered() == 1\n"
+            ),
+        }
+        return _make_repo(tmp_path, files)
+
+    def test_count_does_not_shrink_to_the_page_size(self, repo):
+        repo_id, storage = repo
+        full = get_untested_symbols(repo_id, max_results=10_000, storage_path=storage)
+        paged = get_untested_symbols(repo_id, max_results=1, storage_path=storage)
+
+        assert "error" not in full and "error" not in paged
+        assert full["untested_count"] > 1, "fixture must produce several untested symbols"
+        assert paged["untested_count"] == full["untested_count"]
+
+    def test_reached_pct_does_not_move_with_the_page_size(self, repo):
+        repo_id, storage = repo
+        full = get_untested_symbols(repo_id, max_results=10_000, storage_path=storage)
+        paged = get_untested_symbols(repo_id, max_results=1, storage_path=storage)
+
+        assert full["reached_pct"] < 100.0, "fixture must have unreached symbols"
+        assert paged["reached_pct"] == full["reached_pct"]
+
+    def test_returned_count_is_the_page_and_is_labelled(self, repo):
+        """The page size is still reportable — under its own name."""
+        repo_id, storage = repo
+        paged = get_untested_symbols(repo_id, max_results=1, storage_path=storage)
+
+        assert len(paged["symbols"]) == 1
+        assert paged["returned_count"] == 1
+        assert paged["_meta"]["truncated"] is True
+
+    def test_health_test_axis_reflects_the_whole_repo(self, repo):
+        """#559 at the user's entry point: the published axis, not the helper."""
+        from jcodemunch_mcp.tools.get_repo_health import get_repo_health
+
+        repo_id, storage = repo
+        health = get_repo_health(repo_id, storage_path=storage)
+        radar = health.get("radar") or {}
+        axes = radar.get("axes") or {}
+        assert "test_gap" in axes, f"axes present: {sorted(axes)}"
+        assert axes["test_gap"]["score"] < 100.0, (
+            "a repo with unreached symbols must not score a perfect test axis"
+        )

@@ -204,7 +204,13 @@ _REACT_SPA = FrameworkProfile(
 _FLASK = FrameworkProfile(
     name="flask",
     ignore_patterns=["venv/", ".venv/", "env/", "__pycache__/", "*.pyc", ".git/"],
-    entry_point_patterns=["app.py", "main.py", "run.py", "*.py"],
+    # ⚠⚠ `"*.py"` sat at the end of this list until #562. Under a glob matcher
+    # `*` crosses `/`, so it declared EVERY Python file in the repo an entry
+    # point -- i.e. the list said nothing. It was harmless only because the
+    # field had no reader; `tools/_entry_points.py` is the first, and it
+    # refuses catch-alls independently. Removed here so the declaration is
+    # honest at the source rather than repaired downstream.
+    entry_point_patterns=["app.py", "main.py", "run.py", "wsgi.py"],
     layer_definitions=[
         Layer("routes",     ["routes/", "*.py"]),
         Layer("models",    ["models/"]),
@@ -218,7 +224,8 @@ _FLASK = FrameworkProfile(
 _FASTAPI = FrameworkProfile(
     name="fastapi",
     ignore_patterns=["venv/", ".venv/", "env/", "__pycache__/", "*.pyc", ".git/"],
-    entry_point_patterns=["main.py", "app.py", "*.py"],
+    # ⚠ Same `"*.py"` catch-all as the Flask profile above (#562).
+    entry_point_patterns=["main.py", "app.py", "asgi.py"],
     layer_definitions=[
         Layer("routers",   ["routers/", "api/"]),
         Layer("models",   ["models/", "schemas/"]),
