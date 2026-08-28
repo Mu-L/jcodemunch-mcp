@@ -487,9 +487,21 @@ async def _watch_single(
                     changed = result.get("changed", 0)
                     new = result.get("new", 0)
                     deleted = result.get("deleted", 0)
+                    # ⚠ Phases ride on the line the reporter already quotes
+                    # (#557). `(Ns)` said the time was inside index_folder and
+                    # stopped there; splitting it is the difference between a
+                    # maintainer guessing and a maintainer reading. Absent when
+                    # the fast path was not taken, which is itself the answer.
+                    _phases = result.get("phase_seconds")
+                    _phase_txt = ""
+                    if isinstance(_phases, dict) and _phases:
+                        _phase_txt = " [" + " ".join(
+                            f"{k}={v}s" for k, v in _phases.items()
+                        ) + "]"
                     _watcher_output(
                         f"  Re-indexed {folder_path}: "
-                        f"changed={changed} new={new} deleted={deleted} ({duration}s)",
+                        f"changed={changed} new={new} deleted={deleted} ({duration}s)"
+                        f"{_phase_txt}",
                         quiet=quiet, log_file_handle=log_file_handle,
                     )
                     mark_reindex_done(repo_id, result)

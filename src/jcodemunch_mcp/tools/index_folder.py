@@ -1708,6 +1708,25 @@ def index_folder(
         # When the watcher provides the exact change set, skip full directory
         # discovery (~3s on Windows) and only process the affected files.
         if changed_paths and incremental:
+            # ── Per-phase timings (#557) ──
+            # `duration_seconds` alone cannot say WHERE a slow event went, and
+            # a maintainer who cannot reproduce it has nothing to work from but
+            # the reporter's patience. These are wall-clock deltas between
+            # fixed points on this path, reported on the result and logged at
+            # DEBUG. Cost is one `monotonic()` per phase.
+            #
+            # ⚠ They describe the fast path only. The full walk below does not
+            # emit them, so their ABSENCE on a result says the fast path was
+            # not taken -- which is itself the first thing worth knowing.
+            _fast_phase_times: dict[str, float] = {}
+            _fast_phase_last = time.monotonic()
+
+            def _fast_phase(name: str) -> None:
+                nonlocal _fast_phase_last
+                _now = time.monotonic()
+                _fast_phase_times[name] = round(_now - _fast_phase_last, 3)
+                _fast_phase_last = _now
+
             # Build the same filter bundle the full walk uses (#306). The
             # fast path previously applied only the extension check (and as
             # of v1.108.19 extra_ignore_patterns) but skipped every other
@@ -1808,7 +1827,29 @@ def index_folder(
             # Branch detection for watcher fast-path
             _fast_branch = _get_git_branch(folder_path)
             _fast_is_branch_delta = False
-            _fast_base_index = store.load_index(owner, repo_name)  # always load base for branch check
+            # Base index for the branch check and the two re-parse predicates.
+            #
+            # ⚠⚠ This used to be `store.load_index(...)` unconditionally, on
+            # EVERY watcher event, inside the path whose entire purpose is to
+            # avoid loading the index (#557, @Ticki84). Three lines below,
+            # `use_memory_hash_cache` exists so the watcher's own hashes stand
+            # in for the store's -- and this load ran first regardless, so the
+            # saving was never realised on a cold read.
+            #
+            # ⚠ Everything the fast path asks of it is METADATA: `branch`,
+            # `git_head`, `file_hashes`, `has_source_file`, and the two
+            # re-parse stamps. A selective view answers all of them exactly and
+            # reads ZERO symbol rows; `open_selective` returns the cached full
+            # index untouched when one is already warm, so the warm case is
+            # byte-for-byte what it was.
+            #
+            # ⚠ `open_selective` returning None means "take the ordinary path",
+            # never "no such repo" -- a JSON-only legacy index has no rows to
+            # select from and must migrate through `load_index`.
+            _fast_base_index = store.open_selective(owner, repo_name)
+            if _fast_base_index is None:
+                _fast_base_index = store.load_index(owner, repo_name)
+            _fast_phase("base_index")
             if _fast_base_index is not None and _fast_branch:
                 _fast_base_branch = getattr(_fast_base_index, "branch", "") or ""
                 if not _fast_base_branch:
@@ -1960,6 +2001,7 @@ def index_folder(
                 fast_warnings: list[str] = []
                 mtime_only_updates: dict[str, int] = {}
 
+                _fast_phase("classify")
                 for rel_path in set(changed_files) | set(new_files):
                     abs_path = rel_path_map_fast[rel_path]
                     try:
@@ -2026,6 +2068,7 @@ def index_folder(
                     )
                     return _fast_mtime_only
 
+                _fast_phase("read_hash")
                 files_to_parse = set(changed_files) | set(new_files)
                 # Split pipeline: parse immediately (no AI), fire summarization thread.
                 new_symbols, incr_file_summaries, incr_file_languages, incr_file_imports, incremental_no_symbols = (
@@ -2038,8 +2081,10 @@ def index_folder(
                     )
                 )
 
+                _fast_phase("parse")
                 git_head = _get_git_head(folder_path) or ""
                 incr_context_metadata = collect_metadata(active_providers) if active_providers else None
+                _fast_phase("git_head")
 
                 # Merge mtime-only updates so they're persisted alongside real changes
                 all_mtimes = {**mtime_only_updates, **fast_mtimes}
@@ -2116,6 +2161,14 @@ def index_folder(
                     "indexed_at": updated.indexed_at if updated else "",
                     "duration_seconds": round(time.monotonic() - t0, 2),
                 }
+                _fast_phase("save")
+                result["phase_seconds"] = dict(_fast_phase_times)
+                logger.debug(
+                    "index_folder fast path %s/%s: %s (total %.3fs)",
+                    owner, repo_name,
+                    " ".join(f"{k}={v}s" for k, v in _fast_phase_times.items()),
+                    time.monotonic() - t0,
+                )
                 _attach_hash_delta(result, changed_paths, subset_hashes, deleted_files)
                 if _fast_is_branch_delta:
                     result["branch"] = _fast_branch

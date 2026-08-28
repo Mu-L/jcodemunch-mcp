@@ -62,6 +62,15 @@ EXACT_FIELDS: tuple[str, ...] = (
     "file_blob_shas", "file_mtimes", "file_sizes", "imports",
     "context_metadata", "package_names", "alias_map", "psr4_map",
     "file_cap_status", "coverage",
+    # Re-parse stamps. Both are META rows, so a partial read answers them
+    # exactly -- and both are read by predicates that run BEFORE any symbol is
+    # touched (`needs_parser_upgrade`, `racket_reparse_reason`). Leaving them
+    # out sent the watcher's per-event upgrade check through `__getattr__` and
+    # promoted the whole index to read one integer.
+    # ⚠ `racket_config_digest` is None-MEANINGFUL: absent means "built
+    # before the gate", not "unknown". Copying it exactly preserves that;
+    # promoting to answer it never changed the value, only the cost.
+    "parser_generation", "racket_config_digest",
 )
 
 #: Names that MUST promote, listed for documentation and asserted by tests.
