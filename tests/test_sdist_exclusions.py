@@ -186,3 +186,83 @@ def test_sdist_still_contains_what_rebuilds_the_project(built_sdist, required):
         f"{required!r} is missing from the sdist. An exclude rule is too broad -- "
         f"an sdist must be able to rebuild what the repo builds."
     )
+
+# --------------------------------------------------------------------------- #
+# Root-level allowlist. The exclusion rules above answer "did a KNOWN bad path
+# get in"; this answers "did anything get in that nobody decided on".
+# --------------------------------------------------------------------------- #
+
+#: Every file permitted at the sdist ROOT. Adding one is a decision someone
+#: writes down -- which is the whole mechanism.
+#:
+#: ⚠⚠ Written after `relnotes.md`, a scratch file holding a copy of the
+#: CHANGELOG entry for `gh release create --notes-file`, was swept up by a
+#: `git add -A` in the release commit and SHIPPED INSIDE THE PUBLISHED 1.108.304
+#: SDIST. Harmless content, but PyPI cannot be re-uploaded, so it is in that
+#: artifact permanently.
+#:
+#: ⚠ The canary tests above could not catch it and never could: they prove that
+#: NAMED bad paths are absent. A scratch file has no name to plant a canary
+#: under. This is the complement -- an allowlist catches the class, a
+#: denylist catches the instance. Same reason `.gitignore` alone was not enough
+#: for `.claude/`.
+#:
+#: ⚠ Build release notes OUTSIDE the repository (the scratchpad, `tmp_path`,
+#: anywhere `git add -A` cannot reach). A `.gitignore` entry would also work and
+#: is strictly weaker: it protects only the spelling someone remembered.
+ALLOWED_ROOT_FILES = frozenset({
+    # Packaging + metadata
+    "PKG-INFO", "pyproject.toml", "uv.lock", "server.json", "whatsnew.json",
+    "LICENSE", "SECURITY.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md",
+    ".clabot", ".gitignore", ".dockerignore",
+    # Deployment
+    "Dockerfile", "docker-compose.yml", "Caddyfile",
+    # Documentation shipped to users
+    "README.md", "CHANGELOG.md", "QUICKSTART.md", "USER_GUIDE.md",
+    "ARCHITECTURE.md", "CAPABILITIES.md", "CLIENTS.md", "CONFIGURATION.md",
+    "CONTEXT_PROVIDERS.md", "GROQ.md", "HEADLESS.md", "INSTALL_FROM_SOURCE.md",
+    "ISSUE-HISTORY.md", "LANGUAGE_SUPPORT.md", "RELEASE_RESTORE.md",
+    "ROADMAP.md", "SCIP.md", "SPEC.md", "SPEC_MUNCH.md", "TOKEN_SAVINGS.md",
+    "TROUBLESHOOTING.md", "TWEAKCC.md", "UNDER_THE_HOOD.md", "badge-kit.md",
+    "jcodemunch_whitepaper.pdf",
+    # Agent-facing docs
+    "AGENTS.md", "AGENT_HINTS.md", "AGENT_HOOKS.md", "AGENT_INSTALL_UNIVERSAL.md",
+})
+
+
+def test_no_unexpected_file_at_the_sdist_root(built_sdist):
+    """⚠⚠ An allowlist, because a scratch file has no name to plant a canary under.
+
+    `relnotes.md` shipped in 1.108.304 this way. The failure mode is a stray
+    root file swept up by `git add -A` during a release -- notes, a log, a
+    profile dump, a copied config. None of them have a fixed name, so only a
+    positive list can see them.
+    """
+    root_files = {
+        name for name in _strip_root(built_sdist)
+        if name and "/" not in name and not name.endswith("/")
+    }
+    unexpected = sorted(root_files - ALLOWED_ROOT_FILES - {CANARY_NAME})
+    assert not unexpected, (
+        f"unexpected file(s) at the sdist root: {unexpected}. "
+        "If one belongs in the distribution, add it to ALLOWED_ROOT_FILES with "
+        "a reason. If it is scratch, delete it and build release notes outside "
+        "the repository -- PyPI cannot be re-uploaded."
+    )
+
+
+def test_the_allowlist_is_not_stale(built_sdist):
+    """⚠ The reverse: an allowlist naming files that no longer ship rots quietly.
+
+    A stale entry re-opens the hole it was meant to close, because the next
+    reader trusts the list to describe reality.
+    """
+    root_files = {
+        name for name in _strip_root(built_sdist)
+        if name and "/" not in name and not name.endswith("/")
+    }
+    gone = sorted(ALLOWED_ROOT_FILES - root_files)
+    assert not gone, (
+        f"ALLOWED_ROOT_FILES names file(s) the sdist no longer carries: {gone}. "
+        "Remove them; a list that does not match the artifact is not a guard."
+    )

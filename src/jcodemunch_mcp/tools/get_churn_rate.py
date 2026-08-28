@@ -21,6 +21,9 @@ from ._utils import resolve_repo
 logger = logging.getLogger(__name__)
 
 
+from ._git_history import attach_history_coverage
+
+
 def _run_git(args: list[str], cwd: str, timeout: int = 15) -> tuple[int, str, str]:
     try:
         r = subprocess.run(
@@ -145,6 +148,9 @@ def get_churn_rate(
     if rc3 == 0 and first_out:
         first_seen = first_out.splitlines()[-1].strip() or None  # oldest last
 
+    # ⚠⚠ The count above is a floor, not a measurement, when the clone does not
+    # reach back `days`. git answers exit 0 with a short log, so nothing here
+    # can tell a QUIET file from a TRUNCATED history without asking (#shallow).
     churn_per_week = round(commit_count / (days / 7), 2) if days > 0 else 0.0
     if churn_per_week <= 1.0:
         assessment = "stable"
@@ -173,4 +179,10 @@ def get_churn_rate(
     }
     if sym_name:
         result["symbol_name"] = sym_name
+    # ⚠ Silent when the window is covered; a block on every response is one
+    # nobody reads. Downgrades confidence too -- `assessment` reads "stable"
+    # off a truncated log with no hint that "stable" was never measured.
+    attach_history_coverage(result, cwd, days)
+    if isinstance(result.get("_meta"), dict) and "git_history" in result["_meta"]:
+        result["_meta"]["confidence_level"] = "low"
     return result

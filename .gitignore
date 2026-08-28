@@ -109,3 +109,11 @@ benchmarks/codex_surface/results/
 # Rust fidelity oracle build output (see benchmarks/rust_fidelity/README.md)
 benchmarks/rust_fidelity/oracle/target/
 benchmarks/rust_fidelity/oracle/Cargo.lock
+
+# Scratch logs. ⚠ Defense in depth ONLY -- hatchling honours the root
+# .gitignore, so this keeps a stray *.log out of the sdist. It protects the
+# spelling someone remembered and nothing else; ALLOWED_ROOT_FILES in
+# tests/test_sdist_exclusions.py is the guard that catches the class.
+# ⚠⚠ `suite.log` was caught SHIPPING by that guard on 2026-08-28, minutes
+# after `relnotes.md` did ship in 1.108.304. Write scratch outside the repo.
+*.log

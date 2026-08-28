@@ -2,6 +2,103 @@
 
 ## [Unreleased]
 
+### Fixed - a scratch file shipped inside the published 1.108.304 sdist
+
+`relnotes.md` -- a temporary copy of the CHANGELOG entry, written for
+`gh release create --notes-file` -- was swept up by a `git add -A` in the
+release commit. It is in the `v1.108.304` tag and inside the sdist on PyPI.
+Harmless content, permanently there: PyPI cannot be re-uploaded.
+
+⚠⚠ **The canary tests could not have caught it and never could.**
+`tests/test_sdist_exclusions.py` plants a canary under each NAMED excluded path
+and proves it is absent -- it answers "did a known-bad path get in". A scratch
+file has no name to plant a canary under. **A denylist catches the instance; an
+allowlist catches the class.** `ALLOWED_ROOT_FILES` now enumerates every file
+permitted at the sdist root, so anything nobody decided on fails the build.
+
+⚠ Both directions are asserted, because a list that drifts from the artifact
+stops being a guard: `test_no_unexpected_file_at_the_sdist_root` catches an
+addition, `test_the_allowlist_is_not_stale` catches an entry naming a file that
+no longer ships. Both fail against their own defect on the non-vacuity pass, the
+first naming `relnotes.md` exactly.
+
+⚠ **Build release notes OUTSIDE the repository.** A `.gitignore` entry would
+also work and is strictly weaker -- it protects only the spelling someone
+remembered.
+
+⚠⚠ **The guard found a SECOND live instance within minutes of being written,
+and it was the release engineer's own.** `suite.log` -- the file every gate run
+in that session redirected pytest into, in the repository root -- failed the new
+assertion on the first full-suite run. It had been there all day. **A release
+cut while one existed would have shipped it, and unlike `relnotes.md` a pytest
+log carries absolute paths and usernames.** `*.log` is now gitignored (hatchling
+honours the root `.gitignore`), but that is defense in depth: it protects one
+spelling, and the allowlist is what catches the class.
+
+### Fixed - nine tools read a git window none of them could tell was truncated
+
+`git log --since=<N> days` on a shallow clone returns a short log and exit
+status 0. Nothing outside the observatory's own cloner detected that, so
+`get_churn_rate`, `get_hotspots`, `get_file_risk`, `get_delivery_metrics`,
+`get_tectonic_map`, `winnow_symbols`, `decision_context`, `find_unused_paths`
+and `health_radar.churn_surface` all read a truncated history as a calm one.
+
+⚠⚠ **Fixed twice before, never in a READER.** Practice 6 records
+`git fetch --depth=1` shortening an already-complete clone in the health-radar
+Action; `tests/test_observatory_clone_depth.py` records the same defect in the
+observatory's cloner, measured at **81.3 (B) shallow versus 75.6 (C) full at one
+identical commit**, `churn_surface` the only axis that moved. Both fixes made
+OUR clones deep. **`actions/checkout` defaults to `fetch-depth: 1`, so every
+user running the Action or `jcodemunch-mcp health` in their own CI still got a
+flattering grade on their own pull requests.** Third instance of "we fix the
+reported call site and leave the mechanism".
+
+⚠ `tools/_git_history.py` asks **coverage, not shallowness**.
+`--is-shallow-repository` is the mechanism; "the history reaches past the
+window" is the property. Verified on real clones: `--depth=900` at a 90-day
+window is shallow AND complete (`shallow_but_covers_window`); the same clone at
+365 days is not. A false alarm on a deep-but-bounded clone would teach people to
+ignore the flag. A three-week-old repository is YOUNG, not truncated.
+
+⚠ Tri-state. No git, no repo, an unreadable boundary: `complete: None`, never
+False. `churn_is_measurable()` collapses None to "do not publish" at the one
+place a caller must decide whether to issue a grade -- the `_stop_rule` rule,
+where every uncertainty resolves to False.
+
+⚠ Disclosure is **silent on a complete history by design**; a block on every
+response is one nobody reads. An UNKNOWN is disclosed, because it is not a clean
+bill of health.
+
+### Fixed - a grade was withheld the wrong way first, and the number got worse
+
+⚠⚠ **Recorded because the first fix was wrong in the flattering direction, which
+is the direction that matters here.** The obvious gate was to pass
+`top_hotspot_score=None` and let `churn_surface` be omitted, reusing the
+convention `runtime_coverage` already uses. Measured on one tree: pre-fix
+**84.0 B**, "fixed" **88.8 B**, full-clone truth **77.3 C**. **Dropping a
+low-scoring axis RAISES a mean**, so the fix moved the published grade further
+from reality than the defect had.
+
+⚠⚠ The error was collapsing two states this project separates everywhere else.
+**NOT APPLICABLE** -- no trace was ever ingested, the axis does not apply, and
+omitting it keeps the composite comparable -- is not **COULD NOT MEASURE**. Only
+the first may be dropped silently.
+
+`compute_radar` now takes `unmeasurable_axes`; when non-empty, **`composite` and
+`grade` are withheld entirely** (`None`) with `grade_withheld` and the measured
+axes still reported, plus `partial_composite` for a caller who knowingly wants a
+figure missing an axis. ⚠ The default path is byte-for-byte unchanged and a test
+asserts it for both `None` and `[]`.
+
+⚠⚠ **Two `None` sites the tests found, both user-facing, and one of them is why
+`.get(k, default)` is not a guard**: `diff_radar` read
+`.get("composite", 0.0)`, and **the default never fires when the key is present
+with value None** -- it raised. Defaulting to 0.0 would have been worse: a
+~77-point "regression" against a side that was never measured. And `_verdict`,
+the one-line string printed on a contributor's pull request, would have rendered
+a withheld composite as **"no meaningful change"** -- the reassuring answer, on
+the single occasion nothing was measured.
+
 ## [1.108.304] - 2026-08-28 - Three hypotheses, each measured, each wrong
 
 ### Fixed - the fast path hydrated the whole index to read six metadata fields (#557)

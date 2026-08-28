@@ -109,6 +109,7 @@ src/jcodemunch_mcp/
     get_project_intel.py      # get_project_intel: auto-discover+parse non-code knowledge (Dockerfiles, CI configs, compose, K8s, .env templates, Makefiles, scripts); cross-references to code symbols; 6 categories. v1.108.0 adds `scope_path` arg to restrict discovery to a monorepo subpath (use list_workspaces.path values); validates against source_root (traversal/absolute/non-existent all error).
     list_workspaces.py        # (v1.108.0) Enumerate monorepo workspace members. Detects pnpm (pnpm-workspace.yaml), yarn/npm (package.json `workspaces:`), turborepo (turbo.json), lerna (lerna.json), rush (rush.json), Go (go.work `use (...)`, module name from go.mod), Cargo (Cargo.toml `[workspace] members`). Returns `[{path, package_name, manager}, ...]` plus `is_monorepo` + `managers`. Read-only, dependency-free (hand-rolled minimal TOML/YAML readers).
     get_repo_health.py        # get_repo_health: one-call triage snapshot (delegate aggregator); includes six-axis `radar` field (v1.87.0)
+    _git_history.py           # (#shallow) `history_coverage(cwd, days)` -- does the history REACH BACK past the window a churn tool is about to read? ⚠⚠ **Nine tools run `git log --since=N days` and none could tell a TRUNCATED history from a QUIET one**; git answers exit 0 with a short log, so `churn_surface` ranked nothing but complexity and the grade came out FLATTERING. ⚠⚠ **Fixed twice in the CLONERS (Practice 6, the observatory) and never in a READER** -- `actions/checkout` defaults to `fetch-depth: 1`, so every user kept it. ⚠ Asks COVERAGE, not shallowness: `--is-shallow-repository` is the mechanism, "reaches past the window" is the property -- a `--depth=900` clone at 90 days is shallow AND complete, and flagging it would teach people to ignore the flag. A young repo is not a truncated one. ⚠ TRI-STATE (`complete: None` = could not establish, never False); `churn_is_measurable()` collapses None to do-not-publish at the grade gate. ⚠ `attach_history_coverage` is SILENT on a covered window by design, and discloses an UNKNOWN
     health_radar.py           # Six-axis health radar (complexity/dead_code/cycles/coupling/test_gap/churn_surface) + diff_health_radar pure-function tool for PR-time diff-grade reporting (v1.87.0). Phase 7 (v1.100.0): optional 7th axis runtime_coverage when caller passes runtime_coverage_pct; axis is omitted otherwise so the composite stays comparable against pre-Phase-7 baselines. diff_radar walks the axes dict generically — picks up the new axis automatically.
     get_untested_symbols.py   # get_untested_symbols: find functions with no test-file reachability (import graph + name matching)
     search_ast.py             # search_ast: cross-language AST pattern matching; 10 preset anti-patterns + custom mini-DSL (call:, string:, comment:, nesting:, loops:, lines:); enriched with symbol context
@@ -462,6 +463,34 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   stable prefix raises numerator and denominator together, so the arm carrying
   the least schema scores the highest. The cut was not merely inconclusive, it
   was incapable — and it will be suggested again by the next cache paper.
+- **Dropping an unmeasurable axis is not the same as omitting an inapplicable
+  one, and the difference has a SIGN.** 08-28: gating `churn_surface` on a
+  shallow clone by omitting it — the convention `runtime_coverage` already uses
+  — took the same tree from **84.0 B to 88.8 B** while full-clone truth was
+  **77.3 C**. **Removing a low-scoring axis RAISES a mean**, so the fix moved
+  the published grade further from reality than the defect had. NOT APPLICABLE
+  may be dropped silently; COULD NOT MEASURE must withhold the composite and
+  the grade. ⚠ Ask which direction a "safe" omission moves the number before
+  shipping it. [[a-one-directional-check-certifies-its-blind-side]]
+- **`.get(key, default)` is not a None guard when the key EXISTS.** 08-28:
+  `diff_radar`'s `.get("composite", 0.0)` raised the moment a composite was
+  legitimately `None` — the default never fires for a present key. ⚠ And the
+  0.0 it would have supplied was worse than the crash: a ~77-point regression
+  reported against a side nobody measured. Same shape as
+  [[a-module-that-imports-clean-has-been-tested-for-nothing]].
+- **A denylist catches the instance; an allowlist catches the class.** 08-28:
+  `relnotes.md`, a scratch copy of the release notes, was swept up by
+  `git add -A` and shipped inside the published sdist. The sdist canary tests
+  prove NAMED bad paths are absent and could never have seen it — a scratch
+  file has no name to plant a canary under. ⚠ **Build release notes outside the
+  repository**; a `.gitignore` entry protects only the spelling someone
+  remembered. ⚠ Assert the allowlist in BOTH directions — an entry naming a
+  file that no longer ships makes the list stop describing the artifact.
+  ⚠⚠ **It found a SECOND instance minutes later and it was mine**: `suite.log`,
+  the pytest redirect used for every gate run that day, sitting in the repo
+  root. A release cut while one existed ships it, and a pytest log carries
+  absolute paths and usernames. **Redirect gate runs to the scratchpad, never
+  the repo.**
 - **A competitor's fix list is a free defect probe.** 08-22: a rival's
   `fix(gini): measure a file's lines as its own span, not the sum of every node`
   named our defect precisely enough to confirm in one query —

@@ -221,6 +221,21 @@ def get_repo_health(
         except (TypeError, ValueError):
             top_hotspot_score = None
 
+    # ⚠⚠ A truncated history makes `churn_surface` UNMEASURABLE, not zero.
+    # `git log --since=N days` on a shallow clone returns a small count and exit
+    # 0, so the axis ranks nothing but complexity and the composite comes out
+    # FLATTERING -- measured at one identical commit: 81.3 (B) shallow versus
+    # 75.6 (C) full, with churn_surface the only axis that moved.
+    #
+    # ⚠ Passing None omits the axis, which is the convention this radar already
+    # uses for `test_gap` and `runtime_coverage`. The composite then rests on
+    # what was actually measured and `omitted_axes` says so. Publishing the
+    # number instead would be reporting a measurement we could not make.
+    unmeasurable_axes: list[str] = []
+    if hotspot_result.get("churn_measurable") is False:
+        top_hotspot_score = None
+        unmeasurable_axes.append("churn_surface")
+
     # Phase 7: optional 7th radar axis — runtime_coverage. Sourced from
     # get_runtime_coverage so the same coverage_pct that a caller would
     # see via the dedicated tool is what feeds the radar. Failures
@@ -249,6 +264,7 @@ def get_repo_health(
         total_files=coupling_total,  # production-code denominator
         untested_pct=untested_pct,
         top_hotspot_score=top_hotspot_score,
+        unmeasurable_axes=unmeasurable_axes or None,
         runtime_coverage_pct=runtime_coverage_pct,
     )
 

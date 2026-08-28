@@ -26,6 +26,9 @@ from ._utils import resolve_repo
 logger = logging.getLogger(__name__)
 
 
+from ._git_history import attach_history_coverage, churn_is_measurable
+
+
 def _run_git(args: list[str], cwd: str, timeout: int = 30) -> tuple[int, str, str]:
     try:
         r = subprocess.run(
@@ -163,18 +166,31 @@ def get_hotspots(
             "to populate cyclomatic complexity metrics."
         )
 
+    # ⚠⚠ `git_available` answers "is there a repo here", NOT "does its history
+    # reach back `days`". A shallow clone answers every churn question with a
+    # small number and exit status 0, so `hotspot_score` collapses toward
+    # complexity alone and the ranking looks plausible while measuring nothing.
+    # Measured on this repo at ONE commit: shallow 82.2 (B) vs full 75.5 (C).
+    # `churn_measurable` is the honest gate; `_meta.git_history` names why.
+    churn_measurable = True
+    if git_available and index.source_root:
+        churn_measurable = churn_is_measurable(index.source_root, days)
+
     result: dict = {
         "repo": f"{owner}/{name}",
         "top_n": top_n,
         "days": days,
         "git_available": git_available,
+        "churn_measurable": churn_measurable,
         "hotspots": top,
         "_meta": {
             "timing_ms": round((time.perf_counter() - t0) * 1000, 1),
             "methodology": "complexity_x_churn",
-            "confidence_level": "medium",
+            "confidence_level": "medium" if churn_measurable else "low",
         },
     }
+    if git_available and index.source_root:
+        attach_history_coverage(result, index.source_root, days)
     if note:
         result["note"] = note
     return result

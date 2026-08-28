@@ -138,6 +138,7 @@ def compute_radar(
     untested_pct: Optional[float] = None,
     top_hotspot_score: Optional[float] = None,
     runtime_coverage_pct: Optional[float] = None,
+    unmeasurable_axes: Optional[list[str]] = None,
 ) -> dict:
     """Compute the six- (or seven-) axis radar from raw signal inputs.
 
@@ -216,12 +217,41 @@ def compute_radar(
     scored_values = [a["score"] for a in axes.values()]
     composite = round(sum(scored_values) / len(scored_values), 1) if scored_values else 0.0
 
-    return {
+    out = {
         "axes": axes,
         "composite": composite,
         "grade": _letter_grade(composite),
         "omitted_axes": omitted,
     }
+
+    # ⚠⚠ NOT APPLICABLE and COULD NOT MEASURE are different states, and only the
+    # first may be dropped silently. `runtime_coverage` is omitted when no trace
+    # was ever ingested -- the axis does not apply, and leaving it out keeps the
+    # composite comparable. An axis we tried to measure and FAILED to is a
+    # different animal: dropping it quietly moves the composite by whatever that
+    # axis would have scored, in whichever direction.
+    #
+    # ⚠⚠ Measured, and it is why this parameter exists. A shallow clone makes
+    # `churn_surface` unmeasurable; omitting it the way `runtime_coverage` is
+    # omitted took the same tree from **84.0 B to 88.8 B** while the truth on a
+    # full clone was **77.3 C**. The "fix" moved the grade FURTHER from reality,
+    # because churn_surface scores low even on truncated input and dropping a
+    # low axis raises a mean. **Withholding the grade is the only honest answer;
+    # a repaired number would still be a number nobody measured.**
+    if unmeasurable_axes:
+        out["composite"] = None
+        out["grade"] = None
+        out["unmeasurable_axes"] = list(unmeasurable_axes)
+        out["grade_withheld"] = (
+            "one or more axes could not be measured, so no composite is "
+            "reported; per-axis scores below are the axes that WERE measured"
+        )
+        # ⚠ Kept for callers that want the partial figure knowingly. It is NOT
+        # `composite` and must never be renamed into it: a consumer reaching for
+        # this has asked for a number missing an axis, which is a different
+        # question from "how healthy is this repo".
+        out["partial_composite"] = composite
+    return out
 
 
 def diff_radar(baseline: dict, current: dict) -> dict:
@@ -274,15 +304,32 @@ def diff_radar(baseline: dict, current: dict) -> dict:
         elif delta >= threshold:
             improvements.append(axis)
 
-    base_composite = baseline.get("composite", 0.0)
-    cur_composite = current.get("composite", 0.0)
-    composite_delta = round(cur_composite - base_composite, 1)
+    # ⚠⚠ A withheld composite is None, not 0.0, and `.get(k, default)` does NOT
+    # protect against it -- the key is PRESENT and its value is None, so the
+    # default never fires and the subtraction raises. Defaulting to 0.0 here
+    # would be worse than raising: it would report a ~77-point regression
+    # against a side that simply could not be measured.
+    base_composite = baseline.get("composite")
+    cur_composite = current.get("composite")
+    if base_composite is None or cur_composite is None:
+        composite_delta = None
+    else:
+        composite_delta = round(cur_composite - base_composite, 1)
 
-    base_grade = baseline.get("grade", "?")
-    cur_grade = current.get("grade", "?")
-    grade_change = (
-        f"{base_grade} -> {cur_grade}" if base_grade != cur_grade else f"{cur_grade} (unchanged)"
-    )
+    base_grade = baseline.get("grade")
+    cur_grade = current.get("grade")
+    if base_grade is None or cur_grade is None:
+        # Name the side that could not be graded; "? -> B" reads as a fresh
+        # baseline, which is a different and much less alarming situation.
+        missing = [
+            side for side, g in (("baseline", base_grade), ("current", cur_grade))
+            if g is None
+        ]
+        grade_change = f"not comparable ({' and '.join(missing)} ungraded)"
+    elif base_grade != cur_grade:
+        grade_change = f"{base_grade} -> {cur_grade}"
+    else:
+        grade_change = f"{cur_grade} (unchanged)"
 
     return {
         "axis_deltas": out_axes,
@@ -296,8 +343,37 @@ def diff_radar(baseline: dict, current: dict) -> dict:
     }
 
 
-def _verdict(composite_delta: float, regressions: list[str], improvements: list[str]) -> str:
-    """One-line summary used in PR comments / CI output."""
+def _verdict(
+    composite_delta: Optional[float],
+    regressions: list[str],
+    improvements: list[str],
+) -> str:
+    """One-line summary used in PR comments / CI output.
+
+    ⚠⚠ This string is the PUBLIC verdict -- it is what a contributor reads on
+    their own pull request. A withheld composite reaches here as None, and
+    "no meaningful change" would be the worst possible rendering of "we could
+    not measure this repository": it is the reassuring answer, printed on the
+    one occasion nothing was measured. Per-axis deltas are still real and are
+    still summarised, because those axes WERE compared.
+    """
+    if composite_delta is None:
+        if regressions and improvements:
+            return (
+                f"composite not comparable (an axis could not be measured); "
+                f"-{len(regressions)} / +{len(improvements)} axes moved"
+            )
+        if regressions:
+            return (
+                f"composite not comparable (an axis could not be measured); "
+                f"REGRESSION on {len(regressions)} axis/axes"
+            )
+        if improvements:
+            return (
+                f"composite not comparable (an axis could not be measured); "
+                f"improvement on {len(improvements)} axis/axes"
+            )
+        return "composite not comparable — an axis could not be measured"
     if abs(composite_delta) < 1.0 and not regressions and not improvements:
         return "no meaningful change"
     if regressions and not improvements:
