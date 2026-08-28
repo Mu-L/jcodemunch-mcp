@@ -2,6 +2,65 @@
 
 ## [Unreleased]
 
+## [1.108.305] - 2026-08-28 - Only the reader was never fixed
+
+### Fixed - the release checklist's CI-environment reproduce never built it
+
+Step 2c read `uv run --python 3.13 python -m pytest tests/ -q`. CI runs
+`uv sync --locked --group dev --extra watch` first. The documented command
+synced nothing and named no extra, so it **inherited whatever `.venv` happened
+to hold** -- it looked correct for exactly as long as a previous sync's packages
+survived.
+
+⚠⚠ **Caught mid-release, and the near-miss is the point: it returned EXIT 0 and
+the totals reconciled EXACTLY** (8,740 + 18 new tests = 8,758), which are the
+two things "green" means here. Meanwhile `passed` fell 8,721 -> 8,634 and
+`skipped` rose **19 -> 124**: 105 tests silently did not execute. Confirmed at
+the source -- syncing with CI's flags printed `+ watchfiles==1.1.1`, the
+`[watch]` extra CI installs BY NAME.
+
+⚠ **Read the SKIP count**, not just the exit code and the total. The documented
+range is 19-26; a jump means the environment, not the code.
+
+⚠⚠ The checklist lives in `.claude/skills/release/SKILL.md`, which is
+**gitignored** (the v0.2.6 credential-leak fix), so a correction there is
+machine-local and gone on a fresh checkout. **Un-ignoring `.claude/` to make it
+testable would reintroduce the vector that got five releases yanked**, so the
+durable copy now lives in CLAUDE.md and `tests/test_ci_env_reproduce_command.py`
+binds it to `.github/workflows/test.yml` -- the two cannot drift apart unnoticed.
+
+⚠ Third instance of one family, and CONTRIBUTING.md already carried the
+sentence: *CI installs with `uv sync` and never runs the command the docs give a
+human.* First was `pip install -e ".[test]"` (an extra no repo declares); second
+was `-n 4 --dist loadfile` under a bare `python -m pytest`, which collects
+nothing and exits 0.
+
+
+### Added - a lock wait reports itself, because waiting looks like working (#557)
+
+@Ticki84 ran the new phase breakdown on the first build that had it and it
+answered immediately: `save=9.906s` of a `10.000s` total, everything else
+summing to `0.094s`. The cost is entirely `store.incremental_save`.
+
+⚠⚠ **`incremental_save` takes an `indexwrite` process lock before it writes, so
+from the caller's timer a CONTENDED LOCK and a SLOW WRITE are indistinguishable
+-- both are just time spent inside `save`.** Only the wait itself can separate
+them, and only `process_locks` can see it.
+
+`_Held.__enter__` now records `waited_seconds` and logs it: DEBUG for any wait,
+**WARNING past one second, with the holder NAMED** (pid, `client_id`, age).
+A multi-second stall on a single-file reindex is a user-visible problem rather
+than a debug detail, and "something else holds the lock" without saying what
+sends the reader hunting in the wrong process. `watch-all` watches every indexed
+repo, so a second watcher or an editor-side MCP server is exactly the shape that
+would queue here.
+
+⚠ The round `10.000s` is what makes contention the leading hypothesis -- real
+work rarely lands on a round number -- **but it is a hypothesis, and shipping the
+instrument is cheaper than asking the reporter to test it.** Three earlier
+hypotheses on this issue were each measured dead by the reporter.
+
+
 ### Fixed - the machine's timezone chose the input format, so 3.10 broke in CI only
 
 The shallow-boundary probe read `git log --format=%aI`. **git renders a UTC
