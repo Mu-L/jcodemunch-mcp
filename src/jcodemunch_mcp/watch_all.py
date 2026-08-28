@@ -80,6 +80,7 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Even
 async def watch_all(
     debounce_ms: int = DEFAULT_DEBOUNCE_MS,
     use_ai_summaries: bool = True,
+    context_providers: bool = True,
     storage_path: Optional[str] = None,
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
@@ -95,6 +96,7 @@ async def watch_all(
     manager = WatcherManager(
         debounce_ms=debounce_ms,
         use_ai_summaries=use_ai_summaries,
+        context_providers=context_providers,
         storage_path=storage_path,
         extra_ignore_patterns=extra_ignore_patterns,
         follow_symlinks=follow_symlinks,

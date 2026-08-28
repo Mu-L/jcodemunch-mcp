@@ -7307,6 +7307,7 @@ async def _run_server_with_watcher(
         storage_path=watcher_kwargs.get("storage_path"),
         extra_ignore_patterns=watcher_kwargs.get("extra_ignore_patterns"),
         follow_symlinks=watcher_kwargs.get("follow_symlinks", False),
+        context_providers=watcher_kwargs.get("context_providers", True),
         quiet=True,
         log_file_handle=_log_file_handle,
     )
@@ -9024,6 +9025,11 @@ def main(argv: Optional[list[str]] = None):
         help="Disable AI-generated summaries during re-indexing",
     )
     watch_parser.add_argument(
+        "--no-context-providers",
+        action="store_true",
+        help="Skip framework context providers (Django/Express/Next.js/Rails/dbt/...). They are discovered once per watched folder and cached, so this trades route and template edges for a lower first-event cost (#558)",
+    )
+    watch_parser.add_argument(
         "--follow-symlinks",
         action="store_true",
         help="Include symlinked files in indexing",
@@ -9829,6 +9835,11 @@ def main(argv: Optional[list[str]] = None):
         help="Disable AI-generated summaries during re-indexing",
     )
     wc_parser.add_argument(
+        "--no-context-providers",
+        action="store_true",
+        help="Skip framework context providers (Django/Express/Next.js/Rails/dbt/...). They are discovered once per watched folder and cached, so this trades route and template edges for a lower first-event cost (#558)",
+    )
+    wc_parser.add_argument(
         "--follow-symlinks",
         action="store_true",
         help="Include symlinked files in indexing",
@@ -9855,6 +9866,8 @@ def main(argv: Optional[list[str]] = None):
     )
     wa_parser.add_argument("--no-ai-summaries", action="store_true",
         help="Disable AI-generated summaries during re-indexing")
+    wa_parser.add_argument("--no-context-providers", action="store_true",
+        help="Skip framework context providers (Django/Express/Next.js/Rails/dbt/...). They are discovered once per watched folder and cached, so this trades route and template edges for a lower first-event cost (#558)")
     wa_parser.add_argument("--follow-symlinks", action="store_true",
         help="Include symlinked files in indexing")
     wa_parser.add_argument("--extra-ignore", nargs="*",
@@ -10567,6 +10580,7 @@ def main(argv: Optional[list[str]] = None):
                     storage_path=os.environ.get("CODE_INDEX_PATH"),
                     extra_ignore_patterns=args.extra_ignore,
                     follow_symlinks=args.follow_symlinks,
+                    context_providers=not args.no_context_providers,
                     idle_timeout_minutes=args.idle_timeout,
                 )
             )
@@ -10584,6 +10598,7 @@ def main(argv: Optional[list[str]] = None):
                 storage_path=os.environ.get("CODE_INDEX_PATH"),
                 extra_ignore_patterns=args.extra_ignore,
                 follow_symlinks=args.follow_symlinks,
+                context_providers=not args.no_context_providers,
                 rediscover_interval_s=args.rediscover_interval or DEFAULT_REDISCOVER_INTERVAL_S,
             )
         )
@@ -10620,6 +10635,7 @@ def main(argv: Optional[list[str]] = None):
                 storage_path=os.environ.get("CODE_INDEX_PATH"),
                 extra_ignore_patterns=args.extra_ignore,
                 follow_symlinks=args.follow_symlinks,
+                context_providers=not args.no_context_providers,
             )
         )
     elif args.command == "index":

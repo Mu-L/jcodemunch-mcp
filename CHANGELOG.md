@@ -2,6 +2,56 @@
 
 ## [Unreleased]
 
+### Added - `--no-context-providers` on `watch`, `watch-all` and `watch-claude` (#558)
+
+`index_folder` has taken a `context_providers: bool` for its whole life and the
+watcher could not reach it: no CLI flag, and not a parameter of `watch_folders`,
+`sync_folders`, `watch_claude_worktrees`, `WatcherManager`, `_watch_single`,
+`_initial_index` or `watch_all`. Its three neighbours — `use_ai_summaries`,
+`follow_symlinks`, `extra_ignore_patterns` — were threaded end to end, so
+nothing looked wrong at any single site.
+
+Surfaced by **@Ticki84** in #557: they disabled providers to isolate a
+performance problem, the argument reached `index_file` and could not reach the
+watcher, and their two timings were taken under two different configurations
+with nothing saying so. **A reporter holding a variable fixed across a
+comparison should not be silently unable to.**
+
+⚠ **Scope, stated plainly: this is a control gap, not a performance fix.**
+Provider discovery is cached per folder, so on the fast path it is paid once per
+process. Measured here: providers ON 0.52 s mean / **0.36 s min**, OFF 0.37 s
+mean — the difference is the first iteration and nothing after. What is real is
+that discovery re-runs on the first event after a watcher restart and is bounded
+at 30 s per provider (`JCODEMUNCH_PROVIDER_BUDGET_SECONDS`), and that
+`_attach_provider_skips` already advises "set `context_providers=false` to stop
+paying for it" — advice the watcher structurally could not take.
+
+⚠⚠ **The guard is worth more than the flag, and writing it found the real
+weakness.** `tests/test_watcher_knob_parity.py` asserts the correspondence as a
+PROPERTY over signatures rather than a list of four names. The first version
+compared layers against each other and **six of its seven tests passed against
+the broken tree** — parity across layers only catches a knob that stops PART
+WAY, and this one was missing from every layer at once, so the shared set was
+simply smaller and nothing looked uneven. It is anchored to what `index_folder`
+OFFERS now, with per-parameter exclusions that each state a reason
+(`changed_paths` is computed, `force_reparse` belongs to `refresh`, and so on),
+so adding one is a decision someone writes down.
+
+⚠⚠ **The first attempt broke six existing tests and they were RIGHT.** Adding
+`context_providers` as a REQUIRED parameter mid-signature on `_watch_single` and
+`_initial_index` broke every caller that did not know about it, and a defaulted
+parameter cannot precede the required ones that follow — so it is defaulted and
+placed at the end of both signatures. **The inverse of Practice 9: when a change
+turns old tests red, check whether the change is wrong before the tests are.**
+
+⚠ Two false positives the property surfaced and both were the TEST being wrong:
+`paths` means "explicit file list" to `index_folder` and "folders to watch" to
+the watcher — a name collision, not a knob — and flag names are derived loosely,
+because the shipped flag for `use_ai_summaries` is `--no-ai-summaries`, not
+`--no-use-ai-summaries`. Pinning one spelling would have failed against a flag
+that has worked for a year.
+
+
 ### Fixed - the watcher reloaded the whole index to learn one file's hash (#557)
 
 Reported by **@Ticki84**: on Windows a single-file edit took ~10s to reach the

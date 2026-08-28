@@ -241,6 +241,7 @@ async def _initial_index(
     quiet: bool,
     log_file_handle: Optional[IO],
     build_hash_cache: Callable[[], None],
+    context_providers: bool = True,
 ) -> None:
     """Run a watch task's initial incremental index and record its outcome.
 
@@ -253,6 +254,7 @@ async def _initial_index(
             index_folder,
             path=folder_path,
             use_ai_summaries=use_ai_summaries,
+            context_providers=context_providers,
             storage_path=storage_path,
             extra_ignore_patterns=extra_ignore_patterns,
             follow_symlinks=follow_symlinks,
@@ -287,6 +289,7 @@ async def _watch_single(
     log_file_handle: Optional[IO] = None,
     skip_initial_index: bool = False,
     record_index_ready: bool = False,
+    context_providers: bool = True,
 ) -> None:
     """Watch a single folder and re-index on changes.
 
@@ -375,6 +378,7 @@ async def _watch_single(
             folder_path=folder_path,
             repo_id=repo_id,
             use_ai_summaries=use_ai_summaries,
+            context_providers=context_providers,
             storage_path=storage_path,
             extra_ignore_patterns=extra_ignore_patterns,
             follow_symlinks=follow_symlinks,
@@ -467,6 +471,7 @@ async def _watch_single(
                 index_folder,
                 path=folder_path,
                 use_ai_summaries=use_ai_summaries,
+                context_providers=context_providers,
                 storage_path=storage_path,
                 extra_ignore_patterns=extra_ignore_patterns,
                 follow_symlinks=follow_symlinks,
@@ -558,6 +563,7 @@ class WatcherManager:
         self,
         debounce_ms: int = DEFAULT_DEBOUNCE_MS,
         use_ai_summaries: bool = True,
+        context_providers: bool = True,
         storage_path: Optional[str] = None,
         extra_ignore_patterns: Optional[list[str]] = None,
         follow_symlinks: bool = False,
@@ -574,6 +580,7 @@ class WatcherManager:
         self._condition = asyncio.Condition(self._pending_lock)
         self._debounce_ms = debounce_ms
         self._use_ai_summaries = use_ai_summaries
+        self._context_providers = context_providers
         self._storage_path = storage_path
         self._extra_ignore_patterns = extra_ignore_patterns
         self._follow_symlinks = follow_symlinks
@@ -677,6 +684,7 @@ class WatcherManager:
                 folder_path=folder,
                 debounce_ms=self._debounce_ms,
                 use_ai_summaries=self._use_ai_summaries,
+                context_providers=self._context_providers,
                 storage_path=self._storage_path,
                 extra_ignore_patterns=self._extra_ignore_patterns,
                 follow_symlinks=self._follow_symlinks,
@@ -873,6 +881,7 @@ class WatcherManager:
                 index_folder,
                 path=folder,
                 use_ai_summaries=kwargs.get("use_ai_summaries", self._use_ai_summaries),
+                context_providers=kwargs.get("context_providers", self._context_providers),
                 storage_path=self._storage_path,
                 extra_ignore_patterns=kwargs.get(
                     "extra_ignore_patterns", self._extra_ignore_patterns
@@ -984,6 +993,7 @@ async def watch_folders(
     paths: list[str],
     debounce_ms: int = DEFAULT_DEBOUNCE_MS,
     use_ai_summaries: bool = True,
+    context_providers: bool = True,
     storage_path: Optional[str] = None,
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
@@ -1075,6 +1085,7 @@ async def watch_folders(
     manager = WatcherManager(
         debounce_ms=debounce_ms,
         use_ai_summaries=use_ai_summaries,
+        context_providers=context_providers,
         storage_path=storage_path,
         extra_ignore_patterns=extra_ignore_patterns,
         follow_symlinks=follow_symlinks,
@@ -1164,6 +1175,7 @@ async def watch_folders(
 async def sync_folders(
     paths: list[str],
     use_ai_summaries: bool = True,
+    context_providers: bool = True,
     storage_path: Optional[str] = None,
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
@@ -1194,6 +1206,7 @@ async def sync_folders(
                 index_folder,
                 path=folder,
                 use_ai_summaries=use_ai_summaries,
+                context_providers=context_providers,
                 storage_path=storage_path,
                 extra_ignore_patterns=extra_ignore_patterns,
                 follow_symlinks=follow_symlinks,
@@ -1290,6 +1303,7 @@ async def watch_claude_worktrees(
     poll_interval: float = 5,
     debounce_ms: int = DEFAULT_DEBOUNCE_MS,
     use_ai_summaries: bool = True,
+    context_providers: bool = True,
     storage_path: Optional[str] = None,
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
@@ -1338,6 +1352,7 @@ async def watch_claude_worktrees(
                 folder_path=folder,
                 debounce_ms=debounce_ms,
                 use_ai_summaries=use_ai_summaries,
+                context_providers=context_providers,
                 storage_path=storage_path,
                 extra_ignore_patterns=extra_ignore_patterns,
                 follow_symlinks=follow_symlinks,
