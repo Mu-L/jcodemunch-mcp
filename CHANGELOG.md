@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.304] - 2026-08-28 - Three hypotheses, each measured, each wrong
+
 ### Fixed - the fast path hydrated the whole index to read six metadata fields (#557)
 
 `index_folder`'s watcher fast path opened with an unconditional

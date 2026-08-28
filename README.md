@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
+- **[v1.108.304](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.304)** (2026-08-28) — Three hypotheses, each measured, each wrong
 - **[v1.108.303](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.303)** (2026-08-27) — The measurement was the defect
 - **[v1.108.302](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.302)** (2026-08-27) — Nothing we could say about Rust
-- **[v1.108.301](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.301)** (2026-08-26) — Green on a defect, three times
 <!-- WHATSNEW:END -->
 
 ---
