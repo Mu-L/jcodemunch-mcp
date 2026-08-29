@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed - a `#| |#` block comment above `#lang` hid the lang from the gate
+
+`#lang` may follow "comment forms". The `#lang` gate (1.108.303) allowed `;`
+lines and `#!` shebangs before it but not a `#| |#` block. `openssl/mzssl.rkt`
+opens with a 900-byte block comment; its `#lang racket/base` was invisible, so
+the file read as a `#lang`-less module -- harmless there, because the default
+reader is what a `#lang`-less file gets anyway. ⚠ The other direction is not
+harmless: a Scribble or Pollen document behind a licence block would have been
+read as S-expressions, which is the fabrication class the gate exists to stop.
+One level of block comment; a regex cannot nest, and a nested block above a
+`#lang` line has not been seen. Found by the reader-fidelity harness (next
+entry), which compared 725 files against Racket's own reader and could not
+account for six nodes in one file.
+
 ## [1.108.307] - 2026-08-29 - A phase boundary drawn at the wrong place
 
 ### Fixed - tsconfig discovery walked Rust's build tree on every watcher event (#557, @Ticki84)

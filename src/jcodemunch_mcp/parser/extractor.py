@@ -11462,8 +11462,13 @@ def _racket_declared_forms(repo: Optional[str]) -> dict[str, str]:
 # project's own lang -- `{"conscript": "at-exp"}` -- because the project is the
 # only party that knows what its reader produces.
 
+#: `#lang` may follow "comment forms": `;` lines, `#| |#` blocks (one level --
+#: a regex cannot nest, and a nested block above a `#lang` line has not been
+#: seen), and a `#!` shebang. openssl/mzssl.rkt opens with a 900-byte block
+#: comment; without the block alternative it read as a `#lang`-less module.
 _RACKET_LANG_RE = re.compile(
-    rb"\A(?:[ \t\r\n]|;[^\n]*\n|#![^\n]*\n)*#lang[ \t]+([^\s]+)(?:[ \t]+([^\s]+))?"
+    rb"\A(?:[ \t\r\n]|;[^\n]*\n|#\|(?:[^|]|\|(?!#))*\|#|#![^\n]*\n)*"
+    rb"#lang[ \t]+([^\s]+)(?:[ \t]+([^\s]+))?"
 )
 
 #: Exact names, plus every `name/...` sub-path, whose reader is the default
