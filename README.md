@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
+- **[v1.108.306](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.306)** (2026-08-28) — A count taken after the page, and a field nobody read
 - **[v1.108.305](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.305)** (2026-08-28) — Only the reader was never fixed
 - **[v1.108.304](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.304)** (2026-08-28) — Three hypotheses, each measured, each wrong
-- **[v1.108.303](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.303)** (2026-08-27) — The measurement was the defect
 <!-- WHATSNEW:END -->
 
 ---

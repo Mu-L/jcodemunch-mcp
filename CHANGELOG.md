@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.306] - 2026-08-28 - A count taken after the page, and a field nobody read
+
 ### Fixed - a count taken after the page was cut (#559, @lilubot)
 
 `get_untested_symbols` computed `untested_count = len(symbols)` **after** the
