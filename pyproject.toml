@@ -108,6 +108,14 @@ exclude = [
     "vscode-extension/node_modules/",
     "vscode-extension/out/",
     "*.vsix",
+    # Dev-box maintenance for the whole jMunch suite: it hard-codes
+    # `C:\Program Files\Python310` and the `C:\MCPs\*` trees, so it is noise
+    # to a PyPI consumer and cannot work on their machine. Tracked because it
+    # encodes a real lesson (uninstalling an MCP package while its server runs
+    # half-removes it); excluded because "tracked" and "shipped" are different
+    # questions. `scripts/unstable_modules_diag.py` DOES ship -- it diagnoses a
+    # metric a user can see on their own repo.
+    "scripts/repair-munch-installs.ps1",
 ]
 
 [tool.pytest.ini_options]
