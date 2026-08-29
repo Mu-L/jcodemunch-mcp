@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "description": "Racket READER-fidelity corpus for run_reader_fidelity.py. Ground truth is Racket's own reader (reader_oracle.rkt), which only READS: no module is instantiated, so any file the local install can read is a legitimate target, scripts included.",
+  "pinning": {
+    "policy": "Both trees ship with the Racket toolchain and are pinned by the Racket VERSION; reader_results.json records the version it was measured against."
+  },
+  "targets": [
+    {
+      "id": "collects",
+      "kind": "collects",
+      "path": "",
+      "glob": "*.rkt",
+      "recursive": true,
+      "stresses": "The whole default-reader surface as real code uses it: here strings, `#rx`, `|sym bol|`, `#cs`, infix dots, every `#` dispatch, CRLF files. The control group for at-exp -- `@` is an ordinary symbol constituent here and must stay one."
+    },
+    {
+      "id": "pkgs/at-exp",
+      "kind": "pkgs",
+      "path": "",
+      "glob": "*.rkt",
+      "recursive": true,
+      "lang": "at-exp",
+      "stresses": "Every `#lang at-exp` .rkt in the full distribution: text bodies with nested forms, `@|...|` escapes, `@;` comments, alternate delimiters, and `@` inside identifiers and strings that must NOT dispatch."
+    }
+  ]
+}

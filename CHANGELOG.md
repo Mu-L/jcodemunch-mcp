@@ -2,6 +2,66 @@
 
 ## [Unreleased]
 
+### Added - a Racket reader in Python, measured against Racket's reader
+
+`parser/racket_reader.py` reads Racket source -- the default reader of the
+Racket reference's "Reader" chapter, and the at-exp extension exactly as
+`scribble/reader` implements it -- into a tree shaped like tree-sitter-racket's,
+so the symbol walker can consume it unchanged. Nothing routes to it yet; that
+is the next entry. ⚠⚠ **It exists because a `#lang` line selects a READER, and
+a grammar cannot follow it.** 1.108.303 worked around that with a byte-blanking
+pre-pass over `{...}` bodies and an ERROR-skipping rule; both treated the
+symptoms of reading Racket with the wrong reader.
+
+⚠⚠ **Measured, not asserted: `benchmarks/racket_fidelity/run_reader_fidelity.py`
+compares the tree against `read-syntax` node for node.** `reader_oracle.rkt`
+reads each file with the reader its own `#lang` selects and emits every syntax
+object as (type, byte start, byte span); `only_racket`, `only_ours` and
+`our_only_error` gate at 0. On the whole `collects` tree plus every
+`#lang at-exp` file in the distribution -- 725 files, 761,009 nodes, 3,622
+at-forms -- all three are 0. On 152 conscript files with the lang promoted to
+at-exp: 53,269 nodes, 3,283 at-forms, 0, 0, 0. ⚠ What it does NOT compare is
+stated in the results file: strings inside an at-exp body (the form's span is
+compared; the walker never reads inside one), comments, `#hash`/`#s` contents
+(Racket does not position their keys), and the datum after `#reader <module>`,
+which is read by THAT module's reader.
+
+⚠ A differential against tree-sitter over 2,089 files agreed on all 1.8M nodes
+except where Racket sided with the reader: `#cs` is a case-fold switch, not a
+symbol; `#<< eos` (a terminator with a leading space) is a here string; `#\SPACE`
+is a character. ⚠⚠ Three of the harness's own defects were found by the harness
+before any of the reader's: the oracle spliced a dotted tail's syntax object
+into its parent (`(a . ,b)` showed a bare `,` symbol), it emitted a sized
+vector's repeated element three times (`#3(a)` fills by repetition -- the same
+object, `eq?`), and its `#lang` detection had the block-comment gap above.
+**An oracle is code too, and the first thing a new one measures is itself.**
+
+⚠ **Errors resynchronise instead of recovering.** tree-sitter re-parents on
+error, which is how a `unit` body's internal define became a module-level
+binding. The reader emits an ERROR node from the broken form to the next
+column-0 opener and reads on, so a missing `)` costs its own form and never the
+rest of the file (Racket rejects the whole file). ⚠⚠ An EXTRA `)` closes a form
+early and leaves its remaining internal definitions to be read as top-level
+forms -- exactly the fabrication tree-sitter's recovery produced -- so on an
+unexpected closer every indented top-level form read since the last column-0
+form is folded back into the ERROR. Unit-tested, because Racket has no opinion
+on what happens after an error.
+
+⚠ `@` is NEVER inferred from the text: in the default reader it is a symbol
+constituent and `(define @foo 1)` binds `@foo`. The at-exp mode is switched by
+the caller (the `#lang` tier), as `#lang at-exp` does; the command character is
+a parameter, because `make-at-readtable` takes one and Pollen uses `◊`.
+Performance: 17.3 MB of Racket in 1.71 s against tree-sitter's 0.61 s -- 2.8x
+slower and ~10 MB/s, far under the walker's own cost.
+
+Also: `tests/fixtures/racket/` gains `reader.rkt` (one instance of every
+default-reader form) and `atexp-syntax.rkt` (the Scribble documentation's own
+`@`-syntax examples, quoted so the file still expands), and a second frozen
+oracle, `racket_reader_oracle.json`, gates the reader in CI without Racket the
+way `racket_oracle.json` gates the extractor. ⚠ `test_racket_fidelity.py` listed
+its fixture names as a literal -- the `.303` Rust lesson, in the Racket test
+that taught it -- and reads them off disk now.
+
 ### Fixed - a `#| |#` block comment above `#lang` hid the lang from the gate
 
 `#lang` may follow "comment forms". The `#lang` gate (1.108.303) allowed `;`

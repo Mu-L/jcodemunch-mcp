@@ -60,13 +60,17 @@ def _result(classify, frozen, name: str) -> dict:
     return classify(FIXTURES / name, frozen[name])
 
 
-FIXTURE_NAMES = ["basics.rkt", "guards.rkt", "macros.rkt", "forms.rkt", "atexp.rkt"]
+#: Read off disk at collection, never listed. A literal roster is a second
+#: copy of what the frozen file already records, and only the frozen file had
+#: a test keeping it honest -- a new fixture was ungated on arrival.
+FIXTURE_NAMES = sorted(p.name for p in FIXTURES.glob("*.rkt"))
 
 
 def test_frozen_data_covers_every_fixture(frozen):
     """A fixture with no frozen answer is silently unmeasured."""
     on_disk = {p.name for p in FIXTURES.glob("*.rkt")}
-    assert on_disk == set(FIXTURE_NAMES) == set(frozen)
+    assert on_disk == set(frozen)
+    assert on_disk, "non-vacuity: the fixture directory must not be empty"
 
 
 @pytest.mark.parametrize("name", FIXTURE_NAMES)
