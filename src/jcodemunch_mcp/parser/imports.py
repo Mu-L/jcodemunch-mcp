@@ -1398,10 +1398,40 @@ _alias_map_cache: dict[str, dict[str, list[str]]] = {}
 _ALIAS_MAP_LOCK = threading.Lock()
 
 # Directories to skip when walking for tsconfig files.
-_TSCONFIG_SKIP_DIRS = frozenset({
-    "node_modules", ".git", "dist", "build", "out", ".cache",
-    ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel",
+# ⚠⚠ **The FOURTH copy of a skip list in this tree, and the only one that
+# derived from nothing** (#557, @Ticki84). `security._SKIP_DIRECTORY_NAMES` is
+# the authority -- CLAUDE.md says so, and `SKIP_DIRECTORIES` and `SKIP_PATTERNS`
+# already derive from it -- but this set was hand-maintained beside it and had
+# never heard of Rust's `target`. So `_walk_tsconfigs` descended into a Tauri
+# project's build directory on EVERY watcher event: **13.58s of a 13.75s
+# reindex, measured by the reporter in his own `watch-all` process, against
+# 0.27s once `target` was excluded.**
+#
+# ⚠⚠ Adding `"target"` here was the reported fix and would have been the wrong
+# one -- that is "fix the call site, leave the mechanism", our own standing
+# lesson. Ask the authority instead: every build-tree spelling it already knows
+# (`target`, `_build`, `.gradle`, `DerivedData`, the eight dotted framework
+# trees) arrives at once, and the next one arrives without touching this file.
+#
+# ⚠ **UNION, never replacement.** The extras below are tsconfig-specific and
+# some are deliberately absent from the authority: `out` names a real source
+# directory for the INDEXING walk (CLAUDE.md: "DOTTED ONLY"), but it has been
+# skipped for tsconfig discovery for this function's whole life and removing a
+# skip is the one direction this change must not take. Union can only make the
+# walk cheaper.
+_TSCONFIG_EXTRA_SKIP_DIRS = frozenset({
+    "out", ".cache", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel",
 })
+
+
+def _tsconfig_skip_dirs() -> frozenset[str]:
+    """Directory names `_walk_tsconfigs` must not descend into.
+
+    Imported lazily: `security` imports `config`, and resolving it at module
+    scope here would put a parser module in that chain for no benefit.
+    """
+    from ..security import _SKIP_DIRECTORY_NAMES  # noqa: PLC0415
+    return frozenset(_SKIP_DIRECTORY_NAMES) | _TSCONFIG_EXTRA_SKIP_DIRS
 
 
 def _norm_alias_replacement(rep: str, tsconfig_dir_rel: str = "") -> str:
@@ -1526,6 +1556,8 @@ def _load_tsconfig_aliases(source_root: str) -> dict[str, list[str]]:
                 continue  # skip package references like "@tsconfig/recommended"
             _ingest_tsconfig_file(extended)
 
+    skip_dirs = _tsconfig_skip_dirs()
+
     def _walk_tsconfigs(directory: Path, depth: int) -> None:
         # Depth 5 covers layouts up to apps/x/frontend/packages/bar/tsconfig.json.
         if depth > 5:
@@ -1533,7 +1565,7 @@ def _load_tsconfig_aliases(source_root: str) -> dict[str, list[str]]:
         try:
             for entry in sorted(directory.iterdir()):
                 if entry.is_dir():
-                    if entry.name not in _TSCONFIG_SKIP_DIRS and not entry.name.startswith("."):
+                    if entry.name not in skip_dirs and not entry.name.startswith("."):
                         _walk_tsconfigs(entry, depth + 1)
                 elif (
                     entry.is_file()

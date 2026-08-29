@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Fixed - tsconfig discovery walked Rust's build tree on every watcher event (#557, @Ticki84)
+
+⚠⚠ **`_TSCONFIG_SKIP_DIRS` was the FOURTH copy of a skip list in this tree, and
+the only one that derived from nothing.** `security._SKIP_DIRECTORY_NAMES` is the
+authority -- CLAUDE.md says so, and `SKIP_DIRECTORIES` and `SKIP_PATTERNS` already
+derive from it -- but this set was hand-maintained beside it and had never heard
+of Rust's `target`. So `_walk_tsconfigs` descended into a Tauri project's build
+directory on **every watcher event**.
+
+The reporter cloned the repo and instrumented his own long-running `watch-all`
+process: **13.58s of a 13.75s reindex, against 0.27s once `target` was
+excluded.** It fired even when the watcher reported `no indexable changes`, which
+rules out parsing and persistence.
+
+⚠⚠ **Adding `"target"` here was the reported fix and would have been the wrong
+one** -- "fix the call site, leave the mechanism", our own standing lesson. The
+set derives from the authority now, so every build-tree spelling it already knows
+(`target`, `_build`, `.gradle`, `DerivedData`, the eight dotted framework trees)
+arrived at once and the next one needs no edit here. ⚠ **UNION, never
+replacement:** `out` is deliberately absent from the authority (it names a real
+source directory for the INDEXING walk) but has been skipped for tsconfig
+discovery for this function's whole life, and removing a skip is the one
+direction this change must not take.
+
+⚠⚠ **Second half: `index_folder` evicted the alias-map cache UNCONDITIONALLY**,
+so every watcher-driven single-file re-index paid the discovery walk again.
+`_load_tsconfig_aliases` has a module-level cache whose entire purpose is to make
+that walk once. **A cache invalidated on every write is not a cache**, and it hid
+behind the walk's own cost rather than showing up as one. A targeted run knows
+which files it touched and now keeps the map unless one of them is a
+tsconfig/jsconfig; a full run cannot know and still evicts, unchanged.
+
+⚠⚠ **This corrects our own instrument, and that is the part worth keeping.** The
+v1.108.304 phase breakdown blamed `save=9.906s` and we believed it -- but `save`
+includes rebuilding the in-memory `CodeIndex` after the SQLite transaction, and
+that reconstruction is what triggered the walk. **A phase boundary drawn at the
+wrong place names the wrong subsystem confidently**, which is worse than no
+breakdown at all: it sent us hunting lock contention that was never there.
+
+⚠ Measured here on a synthetic Rust `target/` (9,200 entries): **0.617s -> 0.003s**,
+aliases intact. That is a lower bound, not his number -- his is the real one.
+
+
 ## [1.108.306] - 2026-08-28 - A count taken after the page, and a field nobody read
 
 ### Fixed - a count taken after the page was cut (#559, @lilubot)

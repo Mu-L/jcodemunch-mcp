@@ -1407,6 +1407,25 @@ def discover_local_files(
     return files, warnings, skip_counts
 
 
+def _tsconfig_touched(candidate_paths) -> bool:
+    """True when any path names a tsconfig/jsconfig JSON.
+
+    ⚠ Matches the discovery rule in `_walk_tsconfigs` -- basename starts with
+    `tsconfig` or `jsconfig` and ends `.json` -- rather than approximating it.
+    A second spelling of the same rule is how the two drift apart.
+    """
+    for raw in candidate_paths or ():
+        try:
+            name = str(raw).replace("\\", "/").rsplit("/", 1)[-1]
+        except Exception:  # noqa: BLE001 - a caller-supplied path shape
+            continue
+        if name.endswith(".json") and (
+            name.startswith("tsconfig") or name.startswith("jsconfig")
+        ):
+            return True
+    return False
+
+
 def index_folder(
     path: str,
     use_ai_summaries: bool = True,
@@ -1474,8 +1493,24 @@ def index_folder(
     if not folder_path.is_dir():
         return {"success": False, "error": f"Path is not a directory: {path}"}
 
-    # Evict stale tsconfig alias map so re-indexing picks up edited tsconfig.json (C6-A)
-    _imap_cache.pop(str(folder_path), None)
+    # Evict the tsconfig alias map so re-indexing picks up an edited
+    # tsconfig.json (C6-A) -- but ONLY when this run could have changed it.
+    #
+    # ⚠⚠ This was unconditional (#557, @Ticki84), so every watcher-driven
+    # single-file re-index threw the map away and paid the full discovery walk
+    # again. `_load_tsconfig_aliases` has a module-level cache whose entire
+    # purpose is to make that walk once, and this line defeated it on the exact
+    # path that runs most often. **A cache invalidated on every write is not a
+    # cache**, and it hid behind the walk's cost rather than showing up as one.
+    #
+    # ⚠ A targeted run (`paths=` or the watcher's `changed_paths=`) knows
+    # exactly which files it touched, so it can answer the question. A full run
+    # cannot and still evicts, which is the pre-existing behaviour untouched.
+    _targeted = paths if paths else (
+        [c[1] for c in changed_paths] if changed_paths else None
+    )
+    if _targeted is None or _tsconfig_touched(_targeted):
+        _imap_cache.pop(str(folder_path), None)
 
     # Load and cache project-level config (.jcodemunch.jsonc) so subsequent
     # config.get() calls within this indexing run use project overrides.
