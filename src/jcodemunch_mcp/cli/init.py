@@ -1962,6 +1962,92 @@ def run_uninstall(
 # Status — read-only inspection of current install state
 # ---------------------------------------------------------------------------
 
+def _running_source_drift() -> dict[str, Any]:
+    """Is the code we are RUNNING the code in the tree it came from?
+
+    ⚠⚠ Measured 2026-08-29: this box ran **1.108.293 against a 1.108.307 tree
+    -- fourteen releases and six days** -- because jcodemunch was installed as a
+    regular (copied) distribution and nothing ever reinstalled it. We develop
+    jcodemunch using jcodemunch, so every tool call in that window exercised
+    six-day-old code, and the verification path quietly routed AROUND the
+    product: fixes were checked with `PYTHONPATH=src` instead of through the
+    server.
+
+    ⚠⚠ **`verify_package_integrity()` cannot see this and is not meant to.** It
+    asks whether the running module belongs to the OFFICIAL distribution -- a
+    supply-chain question -- and would certify a fourteen-release-old official
+    install without complaint. Ownership and freshness are different properties.
+
+    ⚠ Tri-state, deliberately. `drifted: None` means COULD NOT ESTABLISH (no
+    source tree beside the running module, an unreadable `pyproject.toml`, a
+    version that is `unknown` under `PYTHONPATH=src`). It is never `False`:
+    reporting "not drifted" for a comparison we could not make is the exact
+    defect this project keeps finding in its own instruments.
+    """
+    from .. import __version__ as _running
+
+    out: dict[str, Any] = {
+        "running_version": _running,
+        "tree_version": None,
+        "tree_path": None,
+        "editable": None,
+        "drifted": None,
+        "reason": None,
+    }
+
+    if not _running or _running == "unknown":
+        out["reason"] = "running version is unknown (source checkout without metadata)"
+        return out
+
+    try:
+        module_file = Path(_module_file_of("jcodemunch_mcp"))
+    except Exception:  # noqa: BLE001 - any import/attr failure is UNKNOWN
+        out["reason"] = "could not locate the running module"
+        return out
+
+    # A tree layout is <root>/src/jcodemunch_mcp/__init__.py; an installed copy
+    # sits in site-packages and has no pyproject.toml above it.
+    root = module_file.parent.parent.parent
+    pyproject = root / "pyproject.toml"
+    out["editable"] = pyproject.is_file()
+    if not out["editable"]:
+        out["reason"] = (
+            "installed copy, not a source tree -- nothing to compare against. "
+            "A regular install cannot drift silently the way an editable one "
+            "cannot drift at all; it simply goes stale until someone reinstalls."
+        )
+        return out
+
+    out["tree_path"] = str(root)
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        out["reason"] = f"could not read {pyproject}"
+        return out
+
+    m = re.search(r'(?m)^version\s*=\s*["\']([^"\']+)["\']', text)
+    if not m:
+        out["reason"] = "no version found in pyproject.toml"
+        return out
+
+    out["tree_version"] = m.group(1)
+    out["drifted"] = out["tree_version"] != _running
+    if out["drifted"]:
+        out["reason"] = (
+            f"running {_running} from a tree that says {out['tree_version']} -- "
+            f"reinstall (`pip install -e .`) and RESTART the MCP clients; a "
+            f"running server keeps serving what it loaded at startup"
+        )
+    return out
+
+
+def _module_file_of(name: str) -> str:
+    """The on-disk file backing an imported module. Split out so the drift
+    check can be tested without importing the package under a fake path."""
+    import importlib
+    return importlib.import_module(name).__file__ or ""
+
+
 def install_status() -> dict[str, Any]:
     """Read current state of every install target.
 
@@ -2060,6 +2146,11 @@ def install_status() -> dict[str, Any]:
         "project": _skill_status("project"),
     }
 
+    # ⚠ Freshness of the RUNNING code against its own tree (2026-08-29). The
+    #   release checklist has eight steps and none of them touch the dev box,
+    #   so this is the only place the drift can surface.
+    report["source_drift"] = _running_source_drift()
+
     return report
 
 
@@ -2100,6 +2191,17 @@ def print_status(report: Optional[dict[str, Any]] = None, *, as_json: bool = Fal
             info = report["skills"].get(scope, {})
             flag = "[x]" if info.get("present") else "[ ]"
             print(f"  {flag} {scope}  ({info.get('path', '')})")
+
+    drift = report.get("source_drift") or {}
+    if drift.get("drifted") is True:
+        print("\nRunning code:")
+        print(f"  [!] STALE - running {drift['running_version']}, "
+              f"tree is {drift['tree_version']}")
+        print(f"      {drift.get('reason', '')}")
+    elif drift.get("drifted") is None and drift.get("reason"):
+        # ⚠ UNKNOWN is reported, never silently rendered as fresh.
+        print("\nRunning code:")
+        print(f"  [?] {drift['reason']}")
     print()
 
 

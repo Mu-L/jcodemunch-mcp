@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Added - `install-status` reports whether the running code matches its tree
+
+⚠⚠ **Measured 2026-08-29: this box ran 1.108.293 against a 1.108.307 tree --
+fourteen releases and six days.** We develop jcodemunch using jcodemunch, so
+every tool call in that window exercised six-day-old code. It happened because
+the package was installed as a regular (copied) distribution and **the release
+checklist's eight steps never touch the dev box**: the process is complete with
+respect to users and silent with respect to us.
+
+⚠⚠ **`verify_package_integrity()` cannot see this and is not meant to.** It asks
+whether the running module belongs to the OFFICIAL distribution -- a
+supply-chain question -- and would certify a fourteen-release-old official
+install without complaint. **Ownership and freshness are different properties**,
+and having a startup check that inspects the distribution made it feel covered.
+
+⚠⚠ **The subtler tell was not the version gap.** With the dogfood that stale,
+every fix that week was verified with `PYTHONPATH=src` rather than through the
+server -- **the verification path routed AROUND the product, and nobody decided
+that.** Each individual choice was right; the pattern was the finding.
+
+`source_drift` is tri-state and `drifted: None` means COULD NOT ESTABLISH --
+never `False`. Reporting "not drifted" for a comparison that was never made is
+precisely the defect this project keeps finding in its own instruments (.305's
+churn axis, .306's test axis, a dead-code refusal published as a zero). It is
+UNKNOWN under `PYTHONPATH=src`, which is how the suite and CI both run.
+
+⚠ Maintenance Practice 11 records the process half. All five suite packages are
+editable now, so tree-vs-install drift is no longer possible -- only the restart
+is, because a running server keeps serving what it loaded at startup.
+`scripts/repair-munch-installs.ps1` repairs an interpreter and refuses while any
+server is running.
+
+
 ## [1.108.307] - 2026-08-29 - A phase boundary drawn at the wrong place
 
 ### Fixed - tsconfig discovery walked Rust's build tree on every watcher event (#557, @Ticki84)
