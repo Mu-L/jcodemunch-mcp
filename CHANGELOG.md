@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.308] - 2026-08-29 - Ownership and freshness are different properties
+
 ### Added - `install-status` reports whether the running code matches its tree
 
 ⚠⚠ **Measured 2026-08-29: this box ran 1.108.293 against a 1.108.307 tree --
