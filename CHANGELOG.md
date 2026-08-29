@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.307] - 2026-08-29 - A phase boundary drawn at the wrong place
+
 ### Fixed - tsconfig discovery walked Rust's build tree on every watcher event (#557, @Ticki84)
 
 ⚠⚠ **`_TSCONFIG_SKIP_DIRS` was the FOURTH copy of a skip list in this tree, and
