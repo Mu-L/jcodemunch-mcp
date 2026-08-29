@@ -12,7 +12,9 @@ turns clusters into suggested (never applied) config patches.
 
 v1.108.290 adds an ``inflation`` block beside the clusters: how many calls one
 information need actually cost, against the one call it should have. Clusters
-name WHICH queries went wrong; inflation says what the wrongness cost in total.
+name WHICH queries went wrong; inflation says what the wrongness cost in total,
+and its ``concentration`` sub-block says how much of that total sits in the
+worst few needs -- because ``ratio`` is a mean and a mean hides the tail.
 ⚠ Its basis is CALLS -- the ledger has no token column.
 
 Ledger tuple layout (matches the SELECT in ``token_tracker.ranking_db_query``):
@@ -57,6 +59,7 @@ MAX_EXAMPLES = 3            # example queries carried per cluster
 MAX_CLUSTERS_PER_SIGNAL = 5
 INFLATION_MIN_NEEDS = 5     # fewer information needs than this => ratio is noise
 INFLATION_WORST = 3         # worst-offending needs carried in the block
+INFLATION_HEAD_DIVISOR = 10  # the "head" is the worst tenth of needs, rounded up
 
 
 def _sev(count: int, hi: int, med: int) -> str:
@@ -280,6 +283,30 @@ def _detect_vocabulary_gap(by_qh: "dict[str, list[tuple]]") -> list[dict]:
 # is arguably not waste -- but subtracting it lowers our own inflation number,
 # and a self-flattering adjustment applied silently is the one direction this
 # metric must not drift. Report both and let the reader adjust.
+#
+# ⚠⚠ **`ratio` IS A MEAN, AND A MEAN CANNOT SEE THE TAIL IT IS AVERAGING.** An
+# external audit of 14,680 agent runs (Revenium, 2026-08) measured the top 1% of
+# runs carrying 46% of the spend and the top 5% carrying 77% -- one unattended
+# session was 4,819 calls. That distribution reports a comfortable ratio here:
+# one need burning 400 calls inside a corpus of 1,000 comes out at 1.4x, and the
+# digest one-liner quotes exactly that number. `worst` already NAMES the
+# offenders, so the data was never missing -- what was missing is the statement
+# that they hold the excess, which is the difference between "retrieval is a bit
+# lossy everywhere" and "go look at this one query".
+#
+# ⚠ The basis is `excess_calls`, not calls: every need costs one call by
+# definition, and a share computed over calls would be diluted by the floor.
+#
+# ⚠⚠ A concentration over ZERO excess is UNDEFINED, not diffuse. `0.0` would
+# read as "the waste is spread evenly", which is the strongest possible claim
+# assembled from there being no waste at all -- the `dead_code_pct: 0.0` shape.
+# It refuses instead.
+#
+# ⚠ `head_needs` is disclosed beside `head_share` because the head is a TENTH
+# ROUNDED UP: at the `INFLATION_MIN_NEEDS` floor it is one need of five, not one
+# of ten, and a share quoted without the count it covers is unreadable.
+# `needs_with_excess` is the other half -- "100% in the worst 10" means
+# something different when only 2 needs were ever re-asked.
 
 
 def _detect_inflation(rows: "Optional[list[tuple]]") -> dict:
@@ -341,13 +368,33 @@ def _detect_inflation(rows: "Optional[list[tuple]]") -> dict:
             })
     worst.sort(key=lambda w: -w["calls"])
 
+    excess = calls - len(needs)
+    if excess:
+        head_needs = max(1, -(-len(needs) // INFLATION_HEAD_DIVISOR))
+        head_excess = sum(w["excess_calls"] for w in worst[:head_needs])
+        concentration = {
+            "basis": "excess_calls",
+            "measurable": True,
+            "needs_with_excess": len(worst),
+            "top_need_share": round(worst[0]["excess_calls"] / excess, 3),
+            "head_needs": head_needs,
+            "head_share": round(head_excess / excess, 3),
+        }
+    else:
+        concentration = {
+            "basis": "excess_calls",
+            "measurable": False,
+            "reason": "no_excess_calls",
+        }
+
     out.update({
         "measurable": True,
         "needs": len(needs),
         "calls": calls,
         "ratio": round(calls / len(needs), 3),
-        "excess_calls": calls - len(needs),
+        "excess_calls": excess,
         "repeats_after_index_change": changed,
+        "concentration": concentration,
         "worst": worst[:INFLATION_WORST],
     })
     return out

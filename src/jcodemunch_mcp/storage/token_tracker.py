@@ -83,6 +83,58 @@ _ESTIMATE_RATIO_MAXSIZE = 50  # closed estimate-vs-actual samples kept per sessi
 _CALIBRATION_MIN_SAMPLES = 3  # calibration reported only at/after this floor
 _DEFAULT_TOKENS_PER_CALL = 700  # cold-start per-call estimate before session data
 _LATENCY_RING_DEFAULT = 512  # per-tool latency ring size
+
+
+def _percentile_at(sorted_vals: "list[float]", pct: float) -> float:
+    """Nearest-rank-style pick: the value at ``int(pct * n)``, clamped."""
+    if not sorted_vals:
+        return 0.0
+    return sorted_vals[max(0, min(len(sorted_vals) - 1, int(pct * len(sorted_vals))))]
+
+
+def latency_bucket(
+    sorted_vals: "list[float]",
+    errors: int,
+    *,
+    ring_capped: bool = False,
+) -> dict:
+    """The per-tool latency shape, from ONE place.
+
+    ⚠⚠ **`total_ms` is the field that says where the time WENT.** p50/p95/max
+    answer "how slow is one call", which is a different question and ranks
+    differently: a tool at p95 900 ms called 4,000 times consumes ~60x one at
+    p95 12,000 ms called three times, and a report ranked on rate alone puts the
+    second at the top. Sum is free -- the durations are already in hand.
+
+    ⚠⚠ **`p95_is_max` is MEASURED, never derived from the sample count.** The
+    percentile index collapses to the last element for small n (every n <= 20 at
+    the time of writing), so two published fields carry one sample. Comparing
+    the computed values keeps the flag correct if the percentile ever changes.
+
+    ⚠ `count_is_ring_capped` is not cosmetic: a share of total computed over
+    capped rings UNDERSTATES the busiest tool, which is precisely the tool the
+    share exists to find. Only the in-memory producer can cap; a windowed read
+    of the perf db counts every row in its window.
+    """
+    n = len(sorted_vals)
+    if not n:
+        return {"count": 0, "p50_ms": 0.0, "p95_ms": 0.0, "max_ms": 0.0,
+                "total_ms": 0.0, "errors": errors, "error_rate": 0.0}
+    p95 = _percentile_at(sorted_vals, 0.95)
+    bucket = {
+        "count": n,
+        "p50_ms": round(_percentile_at(sorted_vals, 0.5), 2),
+        "p95_ms": round(p95, 2),
+        "max_ms": round(sorted_vals[-1], 2),
+        "total_ms": round(sum(sorted_vals), 2),
+        "errors": errors,
+        "error_rate": round(errors / n, 3),
+    }
+    if p95 == sorted_vals[-1]:
+        bucket["p95_is_max"] = True
+    if ring_capped:
+        bucket["count_is_ring_capped"] = True
+    return bucket
 _PERF_DB_MAX_ROWS_DEFAULT = 100_000  # rolling cap on persisted perf rows
 # Ids retained per ranking event. The row also carries `returned_count`, the
 # TRUE size of the result set before this cap (#441) — without it a stored list
@@ -694,26 +746,21 @@ class _State:
             logger.debug("record_latency failed for %s", tool_name, exc_info=True)
 
     def _latency_stats_locked(self) -> dict:
-        """Compute p50/p95 per tool from the ring. Caller must hold _lock."""
+        """Compute the per-tool latency bucket from each ring. Caller holds _lock.
+
+        ⚠ The ring is capped at ``_LATENCY_RING_DEFAULT``, so a tool past the cap
+        reports a bucket over its most recent calls, not over the session. The
+        bucket says so; see ``latency_bucket``.
+        """
         out: dict = {}
         for tool, ring in self._tool_latencies.items():
             if not ring:
                 continue
-            sorted_vals = sorted(ring)
-            n = len(sorted_vals)
-            p50 = sorted_vals[n // 2]
-            # p95 index — bisect-style lower bound
-            p95_idx = max(0, min(n - 1, int(0.95 * n)))
-            p95 = sorted_vals[p95_idx]
-            errors = self._tool_errors.get(tool, 0)
-            out[tool] = {
-                "count": n,
-                "p50_ms": round(p50, 2),
-                "p95_ms": round(p95, 2),
-                "max_ms": round(sorted_vals[-1], 2),
-                "errors": errors,
-                "error_rate": round(errors / n, 3) if n else 0.0,
-            }
+            out[tool] = latency_bucket(
+                sorted(ring),
+                self._tool_errors.get(tool, 0),
+                ring_capped=len(ring) >= _LATENCY_RING_DEFAULT,
+            )
         return out
 
     def latency_stats(self) -> dict:

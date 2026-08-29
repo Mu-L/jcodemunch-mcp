@@ -337,6 +337,13 @@ def _compose_regret(repo: str, storage_path: Optional[str]) -> Optional[dict]:
         if inflation.get("measurable") and (inflation.get("ratio") or 0) > 1.0:
             summary["inflation_ratio"] = inflation["ratio"]
             summary["excess_calls"] = inflation.get("excess_calls", 0)
+            # ⚠ The ratio alone is a mean, and this line is the surface that
+            # quotes it. A share held by the worst need is what turns "retrieval
+            # is a bit lossy" into a query to go look at. Measurable here by
+            # construction -- ratio > 1.0 means excess_calls > 0.
+            conc = inflation.get("concentration") or {}
+            if conc.get("measurable"):
+                summary["top_need_share"] = conc["top_need_share"]
         return summary
     except Exception:
         logger.debug("compose_regret failed", exc_info=True)
@@ -409,7 +416,10 @@ def _render_markdown(s: dict) -> str:
             f"\n### Retrieval regret\n{regret['count']} regret cluster(s) this window; "
             f"top: {regret['top_signal']} ({regret['top_severity']}). "
             + (f"Retrieval inflation {regret['inflation_ratio']}x calls per "
-               f"information need ({regret['excess_calls']} excess). "
+               f"information need ({regret['excess_calls']} excess"
+               + (f", {round(regret['top_need_share'] * 100)}% of it in one query"
+                  if "top_need_share" in regret else "")
+               + "). "
                if "inflation_ratio" in regret else "")
             + "Run `reflect` for suggested fixes."
         )

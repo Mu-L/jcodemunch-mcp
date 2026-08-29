@@ -2,6 +2,99 @@
 
 ## [Unreleased]
 
+## [1.108.309] - 2026-08-29 - A mean hides the tail, and a default invents a comparison
+
+### Fixed - `analyze_perf` differenced latency against a baseline that never measured it
+
+`_diff_baseline` read `float(b.get("p50_ms", 0.0))`. **The only baseline that
+ships, `benchmarks/token_baselines/v1.108.163.json`, carries `tokens_saved` for
+its three tools and no latency keys at all**, so the zero stood in for a
+measurement nobody took and the subtraction was published as `p50_delta_ms` --
+a name asserting a comparison happened. Measured against that file: a tool at
+p95 900 ms reported `p95_delta_ms: 900.0`, read by any human as a 900 ms
+regression against a release that never timed it. `calls_delta` did the same.
+
+⚠⚠ **The test could not see it because its fixture was richer than the
+artifact.** `test_baseline_diff_with_synthetic_baseline` builds a baseline
+carrying `calls`, `p50_ms` and `p95_ms` -- keys the real file has for no tool --
+so the fabricated-delta path was structurally invisible to the test written
+about that exact code path. The replacement reads every baseline off disk.
+
+An absent measurement now yields `None` plus a `not_comparable` entry naming
+which side could not answer (`absent_in_baseline` / `absent_in_current` /
+`absent_in_both`), and `baseline_meta.tools_not_fully_comparable` carries the
+count so a caller reading only the header sees it. ⚠ Calls and tokens keep
+their meaningful zero on the CURRENT side -- a tool nobody called really did
+save nothing and really was called zero times. Latency has no such zero, and
+inventing one is the same defect from the other end.
+
+### Added - `heaviest_by_total_ms`: where the time actually went
+
+`slowest_by_p95` ranks how slow ONE call is, and it was the only ranking. Where
+the time went is `count x latency`, and the two orderings disagree whenever a
+fast tool is called often: a tool at p95 900 ms called 4,000 times consumes 100x
+one at p95 12,000 ms called three times, and the report put the second first.
+An external audit of 14,680 agent runs (Revenium, 2026-08) put 46% of spend in
+the top 1% of runs; a per-call ranking cannot see a distribution like that.
+
+`totals` carries the grand total and `measurable`; each row carries `total_ms`,
+`share`, `count`. ⚠⚠ A share over a zero total REFUSES rather than dividing,
+the same rule as the inflation concentration above.
+
+⚠⚠ **A ring-capped tool's share is a LOWER BOUND, and the cap bites hardest on
+the busiest tool** -- the one this ranking exists to surface. The in-memory ring
+holds 512 calls per tool, so capped tools are named in `totals.ring_capped_tools`
+and flagged per row.
+
+### Changed - one producer for the per-tool latency shape
+
+`token_tracker.latency_bucket` is now the only place that shape is built;
+`analyze_perf` held the second copy and the two agreed digit for digit, which is
+what makes a later divergence invisible. Its local `_percentile` is deleted
+rather than kept as a wrapper -- an unused copy is what regrows. The bucket
+gains `total_ms` and a measured `p95_is_max` flag: the percentile index
+collapses to the last element for every n <= 20, so two published fields carried
+one sample with nothing saying so. ⚠ The flag compares the computed values
+rather than the sample count, so it stays correct if the percentile changes.
+
+### Added - retrieval inflation reports where the excess sits, not just its mean
+
+`analyze_regret`'s `inflation` block gains a `concentration` sub-block:
+`top_need_share`, a `head_share` over the worst tenth of information needs
+(rounded up), and the `needs_with_excess` / `head_needs` counts those shares are
+computed against. Basis is `excess_calls`.
+
+⚠⚠ **`ratio` is a mean, and a mean cannot see the tail it is averaging.** An
+external audit of 14,680 agent runs (Revenium, 2026-08) measured the top 1% of
+runs carrying 46% of spend and the top 5% carrying 77%, with one unattended
+session at 4,819 calls over four days. That distribution reports a comfortable
+number here: one need burning 400 calls inside a corpus of 1,000 comes out at
+1.4x. `worst` already NAMED the offenders, so the data was never missing --
+what was missing is the statement that they hold the excess, which is the
+difference between "retrieval is a bit lossy everywhere" and "go look at this
+one query".
+
+⚠⚠ **The digest one-liner is where that mean reached a human**, so it carries
+the share now: two ledgers with an identical 1.4x -- one runaway query versus
+four ordinary ones -- used to render the same briefing.
+`test_the_digest_distinguishes_two_ledgers_the_ratio_cannot` is the record that
+they must not.
+
+⚠ The share is over `excess_calls`, never over calls: every need costs one call
+by definition, so a share over calls is diluted by the floor and the runaway
+query above reads 0.357 instead of 1.0.
+
+⚠⚠ **A concentration over zero excess is UNDEFINED, not diffuse.** `0.0` would
+read as "the waste is spread evenly" -- the strongest available claim assembled
+from there being no waste at all, the `dead_code_pct: 0.0` shape. It refuses
+with `no_excess_calls` instead, and `concentration` is absent from every shape
+that has no ratio.
+
+⚠ `head_needs` and `needs_with_excess` are disclosed beside the shares because
+the head is a tenth ROUNDED UP -- at the five-need floor it is one need of five,
+not one of ten, and "100% in the worst 10" means something different when only
+two needs were ever re-asked.
+
 ## [1.108.308] - 2026-08-29 - Ownership and freshness are different properties
 
 ### Added - `install-status` reports whether the running code matches its tree

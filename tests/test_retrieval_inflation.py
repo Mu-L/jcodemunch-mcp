@@ -220,3 +220,143 @@ def test_analyze_regret_carries_inflation_even_with_no_events(tmp_path):
 def test_every_inflation_shape_carries_the_shape_fields(field):
     for rows in (None, [], _needs(2), _needs(INFLATION_MIN_NEEDS)):
         assert field in _detect_inflation(rows)
+
+
+# --------------------------------------------------------------------------- #
+# Concentration -- what the mean cannot see
+# --------------------------------------------------------------------------- #
+
+def _distributed(spec, session="s1"):
+    """One ledger from ``spec``: a list of call-counts, one per need."""
+    rows = []
+    for i, calls in enumerate(spec):
+        rows += [_row(session, f"q{i}", query=f"query {i}", ts=float(i) + n / 100)
+                 for n in range(calls)]
+    return rows
+
+
+_CONCENTRATED = [5] + [1] * 9   # 14 calls, 10 needs, all 4 excess in one query
+_DIFFUSE = [2] * 4 + [1] * 6    # 14 calls, 10 needs, the excess spread over four
+
+
+def test_the_same_ratio_can_be_one_runaway_query_or_four_ordinary_ones():
+    """⚠⚠ The property the mean cannot express, and the reason this field exists.
+
+    Both ledgers report 1.4x. One of them is a single query re-asked five times;
+    the other is four queries asked twice. The action differs completely and the
+    ratio is identical -- which is the Revenium distribution in miniature (top 1%
+    of runs, 46% of spend).
+
+    ⚠ If ``ratio`` is ever the only number a surface quotes, this test is the
+    record that it was known to be insufficient.
+    """
+    hot = _detect_inflation(_distributed(_CONCENTRATED))
+    even = _detect_inflation(_distributed(_DIFFUSE))
+
+    assert hot["ratio"] == even["ratio"] == 1.4
+    assert hot["excess_calls"] == even["excess_calls"] == 4
+
+    assert hot["concentration"]["top_need_share"] == 1.0
+    assert even["concentration"]["top_need_share"] == 0.25
+    assert hot["concentration"]["needs_with_excess"] == 1
+    assert even["concentration"]["needs_with_excess"] == 4
+
+
+def test_the_share_is_over_excess_calls_not_over_calls():
+    """⚠ Every need costs one call by definition, so a share over CALLS is
+    diluted by the floor: the runaway query above would read 0.357 instead of
+    1.0 and the tail would look ordinary again."""
+    conc = _detect_inflation(_distributed(_CONCENTRATED))["concentration"]
+    assert conc["basis"] == "excess_calls"
+    assert conc["top_need_share"] == 1.0, "the share was computed over calls"
+
+
+def test_a_clean_ledger_refuses_a_share_rather_than_reporting_zero():
+    """⚠⚠ ``0.0`` would read as "the waste is spread evenly" -- the strongest
+    available claim assembled from there being no waste at all. Same rule as a
+    refusal never becoming ``dead_code_pct: 0.0``."""
+    conc = _detect_inflation(_needs(INFLATION_MIN_NEEDS))["concentration"]
+    assert conc["measurable"] is False
+    assert conc["reason"] == "no_excess_calls"
+    assert "top_need_share" not in conc
+    assert "head_share" not in conc
+
+
+def test_the_head_discloses_how_many_needs_it_covers():
+    """⚠ A tenth ROUNDED UP: at the five-need floor the head is one need of
+    five, not one of ten. A share quoted without the count it covers is
+    unreadable, so both are emitted."""
+    small = _detect_inflation(_distributed([3] + [1] * 4))["concentration"]
+    assert small["head_needs"] == 1
+    assert small["head_share"] == 1.0
+
+    big = _detect_inflation(_distributed([2] * 5 + [1] * 25))["concentration"]
+    assert big["head_needs"] == 3, "30 needs -> a head of three"
+    assert big["needs_with_excess"] == 5
+    assert big["head_share"] == 0.6, "three of the five re-asked needs"
+
+
+def test_concentration_is_absent_from_every_unmeasurable_shape():
+    """The refusals stay refusals -- a shape with no ratio has no tail either."""
+    for rows in (None, _needs(INFLATION_MIN_NEEDS - 1)):
+        assert "concentration" not in _detect_inflation(rows)
+
+
+# --------------------------------------------------------------------------- #
+# The digest line -- the surface that quotes the mean
+# --------------------------------------------------------------------------- #
+#
+# ⚠ The inflation half of every fixture below comes from `_detect_inflation`
+# itself, never from a hand-written dict. A stand-in producer can supply a key
+# the real one never emits, which makes an absent-key defect invisible to the
+# test written about that exact path.
+
+def _regret_out(rows):
+    return {
+        "clusters": [{"signal": "requery_churn", "severity": "high"}],
+        "events_analyzed": len(rows),
+        "inflation": _detect_inflation(rows),
+    }
+
+
+def _digest_line(monkeypatch, rows):
+    from jcodemunch_mcp.retrieval import regret as regret_mod
+    from jcodemunch_mcp.tools import digest as digest_mod
+
+    monkeypatch.setattr(regret_mod, "analyze_regret",
+                        lambda repo, **kw: _regret_out(rows))
+    summary = digest_mod._compose_regret("o/n", None)
+    text = digest_mod._render_markdown(
+        {"repo": "o/n", "n_symbols": 1, "n_files": 1, "regret": summary}
+    )
+    return summary, text
+
+
+def test_the_digest_distinguishes_two_ledgers_the_ratio_cannot(monkeypatch):
+    """⚠⚠ This line is where the mean reached a human. Both briefings say 1.4x;
+    only one of them sends the reader to a single query."""
+    hot_summary, hot = _digest_line(monkeypatch, _distributed(_CONCENTRATED))
+    even_summary, even = _digest_line(monkeypatch, _distributed(_DIFFUSE))
+
+    assert hot_summary["top_need_share"] == 1.0
+    assert even_summary["top_need_share"] == 0.25
+    assert "1.4x" in hot and "1.4x" in even
+    assert "100% of it in one query" in hot
+    assert "25% of it in one query" in even
+    assert hot != even, "the two briefings read identically"
+
+
+def test_the_line_still_renders_without_a_share(monkeypatch):
+    """A summary carrying no share must not take the digest down -- the renderer
+    reads it with a membership test, not a ``.get`` default that would print a
+    fabricated 0%."""
+    from jcodemunch_mcp.tools import digest as digest_mod
+
+    text = digest_mod._render_markdown({
+        "repo": "o/n", "n_symbols": 1, "n_files": 1,
+        "regret": {"count": 1, "events": 9, "top_signal": "requery_churn",
+                   "top_severity": "high", "inflation_ratio": 1.4,
+                   "excess_calls": 4},
+    })
+    assert "1.4x" in text and "(4 excess)." in text
+    assert "%" not in text.split("Retrieval inflation")[1].split("Run `reflect`")[0]
