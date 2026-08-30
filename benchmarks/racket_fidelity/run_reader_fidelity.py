@@ -53,7 +53,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from jcodemunch_mcp.parser import extractor as _extractor  # noqa: E402
-from jcodemunch_mcp.parser.extractor import _racket_tier  # noqa: E402
+from jcodemunch_mcp.parser.extractor import _racket_command_char, _racket_tier  # noqa: E402
 from jcodemunch_mcp.parser.racket_reader import read_racket  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -266,20 +266,20 @@ def main() -> int:
     for i in range(0, len(paths), args.batch):
         chunk = []
         for p in paths[i:i + args.batch]:
-            tier, _lang = _racket_tier(p.read_bytes(), "/racket-fidelity")
+            tier, written = _racket_tier(p.read_bytes(), "/racket-fidelity")
             if tier == "text":
                 skipped_text.append(str(p))
             else:
-                chunk.append((p, tier == "at-exp"))
+                chunk.append((p, tier == "at-exp", _racket_command_char(written, "/racket-fidelity")))
         try:
-            oracle = run_oracle([p for p, _ in chunk], args.timeout)
+            oracle = run_oracle([p for p, _, _ in chunk], args.timeout)
         except subprocess.TimeoutExpired:
             per_file.extend({"file": str(p), "racket_error": "oracle timeout", "only_racket": [],
-                             "only_ours": [], "nodes_compared": 0, "at_forms": 0} for p, _ in chunk)
+                             "only_ours": [], "nodes_compared": 0, "at_forms": 0} for p, _, _ in chunk)
             continue
-        for p, at_exp in chunk:
+        for p, at_exp, cc in chunk:
             rec = oracle.get(str(p)) or {"error": "no oracle output"}
-            per_file.append(compare(p, rec, at_exp))
+            per_file.append(compare(p, rec, at_exp, cc))
         print(f"  {min(i + args.batch, len(paths))}/{len(paths)}", file=sys.stderr)
 
     racket_errors = [f for f in per_file if f.get("racket_error")]

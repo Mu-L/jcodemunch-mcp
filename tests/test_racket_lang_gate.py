@@ -86,7 +86,7 @@ def test_lang_line_is_not_read_from_inside_the_body():
     ("at-exp racket/base", "at-exp"), ("at-exp racket", "at-exp"),
     ("debug racket/base", "sexp"), ("errortrace racket", "sexp"),
     ("punct", "text"), ("punct opcraftco", "text"), ("scribble/manual", "text"),
-    ("scribble/base", "text"), ("pollen", "text"), ("pollen/mode", "text"),
+    ("scribble/base", "text"), ("pollen", "text"), ("pollen/mode racket/base", "at-exp"),
     ("markdown", "text"), ("brag", "text"), ("datalog", "text"),
     ("rhombus", "text"), ("at-exp scribble/base", "text"),
 ])
@@ -260,6 +260,22 @@ def test_a_lang_may_declare_its_own_command_character(langs):
            "(define @plain 2)\n")
     names = _names(src, repo="/proj")
     assert names == {"step", "after", "@plain"}
+
+
+def test_pollen_mode_is_at_exp_with_the_lozenge():
+    """`#lang pollen/mode racket/base` is `make-at-readtable #:command-char
+    #\◊` over its argument (pollen/mode.rkt, hardcoded). It was text --
+    `pollen` is a document lang and the prefix rule caught `pollen/mode` --
+    so 30 files of Racket code in one site yielded nothing."""
+    from jcodemunch_mcp.parser.extractor import _racket_command_char
+    src = ("#lang pollen/mode racket/base\n"
+           "(define (step)\n"
+           "  ◊div{He said \"hi\"; @not-a-form})\n"
+           "(define (after) 1)\n")
+    assert _racket_tier(src.encode())[0] == "at-exp"
+    assert _racket_command_char("pollen/mode racket/base", None) == "◊".encode()
+    assert _names(src) == {"step", "after"}
+    assert _racket_tier(b"#lang pollen\n")[0] == "text", "a Pollen DOCUMENT is still a document"
 
 
 def test_the_object_form_and_the_string_form_declare_the_same_tier(langs):

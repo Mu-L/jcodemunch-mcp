@@ -11489,10 +11489,14 @@ _RACKET_TEXT_LANGS = frozenset({
     "rhombus", "sweet-exp", "honu", "reader",
 })
 
-#: Langs that take ANOTHER lang as their argument. `at-exp` changes the
-#: reader (text bodies); the rest are transparent wrappers whose syntax is
-#: whatever the argument's is.
-_RACKET_ATEXP_WRAPPERS = frozenset({"at-exp"})
+#: Langs that take ANOTHER lang as their argument. The at-exp wrappers change
+#: the reader (text bodies) and each has its command character: `pollen/mode`
+#: is `make-at-readtable #:command-char #\◊` over its argument, hardcoded in
+#: pollen/mode.rkt (measured on 7 `#lang pollen/mode racket/base` files,
+#: 5,977 nodes and 51 at-forms: none differ from Racket's reader). The rest are transparent wrappers
+#: whose syntax is whatever the argument's is.
+_RACKET_ATEXP_WRAPPER_CHARS = {"at-exp": "@", "pollen/mode": "◊"}
+_RACKET_ATEXP_WRAPPERS = frozenset(_RACKET_ATEXP_WRAPPER_CHARS)
 _RACKET_TRANSPARENT_WRAPPERS = frozenset({"debug", "errortrace", "profile"})
 
 _RACKET_TIERS = frozenset({"sexp", "at-exp", "text"})
@@ -11568,8 +11572,10 @@ def _racket_command_char(written: str, repo: Optional[str]) -> bytes:
     argument. UTF-8 bytes, because the reader scans bytes.
     """
     parts = written.split()
-    if not parts or parts[0] in _RACKET_ATEXP_WRAPPERS:
+    if not parts:
         return _RACKET_DEFAULT_COMMAND_CHAR.encode()
+    if parts[0] in _RACKET_ATEXP_WRAPPERS:
+        return _RACKET_ATEXP_WRAPPER_CHARS[parts[0]].encode("utf-8")
     lang = parts[1] if parts[0] in _RACKET_TRANSPARENT_WRAPPERS and len(parts) > 1 else parts[0]
     for key, (_tier, cc) in _racket_lang_config(repo).items():
         if _racket_lang_matches(lang, {key}):

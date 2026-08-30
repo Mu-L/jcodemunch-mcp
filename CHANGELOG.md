@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed - `#lang pollen/mode racket/base` is Racket code, not a Pollen document
+
+`pollen/mode` is a meta-language: `make-at-readtable #:command-char #\◊` over
+its argument, hardcoded in pollen/mode.rkt -- `at-exp` with a lozenge. The
+`#lang` gate's prefix rule filed it under `pollen`, a document lang, so every
+`.rkt` written in it yielded no symbols and (see the next entry) contributed
+its `require` edges only by the regex's accident. It is a built-in at-exp
+wrapper now, with its command character beside `at-exp`'s `@`. ⚠ Measured
+against Racket's own reader on 7 real `#lang pollen/mode racket/base` files
+(5,977 nodes, 51 at-forms): none differ. `#lang pollen` -- the document -- is
+still a document. ⚠ `test_built_in_tiers` had pinned `pollen/mode` as `text`,
+the prefix rule's answer written down as the intended one.
+
 ### Added - `racket_langs` may declare a lang's at-exp command character
 
 `{"mylang": {"tier": "at-exp", "command_char": "◊"}}` beside the string form.

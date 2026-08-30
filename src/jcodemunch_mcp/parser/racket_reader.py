@@ -198,7 +198,9 @@ _LANG_ALIAS = re.compile(rb"#!([A-Za-z0-9+_-][A-Za-z0-9+_/-]*)")
 #: `#lang` names whose reader consumes ONE more module path (`#lang at-exp
 #: racket/base`, `#lang s-exp "x.rkt"`). Read as part of the `extension`
 #: node; otherwise `racket/base` would be a symbol at module level.
-LANG_TAKES_ARGUMENT = frozenset({"at-exp", "s-exp", "reader", "debug", "errortrace", "profile"})
+LANG_TAKES_ARGUMENT = frozenset({
+    "at-exp", "pollen/mode", "s-exp", "reader", "debug", "errortrace", "profile",
+})
 _HERE = re.compile(rb"#<<([^\n]*)\n")
 _CHAR = re.compile(rb"#\\(?:u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{3}|[A-Za-z]+"
                    rb"|[\x00-\x7f]|[\xc0-\xf7][\x80-\xbf]*)")
