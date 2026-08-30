@@ -140,13 +140,15 @@ def test_forms_fixture_is_fully_covered(classify, frozen):
     assert not {"stack", "app", "unit-internal"} & names
 
 
-def test_atexp_fixture_is_fully_covered_although_the_grammar_fails_on_it(classify, frozen):
-    """The raw bytes fail tree-sitter (non-vacuity); every definition is found
-    anyway, and the internal helper inside a text body is not promoted."""
-    from jcodemunch_mcp.parser.extractor import _parse_racket_symbols, get_parser
+def test_atexp_fixture_is_fully_covered_although_the_default_reader_fails_on_it(classify, frozen):
+    """The raw bytes fail the DEFAULT reader (non-vacuity: the tier is what
+    switches at-exp mode on); every definition is found anyway, and the
+    internal helper inside a text body is not promoted."""
+    from jcodemunch_mcp.parser.extractor import _parse_racket_symbols
+    from jcodemunch_mcp.parser.racket_reader import read_racket
     raw = (FIXTURES / "atexp.rkt").read_bytes()
-    assert get_parser("racket").parse(raw).root_node.has_error, \
-        "non-vacuity: the fixture must still break the grammar"
+    assert read_racket(raw).errors, \
+        "non-vacuity: the fixture must still fail the default reader"
     result = _result(classify, frozen, "atexp.rkt")
     assert result["missing"] == []
     names = {s.name for s in _parse_racket_symbols(raw, "atexp.rkt")}

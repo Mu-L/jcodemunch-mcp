@@ -51,7 +51,15 @@ import re
 from bisect import bisect_right
 from typing import Optional
 
-__all__ = ["RacketNode", "RacketTree", "RacketReadError", "read_racket"]
+__all__ = ["RacketNode", "RacketTree", "RacketReadError", "read_racket", "READER_GENERATION"]
+
+#: Bump when the reader changes what UNCHANGED `.rkt` bytes yield. Stamped on
+#: every local index that holds Racket files (`CodeIndex.racket_reader_generation`)
+#: and compared at the next index, so the change reaches exactly those indexes
+#: with one full re-parse -- the Racket-local shape of `PARSER_GENERATION`,
+#: which would re-parse every language for everybody. 1 is the first reader;
+#: an index with no stamp was parsed by tree-sitter.
+READER_GENERATION = 1
 
 
 class RacketReadError(Exception):

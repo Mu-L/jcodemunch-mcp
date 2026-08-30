@@ -2495,7 +2495,9 @@ def index_folder(
             # `racket_index_predates_gate` -- the index carries no config
             # stamp, so it was built before the Racket extraction changes of
             # 2026-08-27 and may hold symbols the `#lang` gate now refuses;
-            # `racket_config_changed` -- `racket_definition_forms` /
+            # `racket_reader_changed` -- the index's `.rkt` files were parsed
+            # by an earlier reader generation (or by tree-sitter, which stamped
+            # nothing); `racket_config_changed` -- `racket_definition_forms` /
             # `racket_langs` differ from the stamp, and they change what the
             # parser emits for UNCHANGED content, which the incremental path
             # never re-reads.
@@ -2510,6 +2512,16 @@ def index_folder(
                 warnings.append(
                     "This index holds Racket files and was built before the Racket #lang gate; "
                     "every file was re-parsed once so its Racket symbols match the current parser."
+                )
+            elif _racket_reason == "racket_reader_changed":
+                logger.warning(
+                    "index_folder racket_reader_changed — %s/%s: this index's Racket files "
+                    "were parsed by an earlier reader; re-parsing every file once",
+                    owner, repo_name,
+                )
+                warnings.append(
+                    "This index's Racket files were parsed by an earlier Racket reader; "
+                    "every file was re-parsed once so its Racket symbols match the current one."
                 )
             else:
                 logger.warning(

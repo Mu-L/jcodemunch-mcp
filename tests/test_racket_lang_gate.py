@@ -1,9 +1,11 @@
-"""The Racket `#lang` gate: a reader is decided before the grammar runs.
+"""The Racket `#lang` gate: a reader is decided before anything is read.
 
-tree-sitter-racket parses S-expressions. A `#lang` line names a READER, and a
-reader can make a `.rkt` file's surface syntax anything at all -- Markdown
-(`punct`), prose (`scribble/manual`), at-exp text over Racket (`conscript`).
-Before this gate the walker parsed every `.rkt` as `racket/base`.
+A `#lang` line names a READER, and a reader can make a `.rkt` file's surface
+syntax anything at all -- Markdown (`punct`), prose (`scribble/manual`),
+at-exp text over Racket (`conscript`). Before this gate the walker parsed
+every `.rkt` as `racket/base`; now the tier selects the mode of
+`racket_reader.py` (S-expressions, or S-expressions with `@` as the command
+character) or refuses to read a document at all.
 
 Measured on 207 `#lang conscript` files against Racket's own reader: 39% of
 definitions found, ~100 FABRICATED (an internal `define` promoted to module
@@ -20,11 +22,10 @@ import pytest
 
 from jcodemunch_mcp.parser.extractor import (
     _parse_racket_symbols,
-    _racket_blank_atexp_bodies,
     _racket_lang_of,
     _racket_tier,
-    get_parser,
 )
+from jcodemunch_mcp.parser.racket_reader import read_racket
 
 
 @pytest.fixture(autouse=True)
@@ -166,7 +167,7 @@ def test_malformed_entries_cost_one_entry_not_the_file(langs, bad):
     assert _racket_tier(b"#lang conscript\n", repo="/proj")[0] == "text"
 
 
-# ── at-exp: text bodies are blanked, offsets are not ──────────────────────
+# ── at-exp: text bodies are read as text, by the reader ───────────────────
 
 HAZARDS = {
     "semicolon": "Thanks; you are done",
@@ -181,14 +182,14 @@ HAZARDS = {
 @pytest.mark.parametrize("text", list(HAZARDS.values()), ids=list(HAZARDS))
 def test_atexp_text_body_hazards_no_longer_swallow_later_definitions(text):
     """⚠ Each of these is prose to Racket's at-exp reader and a token to the
-    grammar. `"` alone took every later definition in the file with it; the
-    others made the enclosing form an ERROR."""
+    DEFAULT reader. `"` alone took every later definition in the file with it;
+    the others made the enclosing form an error. The tier is what switches
+    the reader into at-exp mode; without it the same bytes do not read."""
     src = ("#lang at-exp racket/base\n"
            "(define (step)\n"
            f"  @html{{{text}}})\n"
            "(define (after) 1)\n")
-    parsed = get_parser("racket").parse(src.encode())
-    assert parsed.root_node.has_error, "non-vacuity: the raw text must break the grammar"
+    assert read_racket(src.encode()).errors, "non-vacuity: the default reader must fail on the raw text"
     assert _names(src) == {"step", "after"}
 
 
@@ -200,17 +201,16 @@ def test_atexp_nested_bodies_and_commands():
     assert _names(src) == {"step", "after"}
 
 
-def test_blanking_keeps_every_offset():
-    src = b'#lang at-exp racket/base\n(define (f) @p{a "b" ; c})\n(define g 2)\n'
-    out = _racket_blank_atexp_bodies(src)
-    assert len(out) == len(src)
-    assert out.count(b"\n") == src.count(b"\n"), "line numbers must survive"
-    # Outside the body, byte-identical; inside, spaces; the braces themselves kept.
-    body_start = src.index(b"{") + 1
-    body_end = src.index(b"}")
-    assert out[:body_start] == src[:body_start]
-    assert out[body_end:] == src[body_end:]
-    assert out[body_start:body_end] == b" " * (body_end - body_start)
+def test_offsets_and_lines_come_from_the_original_bytes():
+    """The symbol's byte range and line number must name the source file,
+    not any intermediate form of it -- the byte-blanking pre-pass this
+    replaced kept offsets by construction; the reader keeps them because
+    there is no intermediate form."""
+    src = '#lang at-exp racket/base\n(define (f) @p{a "b" ; c})\n(define g 2)\n'
+    syms = {s.name: s for s in _parse_racket_symbols(src.encode(), "f.rkt")}
+    f, g = syms["f"], syms["g"]
+    assert src.encode()[f.byte_offset:f.byte_offset + f.byte_length] == b'(define (f) @p{a "b" ; c})'
+    assert (f.line, g.line) == (2, 3)
 
 
 def test_symbols_from_an_atexp_file_hash_the_original_bytes():
@@ -239,9 +239,9 @@ def test_a_brace_in_code_mode_does_not_open_a_body(code):
     assert "after" in _names(src)
 
 
-def test_a_brace_body_in_a_plain_racket_file_is_not_blanked():
+def test_a_brace_body_in_a_plain_racket_file_is_a_list():
     """`{}` are parentheses in the default reader -- `(let {[x 1]} x)` is
-    legal Racket -- so the sexp tier must not touch them."""
+    legal Racket -- so the sexp tier reads them as lists, never as text."""
     src = "#lang racket/base\n(define (f) (let {[x (helper 1)]} x))\n"
     (f,) = _parse_racket_symbols(src.encode(), "g.rkt")
     assert "helper" in f.call_references
@@ -251,38 +251,31 @@ def test_atexp_over_a_text_lang_is_still_text():
     assert _racket_tier(b"#lang at-exp scribble/base\n")[0] == "text"
 
 
-# ── ERROR recovery: skipped in both directions ────────────────────────────
+# ── read errors: the broken form is skipped, the rest of the file is not ──
 
-def test_a_recovery_promoted_internal_define_is_not_a_module_binding(caplog):
-    """⚠ Regression for the fabrication class. An unterminated string inside
-    a form makes tree-sitter re-parent the form's INTERNAL define under a root
-    ERROR node (`list -> ERROR -> program`, the shape measured on a real
-    `(define abc@ (unit ... (define (compute-payment) ...)))`). Walking ERROR
-    reported `inner` as an importable module-level function."""
+def test_an_internal_define_inside_a_broken_form_is_not_a_module_binding(caplog):
+    """⚠ Regression for the fabrication class. Under tree-sitter an
+    unterminated string inside a form re-parented the form's INTERNAL define
+    under a root ERROR node (`list -> ERROR -> program`, measured on a real
+    `(define abc@ (unit ... (define (compute-payment) ...)))`) and walking it
+    reported `inner` as an importable module-level function. The reader
+    marks the whole broken form ERROR, so `inner` is inside it, not beside
+    it -- and the definition AFTER the broken form is still found."""
     import logging
     src = ('#lang racket\n(define outer\n  (thing\n    (define (inner) 1)\n'
            '    "))\n(define (after) 2)\n')
-    tree = get_parser("racket").parse(src.encode())
-
-    def ancestry(n):
-        if n.type == "list" and n.text.startswith(b"(define (inner)"):
-            chain, m = [], n
-            while m is not None:
-                chain.append(m.type)
-                m = m.parent
-            return chain
-        for c in n.children:
-            r = ancestry(c)
-            if r:
-                return r
-    assert "ERROR" in (ancestry(tree.root_node) or []), \
-        "non-vacuity: recovery must have promoted `inner` for this test to mean anything"
+    root = read_racket(src.encode()).root_node
+    assert [c.type for c in root.children] == ["extension", "ERROR", "list"], \
+        "non-vacuity: the broken form must be an ERROR node at top level"
+    assert not any(c.type == "list" and c.text.startswith(b"(define (inner)") for c in root.children)
 
     with caplog.at_level(logging.WARNING, logger="jcodemunch_mcp.parser.extractor"):
         names = _names(src)
-    assert "inner" not in names
+    assert "inner" not in names and "outer" not in names
+    assert names == {"after"}
     assert any("g.rkt" in r.getMessage() and "not indexed" in r.getMessage()
-               for r in caplog.records), "the partial parse must be announced"
+               and "line 5" in r.getMessage()
+               for r in caplog.records), "the partial read must be announced, with its line"
 
 
 def test_a_clean_file_logs_no_parse_warning(caplog):
@@ -292,14 +285,35 @@ def test_a_clean_file_logs_no_parse_warning(caplog):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-def test_definitions_after_a_stray_close_paren_are_missed_not_fabricated():
-    """The other direction, pinned so it is a decision rather than an
-    accident: a stray `)` puts every later top-level form under ERROR. They
-    are lost -- the WARNING names the file -- because the same ERROR node is
-    where recovery puts promoted internal defines, and the two cannot be told
-    apart."""
-    names = _names("#lang racket\n(define (a) 1))\n(define (b) 2)\n")
-    assert names == {"a"}
+def test_definitions_after_a_stray_close_paren_are_indexed(caplog):
+    """⚠ This test used to pin the OPPOSITE: under tree-sitter a stray `)`
+    put every later top-level form under ERROR and they were lost, "pinned so
+    it is a decision rather than an accident". It was the defect written down
+    as intended behaviour (Practice 9). The reader resynchronises at the next
+    column-0 form, so only the `)` itself is an ERROR and `b` is found; the
+    WARNING still names the file and line."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="jcodemunch_mcp.parser.extractor"):
+        names = _names("#lang racket\n(define (a) 1))\n(define (b) 2)\n")
+    assert names == {"a", "b"}
+    assert any("line 2" in r.getMessage() for r in caplog.records)
+
+
+def test_a_missing_close_paren_costs_its_form_not_the_file():
+    """Racket rejects the whole file. Under tree-sitter the open form
+    swallowed everything after it. Now `a` is lost (its extent is unknown)
+    and `b`, `c` are found."""
+    names = _names("#lang racket\n(define (a) 1\n(define (b) 2)\n(define (c) 3)\n")
+    assert names == {"b", "c"}
+
+
+def test_an_extra_close_paren_does_not_leak_internal_defines():
+    """The form closes early and its remaining internal definitions arrive at
+    top level indented -- the shape tree-sitter's recovery turned into
+    fabricated module-level bindings. They fold into the ERROR instead."""
+    src = ("#lang racket\n(define (a)\n  (let ()\n    (define (inner) 1)))\n"
+           "    (define (leaked) 2))\n(define (b) 3)\n")
+    assert _names(src) == {"a", "b"}
 
 
 def test_lang_after_a_block_comment_is_still_seen_by_the_gate():

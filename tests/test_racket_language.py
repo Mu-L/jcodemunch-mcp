@@ -40,10 +40,17 @@ def _by_name(source: str) -> dict:
 
 # ── wiring ────────────────────────────────────────────────────────────────
 
-def test_racket_parser_available():
-    """Non-vacuity for everything below: the grammar must load."""
-    from tree_sitter_language_pack import get_parser
-    assert get_parser("racket") is not None
+def test_racket_is_read_by_the_reader_not_tree_sitter(monkeypatch):
+    """`.rkt` goes through `racket_reader.py`. If any path back to the
+    grammar returns, this fails: a `#lang` selects a reader a grammar cannot
+    follow, and the grammar's error recovery fabricated module-level
+    bindings."""
+    from jcodemunch_mcp.parser import extractor
+
+    def _refuse(*_a, **_k):
+        raise AssertionError("tree-sitter must not be consulted for Racket")
+    monkeypatch.setattr(extractor, "get_parser", _refuse)
+    assert set(_by_name("(define (greet name) name)")) == {"greet"}
 
 
 @pytest.mark.parametrize("ext", [".rkt", ".rktl", ".rktd"])

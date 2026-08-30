@@ -110,6 +110,11 @@ def _key(content: str, filename: str, language: str, repo: Optional[str] = None)
     h = hashlib.sha256(content.encode("utf-8", "surrogatepass")).hexdigest()
     key = f"v{_index_version()}:{language}:{h}:{filename}"
     if language == "racket":
+        # The reader generation first: the key carries INDEX_VERSION, not
+        # PARSER_GENERATION, so without it a `.rkt` parsed by tree-sitter
+        # would be served after the reader replaced it.
+        from .racket_reader import READER_GENERATION
+        key = f"{key}:rr{READER_GENERATION}"
         # `racket_definition_forms` / `racket_langs` change what the parser
         # emits for identical bytes, so identical bytes are not one entry
         # across two configs. Empty for an unconfigured project, so the key

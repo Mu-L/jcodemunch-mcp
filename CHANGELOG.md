@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Changed - `.rkt` is read by the Racket reader; the brace-blanking pass is gone
+
+`_parse_racket_symbols` reads through `racket_reader.py` now, with `@` as the
+command character when the `#lang` tier says `at-exp`, and tree-sitter is not
+consulted for Racket at all (`test_racket_language.py` fails if any path back
+to the grammar returns). The walker is unchanged: the reader produces the tree
+shape it already consumed. ⚠⚠ **The expander harness is byte-for-byte the
+committed run** -- 211 files, `extra` 0, `wrong_span` 0, `missing` 362, 89.7%
+-- which is the point of a behaviour-preserving swap and the reason the reader
+was measured against `read-syntax` on its own first. **On 208 `#lang conscript`
+files, with no blanking: 0 missing, 0 wrong spans.**
+
+Deleted: `_racket_blank_atexp_bodies`, the 1.108.303 pre-pass that overwrote
+every `{...}` body with spaces so the grammar would not see the `;` `"` `#` `|`
+inside. It could not see `@(define ...)` inside a body, or a `{` inside a
+string inside a body, or a `|{ ... }|` alternate delimiter; the reader reads
+bodies as Racket does, so none of those is a case any more.
+
+⚠ **A read error now costs the broken form, not the rest of the file.** The
+reader marks the form's span ERROR and resumes at the next column-0 form; the
+walker still skips ERROR. So a stray `)` at line 40 no longer loses every
+definition after it, and the WARNING names the file AND the line of the first
+error with a count. ⚠⚠ `test_definitions_after_a_stray_close_paren_are_missed_not_fabricated`
+pinned the loss as intended behaviour ("pinned so it is a decision rather than
+an accident") -- Practice 9, the defect written down as the spec -- and asserts
+the definitions are found now. An unterminated string inside a form leaves the
+form's INTERNAL define inside the ERROR rather than beside it, which is the
+fabrication tree-sitter's recovery produced (measured on a real `unit` body);
+and an EXTRA `)` folds the indented forms it leaked back into the ERROR.
+
+⚠⚠ **No `PARSER_GENERATION` bump.** The reader changes what unchanged `.rkt`
+bytes yield (at-exp bodies, error handling), and the incremental path never
+re-reads unchanged content -- so `racket_reader.READER_GENERATION` is stamped
+on every local index holding Racket files beside the config digest, under the
+same rule: absent means tree-sitter parsed it. A mismatch forces one full
+re-parse with its own reason, `racket_reader_changed`, and reaches exactly the
+indexes that hold `.rkt` files instead of every language for everybody -- the
+#556 argument, applied to the reader. ⚠ The shared parse cache key carries
+`INDEX_VERSION`, not `PARSER_GENERATION`, so without the generation in the key
+a `.rkt` parsed by tree-sitter last week would have been served after the swap;
+`:rr<generation>` is in the Racket key now, and a test bumps the constant and
+asserts the key moves.
+
 ### Added - a Racket reader in Python, measured against Racket's reader
 
 `parser/racket_reader.py` reads Racket source -- the default reader of the

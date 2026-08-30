@@ -339,7 +339,7 @@ def needs_parser_upgrade(index) -> bool:
 def racket_reparse_reason(index) -> Optional[str]:
     """Why a local index holding Racket files must be re-parsed in full, or None.
 
-    Two reasons, told apart because a caller reads `rebuild_reason`:
+    Three reasons, told apart because a caller reads `rebuild_reason`:
 
     - ``racket_index_predates_gate``: the index carries NO
       `racket_config_digest` stamp, so it was built before the Racket
@@ -348,6 +348,10 @@ def racket_reparse_reason(index) -> Optional[str]:
       the narrow substitute for a `PARSER_GENERATION` bump: it reaches exactly
       the indexes that hold Racket files instead of every language for
       everybody, and an absent key stays detectable at any later date.
+    - ``racket_reader_changed``: the index's `racket_reader_generation` is
+      not the current `READER_GENERATION` -- absent means its `.rkt` files
+      were parsed by tree-sitter, before the Python reader. Same substitute
+      for a generation bump, for the reader instead of the gate.
     - ``racket_config_changed``: `racket_definition_forms` / `racket_langs`
       differ from the stamp. They change what the parser emits for UNCHANGED
       content, which the incremental path never re-reads, so a declaration
@@ -368,6 +372,9 @@ def racket_reparse_reason(index) -> Optional[str]:
     stamp = getattr(index, "racket_config_digest", None)
     if stamp is None:
         return "racket_index_predates_gate"
+    from ..parser.racket_reader import READER_GENERATION
+    if getattr(index, "racket_reader_generation", None) != READER_GENERATION:
+        return "racket_reader_changed"
     from .. import config as _config
 
     if _config.racket_config_digest(source_root) != stamp:
