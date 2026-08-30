@@ -14,6 +14,16 @@ The standing lessons drawn from these entries live in `CLAUDE.md` under
 
 ---
 
+**1.108.307 — "A phase boundary drawn at the wrong place" (2026-08-29).**
+Rotated out of CLAUDE.md's Current State on 2026-08-30 under Maintenance
+Practice 5, verbatim. Lessons it earned are in CLAUDE.md: derive a skip list
+from its authority, a cache invalidated on every write is not a cache, and a
+phase boundary drawn at the wrong place names the wrong subsystem confidently.
+
+- **Prior (1.108.307):** **A phase boundary drawn at the wrong place.** #557 (@Ticki84) closed by the reporter, who cloned the repo and instrumented his own long-running `watch-all` after three of our hypotheses died on the thread. ⚠⚠ **`_walk_tsconfigs` descends into Rust's `target/` on EVERY watcher event: 13.58s of a 13.75s reindex, against 0.27s once excluded** — and it fires even when the watcher reports `no indexable changes`, which rules out parsing and persistence by itself. ⚠⚠ **`_TSCONFIG_SKIP_DIRS` WAS THE FOURTH COPY OF A SKIP LIST IN THIS TREE AND THE ONLY ONE DERIVING FROM NOTHING**, while `security._SKIP_DIRECTORY_NAMES` already contained `target` (rules at `imports.py` / `security.py`). **Adding `"target"` was the REPORTED fix and would have been our own "fix the call site, leave the mechanism" error.** ⚠⚠ **Second half: `index_folder` evicted the alias-map cache UNCONDITIONALLY**, so every watcher-driven single-file re-index re-paid the walk that `_load_tsconfig_aliases`' module-level cache exists to make once. **A cache invalidated on every write is not a cache** (`index_folder.py`): a targeted run keeps the map unless a tsconfig was touched; a run that cannot know still evicts. ⚠⚠ **THE RELEASE'S REAL LESSON IS ABOUT OUR OWN INSTRUMENT: .304's phase breakdown blamed `save=9.906s` and we believed it.** `save` includes rebuilding the in-memory `CodeIndex` after the SQLite transaction, and THAT reconstruction triggers the walk — so **a phase boundary drawn at the wrong place names the wrong subsystem CONFIDENTLY, which is worse than no breakdown at all**: it sent us hunting lock contention that was never there, and `process_locks.waited_seconds` (shipped in .305 for this) correctly reported nothing. ⚠ The build-tree regression asserts BEHAVIOUR, not timing: a poisoned `tsconfig.json` inside `target/` whose aliases must never appear in the map, which holds on any machine at any speed. A separate test fails if the skip set is re-hardcoded — **the derivation is the fix; `target` being present is only its first visible consequence.** ⚠ Measured here 0.617s -> 0.003s on a synthetic 9,200-entry `target/`, and that is a LOWER BOUND on a synthetic tree, not his number. [[grep-a-persisted-field-for-its-readers]] [[close-on-criteria-not-on-judgment]]
+
+---
+
 **1.108.306 — "A count taken after the page, and a field nobody read"
 (2026-08-28).** Rotated out of CLAUDE.md's Current State on 2026-08-29 under
 Maintenance Practice 5, verbatim. Standing lessons it earned are in CLAUDE.md:

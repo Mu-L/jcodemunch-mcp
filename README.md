@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
+- **[v1.108.310](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.310)** (2026-08-30) — A `#lang` line selects a reader, and a grammar cannot follow it
 - **[v1.108.309](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.309)** (2026-08-29) — A mean hides the tail, and a default invents a comparison
 - **[v1.108.308](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.308)** (2026-08-29) — Ownership and freshness are different properties
-- **[v1.108.307](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.307)** (2026-08-29) — A phase boundary drawn at the wrong place
 <!-- WHATSNEW:END -->
 
 ---

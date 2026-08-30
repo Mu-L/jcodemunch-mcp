@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.310] - 2026-08-30 - A `#lang` line selects a reader, and a grammar cannot follow it
+
 ### Fixed - `#lang rosette` is S-expressions
 
 Rosette's reader is `#lang s-exp syntax/module-reader rosette` -- the default
@@ -180,6 +182,43 @@ One level of block comment; a regex cannot nest, and a nested block above a
 `#lang` line has not been seen. Found by the reader-fidelity harness (next
 entry), which compared 725 files against Racket's own reader and could not
 account for six nodes in one file.
+
+### Changed - CLAUDE.md's Key Files split along the derivable/not-derivable line
+
+Key Files was **61,593 chars, 44.4% of a 140,000-char session budget**, and the
+file sat at 139,531 with 469 characters of room. Maintenance Practice 5 had
+named it the next lever and said the answer was a split rather than another
+budget raise.
+
+The axis is the reusable part: **what is DERIVABLE leaves, what is not stays.**
+jcodemunch answers "what is this module" live, so the descriptive half moved to
+`KEY-FILES.md`, which no session loads. Nothing answers "this cache is
+evicted on every write, so it is not a cache", so every invariant stayed.
+**76 entries moved, 44 stayed; CLAUDE.md 138,719 -> 122,210 (87.3%).**
+
+⚠⚠ **The `⚠` marker is a proxy for load-bearing, and it over-cut by 15.**
+`producers.py`, `receipts.py`, `runtime/confidence.py` and twelve others state a
+prohibition, a constraint whose violation causes a defect, or a rationale with
+no marker on it. They are named in `RATIONALE_ENTRIES`, and adding a name there
+to buy budget is what the split exists to stop.
+
+⚠⚠ **`@path` imports were the obvious answer and they recover nothing** -- they
+expand at launch. Nested `CLAUDE.md` and `.claude/rules/` load on READ, and this
+project routes exploration through MCP tools, so the purpose-built mechanism
+would have loaded nothing here. Verified against the docs before choosing.
+
+⚠⚠ **The split target must be TRACKED, and `docs/` is not** -- `.gitignore:83`
+is `docs/*`. The first version wrote `docs/KEY-FILES.md`, which would have made
+76 entries machine-local: not in git, not in CI, gone on a fresh checkout. It
+surfaced only because `git status` did not list the new file. The map lives at
+the repo root and `ALLOWED_ROOT_FILES` names it.
+
+⚠ `tests/test_key_files_split.py` asserts every entry lives in exactly one file.
+Its first run caught its own defect: keying by BASENAME collapsed
+`runtime/redact.py` with `redact.py`, and `runtime/confidence.py` with
+`retrieval/confidence.py`, reporting a duplication that did not exist. **A name
+is not an identity** -- the Rust-fidelity lesson, inside the guard written to
+prevent drift.
 
 ## [1.108.309] - 2026-08-29 - A mean hides the tail, and a default invents a comparison
 
