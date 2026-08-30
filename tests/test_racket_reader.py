@@ -393,6 +393,18 @@ def harness():
     return _load_harness()
 
 
+def test_fixtures_are_checked_out_byte_for_byte():
+    """The frozen oracle records BYTE positions, so the fixture bytes must be
+    the bytes Racket read. A CRLF checkout (Windows, `core.autocrlf`) moves
+    every position after line 1 and fails the seven gate cases with diffs no
+    one can read -- measured on the reader's first CI run. `.gitattributes`
+    pins the fixtures to LF; this names the cause if that rule is lost."""
+    crlf = [p.name for p in FIXTURES.glob("*.rkt") if b"\r" in p.read_bytes()]
+    assert crlf == [], (
+        f"fixtures checked out with CRLF: {crlf}; `.gitattributes` must keep "
+        f"tests/fixtures/racket/*.rkt at LF (see the comment there)")
+
+
 def test_frozen_reader_data_covers_every_fixture(frozen):
     """A fixture with no frozen answer is silently unmeasured."""
     assert set(FIXTURE_NAMES) == set(frozen)

@@ -161,7 +161,11 @@ default-reader form) and `atexp-syntax.rkt` (the Scribble documentation's own
 oracle, `racket_reader_oracle.json`, gates the reader in CI without Racket the
 way `racket_oracle.json` gates the extractor. ⚠ `test_racket_fidelity.py` listed
 its fixture names as a literal -- the `.303` Rust lesson, in the Racket test
-that taught it -- and reads them off disk now.
+that taught it -- and reads them off disk now. ⚠ The frozen oracle is BYTE
+positions, so `.gitattributes` pins the fixtures to LF: a CRLF checkout moved
+every position after line 1 and failed all seven gate cases on Windows, the
+reader's first CI run, with diffs nothing explained. A dedicated test names
+the cause if the rule is ever lost.
 
 ### Fixed - a `#| |#` block comment above `#lang` hid the lang from the gate
 
