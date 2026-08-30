@@ -247,6 +247,57 @@ def test_a_brace_body_in_a_plain_racket_file_is_a_list():
     assert "helper" in f.call_references
 
 
+# ── the command character ─────────────────────────────────────────────────
+
+def test_a_lang_may_declare_its_own_command_character(langs):
+    """`make-at-readtable` takes `#:command-char`; Pollen uses `◊`. With it
+    declared, `◊` dispatches and `@` is an ordinary character again."""
+    langs({"mylang": {"tier": "at-exp", "command_char": "◊"}})
+    src = ("#lang mylang\n"
+           "(define (step)\n"
+           "  ◊html{Thanks; \"you\" are @done ◊|helper|})\n"
+           "(define (after) 1)\n"
+           "(define @plain 2)\n")
+    names = _names(src, repo="/proj")
+    assert names == {"step", "after", "@plain"}
+
+
+def test_the_object_form_and_the_string_form_declare_the_same_tier(langs):
+    langs({"a": "at-exp", "b": {"tier": "at-exp"}, "c": {"tier": "text"}})
+    assert _racket_tier(b"#lang a\n", repo="/proj")[0] == "at-exp"
+    assert _racket_tier(b"#lang b\n", repo="/proj")[0] == "at-exp"
+    assert _racket_tier(b"#lang c\n", repo="/proj")[0] == "text"
+    from jcodemunch_mcp.parser.extractor import _racket_command_char
+    assert _racket_command_char("a", "/proj") == b"@"
+    assert _racket_command_char("b/sub", "/proj") == b"@"
+    assert _racket_command_char("at-exp b", "/proj") == b"@", "Racket's own at-exp is always `@`"
+    assert _racket_command_char("debug b", "/proj") == b"@"
+
+
+@pytest.mark.parametrize("bad", [
+    {"tier": "at-exp", "command_char": "◊◊"},   # two characters
+    {"tier": "at-exp", "command_char": " "},    # whitespace
+    {"tier": "at-exp", "command_char": 1},      # not a string
+    {"command_char": "◊"},                      # no tier
+    {"tier": "prose"},                          # unknown tier
+], ids=["two-chars", "space", "int", "no-tier", "bad-tier"])
+def test_a_malformed_object_entry_costs_that_entry_only(langs, bad):
+    langs({"mylang": bad, "other": "sexp"})
+    assert _racket_tier(b"#lang mylang\n", repo="/proj")[0] == "text"
+    assert _racket_tier(b"#lang other\n", repo="/proj")[0] == "sexp"
+
+
+def test_the_command_character_is_part_of_the_config_digest(langs):
+    """A changed command character changes what unchanged bytes yield, so it
+    must move the stamp that forces the one re-parse."""
+    from jcodemunch_mcp import config as _config
+    langs({"mylang": {"tier": "at-exp", "command_char": "◊"}})
+    a = _config.racket_config_digest("/proj")
+    langs({"mylang": {"tier": "at-exp", "command_char": "@"}})
+    b = _config.racket_config_digest("/proj")
+    assert a != b != ""
+
+
 def test_atexp_over_a_text_lang_is_still_text():
     assert _racket_tier(b"#lang at-exp scribble/base\n")[0] == "text"
 

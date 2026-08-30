@@ -11517,8 +11517,20 @@ def _racket_lang_matches(lang: str, names) -> bool:
     return lang in names or any(lang.startswith(n + "/") for n in names)
 
 
-def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
-    """`racket_langs` from config, validated entry by entry, as {lang: tier}."""
+#: The at-exp command character unless a lang declares another. Racket's
+#: `make-at-readtable` takes `#:command-char`; Pollen uses `◊`.
+_RACKET_DEFAULT_COMMAND_CHAR = "@"
+
+
+def _racket_lang_config(repo: Optional[str]) -> dict[str, tuple[str, str]]:
+    """`racket_langs` from config, validated entry by entry, as
+    {lang: (tier, command_char)}.
+
+    A value is either a tier (`"at-exp"`) or an object
+    (`{"tier": "at-exp", "command_char": "◊"}`). The command character must
+    be ONE non-whitespace character; a malformed entry costs that entry,
+    never the file (same rule as `racket_definition_forms`).
+    """
     if not repo:
         return {}
     try:
@@ -11529,13 +11541,40 @@ def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
         return {}
     if not isinstance(declared, dict):
         return {}
-    out: dict[str, str] = {}
-    for lang, tier in declared.items():
-        if isinstance(lang, str) and isinstance(tier, str) and tier in _RACKET_TIERS:
-            out[lang] = tier
+    out: dict[str, tuple[str, str]] = {}
+    for lang, value in declared.items():
+        tier, cc = value, _RACKET_DEFAULT_COMMAND_CHAR
+        if isinstance(value, dict):
+            tier = value.get("tier")
+            cc = value.get("command_char", _RACKET_DEFAULT_COMMAND_CHAR)
+        if (isinstance(lang, str) and isinstance(tier, str) and tier in _RACKET_TIERS
+                and isinstance(cc, str) and len(cc) == 1 and not cc.isspace()):
+            out[lang] = (tier, cc)
         else:
-            logger.debug("skipping racket_langs entry %r: %r", lang, tier)
+            logger.debug("skipping racket_langs entry %r: %r", lang, value)
     return out
+
+
+def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
+    """`racket_langs` as {lang: tier} -- the view the tier decision reads."""
+    return {lang: tier for lang, (tier, _cc) in _racket_lang_config(repo).items()}
+
+
+def _racket_command_char(written: str, repo: Optional[str]) -> bytes:
+    """The command character for a file whose `#lang` line reads `written`.
+
+    `#lang at-exp X` is Racket's own at-exp reader and always `@`. A
+    configured lang may declare its own; a transparent wrapper defers to its
+    argument. UTF-8 bytes, because the reader scans bytes.
+    """
+    parts = written.split()
+    if not parts or parts[0] in _RACKET_ATEXP_WRAPPERS:
+        return _RACKET_DEFAULT_COMMAND_CHAR.encode()
+    lang = parts[1] if parts[0] in _RACKET_TRANSPARENT_WRAPPERS and len(parts) > 1 else parts[0]
+    for key, (_tier, cc) in _racket_lang_config(repo).items():
+        if _racket_lang_matches(lang, {key}):
+            return cc.encode("utf-8")
+    return _RACKET_DEFAULT_COMMAND_CHAR.encode()
 
 
 def _racket_tier(source_bytes: bytes, repo: Optional[str] = None) -> tuple[str, str]:
@@ -11604,7 +11643,8 @@ def _parse_racket_symbols(
         )
         return []
 
-    tree = read_racket(source_bytes, at_exp=(tier == "at-exp"))
+    tree = read_racket(source_bytes, at_exp=(tier == "at-exp"),
+                       command_char=_racket_command_char(lang, repo))
     if tree.errors:
         # Practice 2: a partial read is a real event, and the reader can say
         # WHERE. Each broken form's span is an ERROR node the walker skips

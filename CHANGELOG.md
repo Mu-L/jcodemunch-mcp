@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added - `racket_langs` may declare a lang's at-exp command character
+
+`{"mylang": {"tier": "at-exp", "command_char": "◊"}}` beside the string form.
+Racket's `make-at-readtable` takes `#:command-char` and Pollen's reader uses
+`◊`, so an at-exp-shaped lang is not always an `@` lang; with the character
+declared, `◊` dispatches and `@` is an ordinary symbol constituent again,
+which the test checks in both directions. `#lang at-exp X` is Racket's own
+at-exp reader and stays `@` whatever the config says. ⚠ ONE non-whitespace
+character; a malformed entry costs that entry, never the file, the same rule
+`racket_definition_forms` has. It rides in the existing config digest, so a
+changed character re-parses the index once like any other `racket_langs` edit.
+
 ### Changed - `.rkt` is read by the Racket reader; the brace-blanking pass is gone
 
 `_parse_racket_symbols` reads through `racket_reader.py` now, with `@` as the
