@@ -83,6 +83,7 @@ def test_lang_line_is_not_read_from_inside_the_body():
     ("typed/racket", "sexp"), ("typed/racket/base", "sexp"), ("s-exp", "sexp"),
     ("info", "sexp"), ("scheme/base", "sexp"), ("plai", "sexp"), ("br", "sexp"),
     ("br/quicklang", "sexp"), ("web-server/insta", "sexp"), ("eopl", "sexp"),
+    ("rosette", "sexp"), ("rosette/safe", "sexp"),
     ("at-exp racket/base", "at-exp"), ("at-exp racket", "at-exp"),
     ("debug racket/base", "sexp"), ("errortrace racket", "sexp"),
     ("punct", "text"), ("punct opcraftco", "text"), ("scribble/manual", "text"),

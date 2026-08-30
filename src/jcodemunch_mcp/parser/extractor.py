@@ -11480,6 +11480,7 @@ _RACKET_SEXP_LANGS = frozenset({
     "scheme", "mzscheme", "plai", "plait", "htdp", "lang", "eopl", "frtime",
     "web-server", "br", "lazy", "slideshow", "deinprogramm", "algol60",
     "racket/gui", "racket/unit", "racket/signature", "racket/load",
+    "rosette",   # `#lang s-exp syntax/module-reader rosette`: the default reader
 })
 
 #: Document languages whose text is prose. A `(define ...)` in them is a code

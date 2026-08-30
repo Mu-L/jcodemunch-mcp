@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed - `#lang rosette` is S-expressions
+
+Rosette's reader is `#lang s-exp syntax/module-reader rosette` -- the default
+reader -- and the built-in list did not have it, so a Rosette file was a
+document: no symbols, and (previous entry) no `require` edges once the regex
+stopped guessing. Found by measuring what the document tier loses; one real
+file. `rosette/safe` rides on the same entry.
+
 ### Changed - `require` edges come from the reader; the second mini-reader is gone
 
 `imports.py` carried its own comment-stripper and form reader and found
