@@ -6,6 +6,8 @@ import re
 from typing import Any, Optional
 from tree_sitter_language_pack import get_parser
 
+from .racket_reader import read_racket
+
 from .astro_shared import mask_html_comments_keep_offsets, split_astro_frontmatter
 from .symbols import Symbol, make_symbol_id, compute_content_hash
 from .languages import LanguageSpec, LANGUAGE_REGISTRY, template_underlying_language
@@ -11462,8 +11464,13 @@ def _racket_declared_forms(repo: Optional[str]) -> dict[str, str]:
 # project's own lang -- `{"conscript": "at-exp"}` -- because the project is the
 # only party that knows what its reader produces.
 
+#: `#lang` may follow "comment forms": `;` lines, `#| |#` blocks (one level --
+#: a regex cannot nest, and a nested block above a `#lang` line has not been
+#: seen), and a `#!` shebang. openssl/mzssl.rkt opens with a 900-byte block
+#: comment; without the block alternative it read as a `#lang`-less module.
 _RACKET_LANG_RE = re.compile(
-    rb"\A(?:[ \t\r\n]|;[^\n]*\n|#![^\n]*\n)*#lang[ \t]+([^\s]+)(?:[ \t]+([^\s]+))?"
+    rb"\A(?:[ \t\r\n]|;[^\n]*\n|#\|(?:[^|]|\|(?!#))*\|#|#![^\n]*\n)*"
+    rb"#lang[ \t]+([^\s]+)(?:[ \t]+([^\s]+))?"
 )
 
 #: Exact names, plus every `name/...` sub-path, whose reader is the default
@@ -11473,6 +11480,7 @@ _RACKET_SEXP_LANGS = frozenset({
     "scheme", "mzscheme", "plai", "plait", "htdp", "lang", "eopl", "frtime",
     "web-server", "br", "lazy", "slideshow", "deinprogramm", "algol60",
     "racket/gui", "racket/unit", "racket/signature", "racket/load",
+    "rosette",   # `#lang s-exp syntax/module-reader rosette`: the default reader
 })
 
 #: Document languages whose text is prose. A `(define ...)` in them is a code
@@ -11482,10 +11490,14 @@ _RACKET_TEXT_LANGS = frozenset({
     "rhombus", "sweet-exp", "honu", "reader",
 })
 
-#: Langs that take ANOTHER lang as their argument. `at-exp` changes the
-#: reader (text bodies); the rest are transparent wrappers whose syntax is
-#: whatever the argument's is.
-_RACKET_ATEXP_WRAPPERS = frozenset({"at-exp"})
+#: Langs that take ANOTHER lang as their argument. The at-exp wrappers change
+#: the reader (text bodies) and each has its command character: `pollen/mode`
+#: is `make-at-readtable #:command-char #\◊` over its argument, hardcoded in
+#: pollen/mode.rkt (measured on 7 `#lang pollen/mode racket/base` files,
+#: 5,977 nodes and 51 at-forms: none differ from Racket's reader). The rest are transparent wrappers
+#: whose syntax is whatever the argument's is.
+_RACKET_ATEXP_WRAPPER_CHARS = {"at-exp": "@", "pollen/mode": "◊"}
+_RACKET_ATEXP_WRAPPERS = frozenset(_RACKET_ATEXP_WRAPPER_CHARS)
 _RACKET_TRANSPARENT_WRAPPERS = frozenset({"debug", "errortrace", "profile"})
 
 _RACKET_TIERS = frozenset({"sexp", "at-exp", "text"})
@@ -11510,8 +11522,20 @@ def _racket_lang_matches(lang: str, names) -> bool:
     return lang in names or any(lang.startswith(n + "/") for n in names)
 
 
-def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
-    """`racket_langs` from config, validated entry by entry, as {lang: tier}."""
+#: The at-exp command character unless a lang declares another. Racket's
+#: `make-at-readtable` takes `#:command-char`; Pollen uses `◊`.
+_RACKET_DEFAULT_COMMAND_CHAR = "@"
+
+
+def _racket_lang_config(repo: Optional[str]) -> dict[str, tuple[str, str]]:
+    """`racket_langs` from config, validated entry by entry, as
+    {lang: (tier, command_char)}.
+
+    A value is either a tier (`"at-exp"`) or an object
+    (`{"tier": "at-exp", "command_char": "◊"}`). The command character must
+    be ONE non-whitespace character; a malformed entry costs that entry,
+    never the file (same rule as `racket_definition_forms`).
+    """
     if not repo:
         return {}
     try:
@@ -11522,13 +11546,42 @@ def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
         return {}
     if not isinstance(declared, dict):
         return {}
-    out: dict[str, str] = {}
-    for lang, tier in declared.items():
-        if isinstance(lang, str) and isinstance(tier, str) and tier in _RACKET_TIERS:
-            out[lang] = tier
+    out: dict[str, tuple[str, str]] = {}
+    for lang, value in declared.items():
+        tier, cc = value, _RACKET_DEFAULT_COMMAND_CHAR
+        if isinstance(value, dict):
+            tier = value.get("tier")
+            cc = value.get("command_char", _RACKET_DEFAULT_COMMAND_CHAR)
+        if (isinstance(lang, str) and isinstance(tier, str) and tier in _RACKET_TIERS
+                and isinstance(cc, str) and len(cc) == 1 and not cc.isspace()):
+            out[lang] = (tier, cc)
         else:
-            logger.debug("skipping racket_langs entry %r: %r", lang, tier)
+            logger.debug("skipping racket_langs entry %r: %r", lang, value)
     return out
+
+
+def _racket_configured_langs(repo: Optional[str]) -> dict[str, str]:
+    """`racket_langs` as {lang: tier} -- the view the tier decision reads."""
+    return {lang: tier for lang, (tier, _cc) in _racket_lang_config(repo).items()}
+
+
+def _racket_command_char(written: str, repo: Optional[str]) -> bytes:
+    """The command character for a file whose `#lang` line reads `written`.
+
+    `#lang at-exp X` is Racket's own at-exp reader and always `@`. A
+    configured lang may declare its own; a transparent wrapper defers to its
+    argument. UTF-8 bytes, because the reader scans bytes.
+    """
+    parts = written.split()
+    if not parts:
+        return _RACKET_DEFAULT_COMMAND_CHAR.encode()
+    if parts[0] in _RACKET_ATEXP_WRAPPERS:
+        return _RACKET_ATEXP_WRAPPER_CHARS[parts[0]].encode("utf-8")
+    lang = parts[1] if parts[0] in _RACKET_TRANSPARENT_WRAPPERS and len(parts) > 1 else parts[0]
+    for key, (_tier, cc) in _racket_lang_config(repo).items():
+        if _racket_lang_matches(lang, {key}):
+            return cc.encode("utf-8")
+    return _RACKET_DEFAULT_COMMAND_CHAR.encode()
 
 
 def _racket_tier(source_bytes: bytes, repo: Optional[str] = None) -> tuple[str, str]:
@@ -11564,74 +11617,17 @@ def _racket_tier(source_bytes: bytes, repo: Optional[str] = None) -> tuple[str, 
     return (_lookup(lang) or "text"), written
 
 
-def _racket_blank_atexp_bodies(source_bytes: bytes) -> bytes:
-    """Replace the interior of every at-exp `{...}` text body with spaces.
-
-    Byte-for-byte: every replaced byte becomes ``0x20``, so every offset in
-    the result names the same position in the original and the walker's
-    ``byte_offset`` / ``byte_length`` / ``content_hash`` stay correct against
-    the ORIGINAL bytes. The braces themselves are kept so the paren skeleton
-    is unchanged.
-
-    Code mode steps over strings (with escapes), `;` comments, nested `#| |#`
-    blocks and `#\\x` character literals, so a `{` inside any of those is not
-    mistaken for a text body -- that mistake would blank to the next `}` or
-    the end of the file. Inside a body only brace depth is tracked: at-exp
-    text has no string or comment syntax, which is exactly why the grammar
-    cannot read it.
-    """
-    out = bytearray(source_bytes)
-    n = len(out)
-    i = 0
-    depth = 0
-    while i < n:
-        b = out[i]
-        if depth:
-            if b == 0x7B:      # {
-                depth += 1
-                out[i] = 0x20
-            elif b == 0x7D:    # }
-                depth -= 1
-                if depth:
-                    out[i] = 0x20
-            elif b not in (0x0A, 0x0D):
-                out[i] = 0x20
-            i += 1
-            continue
-        if b == 0x22:          # "  string in code mode
-            i += 1
-            while i < n and out[i] != 0x22:
-                i += 2 if out[i] == 0x5C else 1
-            i += 1
-        elif b == 0x3B:        # ;  line comment
-            while i < n and out[i] != 0x0A:
-                i += 1
-        elif b == 0x23 and i + 1 < n and out[i + 1] == 0x7C:   # #| ... |#
-            nest = 1
-            i += 2
-            while i < n and nest:
-                if out[i] == 0x7C and i + 1 < n and out[i + 1] == 0x23:
-                    nest -= 1
-                    i += 2
-                elif out[i] == 0x23 and i + 1 < n and out[i + 1] == 0x7C:
-                    nest += 1
-                    i += 2
-                else:
-                    i += 1
-        elif b == 0x23 and i + 1 < n and out[i + 1] == 0x5C:   # #\x
-            i += 3
-        elif b == 0x7B:        # {  enter a text body
-            depth = 1
-            i += 1
-        else:
-            i += 1
-    return bytes(out)
-
-
 def _parse_racket_symbols(
     source_bytes: bytes, filename: str, repo: Optional[str] = None
 ) -> list[Symbol]:
-    """Extract symbols from Racket source using tree-sitter.
+    """Extract symbols from Racket source, read by ``racket_reader.py``.
+
+    ⚠ Not tree-sitter. A `#lang` line selects a READER, and a grammar cannot
+    follow it: at-exp text bodies were prose to Racket and tokens to the
+    grammar, and the grammar's error recovery re-parented internal definitions
+    to module level. The reader is measured against `read-syntax` node for
+    node (`benchmarks/racket_fidelity/run_reader_fidelity.py`) and produces a
+    tree of the same shape, so the walk below is unchanged.
 
     ⚠ #414: every text read goes through ``node.text``, never
     ``source_bytes.decode()`` followed by a slice with ``start_byte`` /
@@ -11641,16 +11637,9 @@ def _parse_racket_symbols(
     ``source_bytes``, which is ``bytes``.
 
     ⚠ The `#lang` gate runs FIRST (see `_racket_tier`): a document language
-    yields no symbols, and an at-exp file is parsed with its text bodies
-    blanked. Blanking preserves every offset, so `content_hash` below is still
-    taken from the ORIGINAL bytes.
+    yields no symbols, and an at-exp file is read with `@` as the command
+    character, as `#lang at-exp` does. `@` is never inferred from the text.
     """
-    try:
-        parser = get_parser("racket")
-    except Exception:
-        logger.debug("racket grammar unavailable", exc_info=True)
-        return []
-
     tier, lang = _racket_tier(source_bytes, repo)
     if tier == "text":
         logger.info(
@@ -11660,18 +11649,20 @@ def _parse_racket_symbols(
             filename, lang,
         )
         return []
-    parse_bytes = _racket_blank_atexp_bodies(source_bytes) if tier == "at-exp" else source_bytes
 
-    tree = parser.parse(parse_bytes)
-    if tree.root_node.has_error:
-        # Practice 2: a partial parse is a real event. Definitions inside or
-        # after the first error are not indexed (ERROR subtrees are skipped
-        # below rather than walked, because recovery re-parents INTERNAL
-        # definitions to module level and the walker would report them as
-        # importable), and an unclosed form swallows everything after it.
+    tree = read_racket(source_bytes, at_exp=(tier == "at-exp"),
+                       command_char=_racket_command_char(lang, repo))
+    if tree.errors:
+        # Practice 2: a partial read is a real event, and the reader can say
+        # WHERE. Each broken form's span is an ERROR node the walker skips
+        # below; the reader resumes at the next column-0 form, so what is not
+        # indexed is that form, not the rest of the file.
+        first = tree.errors[0]
+        n = len(tree.errors)
         logger.warning(
-            "racket: %s has syntax tree-sitter could not parse; definitions "
-            "inside or after the first error are not indexed", filename,
+            "racket: %s: %s at line %d (%d read error%s); the affected form%s not indexed",
+            filename, first.message, tree.point(first.pos)[0] + 1,
+            n, "" if n == 1 else "s", " is" if n == 1 else "s are",
         )
     symbols: list[Symbol] = []
     calls: list[tuple[int, str]] = []
@@ -11884,13 +11875,14 @@ def _parse_racket_symbols(
             _collect_calls(c)
 
     def _walk(node, scope: str = "", in_class: bool = False) -> None:
-        # ⚠ ERROR is skipped in BOTH directions on purpose. Recovery re-parents
-        # an internal define under a root ERROR node (measured: `list -> ERROR
-        # -> program` for a `(define (compute-payment) ...)` inside a `unit`
-        # body), so walking it fabricates a module-level binding; and a stray
-        # `)` puts every LATER top-level form under ERROR, so skipping it
-        # loses real ones. A miss is recoverable by reading the file, a
-        # fabrication is not, and the WARNING above names the file.
+        # ⚠ ERROR is skipped on purpose. The reader does not recover; it
+        # marks the broken form's span ERROR and resumes at the next column-0
+        # form, and an extra `)` folds the indented forms it leaked back into
+        # that span. An ERROR node is a form whose structure is unknown, and
+        # walking one is where the fabrication class came from (measured
+        # under tree-sitter: a `unit` body's internal define re-parented to
+        # module level). A miss is recoverable by reading the file, a
+        # fabrication is not, and the WARNING above names the file and line.
         if node.type in _RACKET_SKIP_WRAPPERS or node.type == "ERROR":
             return
 

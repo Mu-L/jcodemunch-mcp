@@ -40,10 +40,17 @@ def _by_name(source: str) -> dict:
 
 # ── wiring ────────────────────────────────────────────────────────────────
 
-def test_racket_parser_available():
-    """Non-vacuity for everything below: the grammar must load."""
-    from tree_sitter_language_pack import get_parser
-    assert get_parser("racket") is not None
+def test_racket_is_read_by_the_reader_not_tree_sitter(monkeypatch):
+    """`.rkt` goes through `racket_reader.py`. If any path back to the
+    grammar returns, this fails: a `#lang` selects a reader a grammar cannot
+    follow, and the grammar's error recovery fabricated module-level
+    bindings."""
+    from jcodemunch_mcp.parser import extractor
+
+    def _refuse(*_a, **_k):
+        raise AssertionError("tree-sitter must not be consulted for Racket")
+    monkeypatch.setattr(extractor, "get_parser", _refuse)
+    assert set(_by_name("(define (greet name) name)")) == {"greet"}
 
 
 @pytest.mark.parametrize("ext", [".rkt", ".rktl", ".rktd"])
@@ -635,6 +642,51 @@ def test_requires_inside_comments_are_ignored():
     src = ';; (require fake/one)\n#| (require fake/two) |#\n(require real/three)'
     specs = [e["specifier"] for e in extract_imports(src, "a.rkt", "racket")]
     assert specs == ["real/three"]
+
+
+def test_a_require_that_is_data_is_not_an_edge():
+    """⚠ The regex this replaced matched `(require` anywhere in the text:
+    inside `#;` comments, `#'` macro templates, quasiquoted `eval` payloads
+    and here-strings. Measured over 2,489 files: 131 such "requires", none
+    of them a dependency of the file that spelled them, and no real one
+    missed. The reader knows which lists are code."""
+    src = ('#lang racket/base\n'
+           '(require "real.rkt")\n'
+           '#;(require "commented.rkt")\n'
+           '(define-syntax (m stx) #\'(begin (require "template.rkt")))\n'
+           '(define payload `(begin (require "quasi.rkt")))\n'
+           '(define data \'(require "quoted.rkt"))\n'
+           '(define doc #<<EOS\n(require "heredoc.rkt")\nEOS\n  )\n'
+           '(define s "(require \\"string.rkt\\")")\n'
+           '(module+ test (require "nested-is-code.rkt"))\n')
+    specs = {e["specifier"] for e in extract_imports(src, "a.rkt", "racket")}
+    assert specs == {"real.rkt", "nested-is-code.rkt"}, specs
+
+
+def test_a_document_tier_file_contributes_no_require_edges():
+    """A `#lang` whose reader we do not have cannot say where the Racket in
+    it is. The regex used to guess; measured across the distribution and
+    one developer's projects, the guess found 60 edges in 17 of 211 document
+    files (`2d`, `scribble/lp`, `beeswax/template`, `rash` ...), and any of
+    them is recoverable by declaring the lang in `racket_langs`."""
+    src = "#lang punct\n\nSome prose.\n\n(require \"looks-like-code.rkt\")\n"
+    assert extract_imports(src, "doc.rkt", "racket") == []
+
+
+def test_a_configured_at_exp_lang_yields_its_requires_when_repo_is_passed(monkeypatch):
+    """The walker reads a project's own lang through `racket_langs`; the
+    import extractor must read the same file the same way, which is why
+    `extract_imports` takes `repo`. Without it the lang is a document."""
+    monkeypatch.setattr(
+        "jcodemunch_mcp.config.get",
+        lambda key, default=None, repo=None: ({"conscript": "at-exp"} if key == "racket_langs" else default),
+    )
+    src = ('#lang conscript\n(require "lib.rkt")\n'
+           '(defstep (intro) @html{He said "hi"; see @|x|})\n'
+           '(require "after-the-body.rkt")\n')
+    with_repo = {e["specifier"] for e in extract_imports(src, "s.rkt", "racket", repo="/proj")}
+    assert with_repo == {"lib.rkt", "after-the-body.rkt"}
+    assert extract_imports(src, "s.rkt", "racket") == [], "unconfigured, conscript is a document"
 
 
 # ── import edges must RESOLVE, not merely parse ───────────────────────────

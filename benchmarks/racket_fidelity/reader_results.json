@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "racket_version": "Welcome to Racket v9.2 [cs].",
+    "files": 725,
+    "files_at_exp": 45,
+    "files_skipped_text_tier": 0,
+    "nodes_compared": 761009,
+    "at_forms": 3622,
+    "strings_in_at_forms_dropped": 9408,
+    "reader_extension_forms": 9,
+    "only_racket": 0,
+    "only_ours": 0,
+    "our_only_error": 0,
+    "racket_only_error": 0,
+    "both_error": 0
+  },
+  "hard_fail_buckets": [
+    "only_racket",
+    "only_ours",
+    "our_only_error"
+  ],
+  "not_compared": [
+    "strings inside at-exp forms (compared by the form's span)",
+    "comments, `.`, `#lang`, contents of #hash and #s literals",
+    "the datum after `#reader <module>` (read by that module's reader)"
+  ],
+  "racket_only_errors": [],
+  "our_only_errors": [],
+  "per_file": [],
+  "files_skipped_text_tier": []
+}

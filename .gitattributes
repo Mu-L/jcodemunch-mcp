@@ -1,0 +1,6 @@
+# The frozen reader oracle (tests/fixtures/racket_reader_oracle.json) records BYTE
+# positions of every node Racket's reader produces for these fixtures. A checkout
+# that rewrites LF to CRLF (Windows, core.autocrlf) moves every position after
+# line 1 and fails the gate for a reason no diff explains; measured on the first
+# CI run of the reader. Pin the bytes.
+tests/fixtures/racket/*.rkt text eol=lf

@@ -160,6 +160,53 @@ def test_an_unstamped_racket_index_re_parses_once(project):
     assert r3.get("rebuild_reason") is None, "stamped now; no second escalation"
 
 
+def _unstamp_reader(store):
+    """Make the stored index look like one whose `.rkt` files tree-sitter parsed."""
+    import sqlite3
+    dbs = list(store.rglob("*.db"))
+    assert dbs, "no index db under the store"
+    for db in dbs:
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("DELETE FROM meta WHERE key = 'racket_reader_generation'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def test_an_index_parsed_by_an_earlier_reader_re_parses_once(project):
+    """The reader replaced tree-sitter for `.rkt` and changes what unchanged
+    bytes yield (at-exp bodies, error handling), which the incremental path
+    never re-reads. Stamped beside the config digest under the same rule:
+    absent means tree-sitter, and a generation bump reaches exactly the
+    indexes holding Racket files -- never every language for everybody."""
+    from jcodemunch_mcp.parser.racket_reader import READER_GENERATION
+    src, store = project
+    r1 = _index(src, store)
+    _, idx = _names(r1, store)
+    assert idx.racket_reader_generation == READER_GENERATION, "a fresh local index is stamped"
+    _unstamp_reader(store)
+    _, idx = _names(r1, store)
+    assert idx.racket_reader_generation is None, "non-vacuity: the stamp must really be gone"
+    r2 = _index(src, store)
+    assert r2.get("rebuild_reason") == "racket_reader_changed"
+    assert any("earlier Racket reader" in w for w in r2.get("warnings", []))
+    r3 = _index(src, store)
+    assert r3.get("rebuild_reason") is None, "stamped now; no second escalation"
+
+
+def test_reader_generation_is_part_of_the_parse_cache_key():
+    """A shared parse cache would otherwise serve a tree-sitter-era parse of
+    identical bytes: the key carries INDEX_VERSION, not PARSER_GENERATION."""
+    from unittest import mock
+    from jcodemunch_mcp.parser import parse_cache, racket_reader
+    k1 = parse_cache._key("(define x 1)", "a.rkt", "racket")
+    with mock.patch.object(racket_reader, "READER_GENERATION", racket_reader.READER_GENERATION + 1):
+        k2 = parse_cache._key("(define x 1)", "a.rkt", "racket")
+    assert k1 != k2
+    assert parse_cache._key("x = 1", "a.py", "python") == parse_cache._key("x = 1", "a.py", "python")
+
+
 def test_an_unstamped_index_without_racket_files_is_left_alone(tmp_path):
     src = tmp_path / "src"
     store = tmp_path / "store"

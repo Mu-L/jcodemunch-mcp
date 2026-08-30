@@ -100,11 +100,51 @@ interpreter identifies the corpus — and `results.json` records the version it
 was measured against. A run under a different Racket is measuring a different
 corpus and its numbers are not comparable.
 
+## The reader harness
+
+`run_reader_fidelity.py` measures the layer *under* the extractor: is the tree
+the symbol walker is handed the tree Racket reads? `.rkt` files are read by
+`parser/racket_reader.py`, a Racket reader written in Python, rather than by
+tree-sitter — because a `#lang` line selects a *reader*, and a
+grammar cannot follow it (at-exp text bodies, in particular, are prose to
+Racket and tokens to the grammar). A wrong tree can still yield a right
+symbol by luck, and the expander harness above only sees names, so the tree
+is measured on its own.
+
+`reader_oracle.rkt` runs `read-syntax` with `read-accept-reader`, so each
+file is read by the reader its own `#lang` selects, and emits every syntax
+object as `(type, byte-start, byte-span)`. The two sides are compared as
+multisets. Three buckets must be **0**: `only_racket` (a node Racket read
+that we did not, or read with another span), `only_ours` (a node we invented),
+and `our_only_error` (Racket read the file, we rejected it). `racket_only_error`
+— we read a file Racket rejects, e.g. `#\12` — is reported.
+
+What it deliberately does **not** compare, so a green run is not read as more
+than it is: strings *inside* an at-exp form (the at-exp reader splits and
+merges body text in ways the walker never looks at; the form's own span is
+compared), comments, `.`, `#lang` lines, the contents of `#hash`/`#s`
+literals (Racket does not position their keys), and the datum after a
+`#reader <module>` form, which is read by *that* module's reader
+(`scribble/comment-reader` turns comment text into at-forms). The last is
+counted in `reader_extension_forms`.
+
+`reader_corpus.json` targets the whole `collects` tree (the default-reader
+control group, where `@` must stay an ordinary character) plus every
+`#lang at-exp` file in the distribution. The committed `reader_results.json`
+is the run against the Racket version it records.
+
+```bash
+python benchmarks/racket_fidelity/run_reader_fidelity.py              # writes reader_results.json
+python benchmarks/racket_fidelity/run_reader_fidelity.py --corpus my.json --racket-langs conscript=at-exp
+```
+
 ## Gated in CI without Racket
 
 `tests/test_racket_fidelity.py` checks the two must-be-zero buckets against a
 frozen copy of the oracle's answer for `tests/fixtures/racket/*.rkt`, so the
-fabrication guards run everywhere. See `tests/fixtures/racket/REGENERATE.md`.
+fabrication guards run everywhere, and `tests/test_racket_reader.py` does the
+same for the reader against a frozen copy of `reader_oracle.rkt`'s answer.
+See `tests/fixtures/racket/REGENERATE.md`.
 
 ## Reading `results.json`
 

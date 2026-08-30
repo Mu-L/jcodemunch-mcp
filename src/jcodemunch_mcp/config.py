@@ -2178,6 +2178,8 @@ def generate_template() -> str:
   //   document (no symbols) until you say what its syntax is:
   //   "sexp" (plain S-expressions), "at-exp" (at-exp text bodies over
   //   Racket, e.g. conscript) or "text" (Markdown, Scribble -- never walked).
+  //   An at-exp lang with its own command character takes the object form:
+  //   Example: {{"conscript": "at-exp", "mylang": {{"tier": "at-exp", "command_char": "◊"}}}}
   //   Example: {{"conscript": "at-exp", "punct": "text"}}
   //   A key also matches its sub-langs (`conscript` covers
   //   `conscript/with-require`). Distribution langs are built in.

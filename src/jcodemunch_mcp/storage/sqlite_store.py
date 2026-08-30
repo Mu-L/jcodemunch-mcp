@@ -292,6 +292,15 @@ def _racket_config_digest_for(source_root: str, languages: Optional[dict]) -> Op
     except Exception:
         logger.debug("racket config digest unavailable", exc_info=True)
         return ""
+def _racket_reader_generation_for(source_root: str, languages: Optional[dict]) -> Optional[int]:
+    """The reader generation to stamp beside the config digest: same rule,
+    every LOCAL index, so an absent key means parsed-by-tree-sitter."""
+    if not source_root:
+        return None
+    from ..parser.racket_reader import READER_GENERATION
+    return READER_GENERATION
+
+
 _file_hash: Callable[[str], str] = lambda x: ""
 
 
@@ -1308,6 +1317,7 @@ class SQLiteIndexStore:
             index_version=base_index.index_version,
             parser_generation=getattr(base_index, "parser_generation", 0),
             racket_config_digest=getattr(base_index, "racket_config_digest", None),
+            racket_reader_generation=getattr(base_index, "racket_reader_generation", None),
             file_hashes=composed_hashes,
             git_head=delta.get("git_head", base_index.git_head),
             file_summaries=composed_summaries,
@@ -1424,6 +1434,7 @@ class SQLiteIndexStore:
             index_version=cast(int, _INDEX_VERSION),
             parser_generation=cast(int, _PARSER_GENERATION),
             racket_config_digest=_racket_config_digest_for(source_root, languages),
+            racket_reader_generation=_racket_reader_generation_for(source_root, languages),
             file_hashes=file_hashes,
             git_head=git_head,
             file_summaries=file_summaries or {},
@@ -3074,6 +3085,7 @@ class SQLiteIndexStore:
             index_version=old.index_version,
             parser_generation=getattr(old, "parser_generation", 0),
             racket_config_digest=getattr(old, "racket_config_digest", None),
+            racket_reader_generation=getattr(old, "racket_reader_generation", None),
             file_hashes=new_file_hashes,
             git_head=meta.get("git_head", old.git_head),
             file_summaries=new_file_summaries,
@@ -3174,6 +3186,8 @@ class SQLiteIndexStore:
             index_version=int(meta.get("index_version", "0")),
             parser_generation=int(meta.get("parser_generation", "0") or 0),
             racket_config_digest=meta.get("racket_config_digest"),  # None = never stamped
+            racket_reader_generation=(int(meta["racket_reader_generation"])
+                                      if meta.get("racket_reader_generation") not in (None, "") else None),
             file_hashes=file_hashes,
             git_head=meta.get("git_head", ""),
             file_summaries=file_summaries,
@@ -3207,6 +3221,8 @@ class SQLiteIndexStore:
             # re-parse that never happened.
             **({"racket_config_digest": index.racket_config_digest}
                if getattr(index, "racket_config_digest", None) is not None else {}),
+            **({"racket_reader_generation": str(index.racket_reader_generation)}
+               if getattr(index, "racket_reader_generation", None) is not None else {}),
             "git_head": index.git_head,
             "source_root": index.source_root,
             "git_root": getattr(index, "git_root", "") or "",

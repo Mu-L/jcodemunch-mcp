@@ -1,6 +1,113 @@
 {
   "_note": "Frozen output of benchmarks/racket_fidelity/oracle.rkt against tests/fixtures/racket/*.rkt. Regenerate with tests/fixtures/racket/REGENERATE.md when a fixture changes.",
   "files": {
+    "atexp-syntax.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "atexp-syntax"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 6,
+          "name": "before-the-examples"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 9,
+          "name": "glance"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 53,
+          "name": "between-the-sections"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 56,
+          "name": "command"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 74,
+          "name": "datum"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 86,
+          "name": "body"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 132,
+          "name": "x@y"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 133,
+          "name": "after-the-examples"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "after-the-examples",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "before-the-examples",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "between-the-sections",
+          "procedure": true
+        },
+        {
+          "kind": "value",
+          "name": "body",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "command",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "datum",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "glance",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "x@y",
+          "procedure": false
+        }
+      ],
+      "file": "atexp-syntax.rkt"
+    },
     "atexp.rkt": {
       "definitions": [
         {
@@ -834,6 +941,109 @@
         }
       ],
       "file": "macros.rkt"
+    },
+    "reader.rkt": {
+      "definitions": [
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 1,
+          "name": "reader"
+        },
+        {
+          "from_source": false,
+          "kind": "module",
+          "line": 199,
+          "name": "configure-runtime"
+        },
+        {
+          "from_source": true,
+          "kind": "syntax",
+          "line": 8,
+          "name": "reader-basics"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "reader-basics"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "reader-basics"
+        },
+        {
+          "from_source": false,
+          "kind": "value",
+          "line": null,
+          "name": "reader-basics4"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 11,
+          "name": "reader-atoms"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 15,
+          "name": "reader-compound"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 19,
+          "name": "reader-here-string"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 24,
+          "name": "reader-shebang-follows"
+        },
+        {
+          "from_source": true,
+          "kind": "value",
+          "line": 28,
+          "name": "reader-after-shebang"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "value",
+          "name": "reader-after-shebang",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "reader-atoms",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "reader-compound",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "reader-here-string",
+          "procedure": false
+        },
+        {
+          "kind": "value",
+          "name": "reader-shebang-follows",
+          "procedure": false
+        },
+        {
+          "kind": "syntax",
+          "name": "reader-basics",
+          "procedure": null
+        }
+      ],
+      "file": "reader.rkt"
     }
   },
   "racket_version": "Welcome to Racket v9.2 [cs]."

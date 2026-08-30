@@ -2,6 +2,185 @@
 
 ## [Unreleased]
 
+### Fixed - `#lang rosette` is S-expressions
+
+Rosette's reader is `#lang s-exp syntax/module-reader rosette` -- the default
+reader -- and the built-in list did not have it, so a Rosette file was a
+document: no symbols, and (previous entry) no `require` edges once the regex
+stopped guessing. Found by measuring what the document tier loses; one real
+file. `rosette/safe` rides on the same entry.
+
+### Changed - `require` edges come from the reader; the second mini-reader is gone
+
+`imports.py` carried its own comment-stripper and form reader and found
+`(require` by regex -- a second Racket reader beside the parser's, and the
+weaker one. ⚠⚠ **Measured over 2,489 files against the reader-based
+extraction: 131 edges the regex produced and the reader does not, and none
+the other way.** Every one of the 131 is a `(require ...)` the file does not
+make: inside `#;` datum comments, inside `#'` macro templates, inside a
+quasiquoted `eval` payload, inside a here-string that writes a `main.rkt` for
+someone else. The reader knows which lists are code; the regex knew which
+bytes spelled `(require`.
+
+`extract_imports` takes `repo` now, threaded from the four indexing call
+sites, because the `#lang` tier decides the reader mode and a project's own
+at-exp lang (`racket_langs`) is invisible without it -- the walker already
+read those files that way; the import extractor read them as text and got
+its edges by the regex's luck. ⚠ **A document-tier file contributes no edges
+now, and that is a measured loss, stated:** across the distribution and one
+developer's projects, with conscript promoted and `pollen/mode` built in, the
+regex found 60 edges in 17 of 211 document files (`2d`, `scribble/lp`,
+`beeswax/template`, `rash`, `camp/page` ...). A reader we do not have cannot
+say where the Racket in a document is, and any of those langs can be declared
+in `racket_langs` to get its edges back. Deleted: `_racket_strip_comments`,
+`_racket_read_form`, `_RACKET_REQUIRE_RE`.
+
+### Fixed - `#lang pollen/mode racket/base` is Racket code, not a Pollen document
+
+`pollen/mode` is a meta-language: `make-at-readtable #:command-char #\◊` over
+its argument, hardcoded in pollen/mode.rkt -- `at-exp` with a lozenge. The
+`#lang` gate's prefix rule filed it under `pollen`, a document lang, so every
+`.rkt` written in it yielded no symbols and (see the next entry) contributed
+its `require` edges only by the regex's accident. It is a built-in at-exp
+wrapper now, with its command character beside `at-exp`'s `@`. ⚠ Measured
+against Racket's own reader on 7 real `#lang pollen/mode racket/base` files
+(5,977 nodes, 51 at-forms): none differ. `#lang pollen` -- the document -- is
+still a document. ⚠ `test_built_in_tiers` had pinned `pollen/mode` as `text`,
+the prefix rule's answer written down as the intended one.
+
+### Added - `racket_langs` may declare a lang's at-exp command character
+
+`{"mylang": {"tier": "at-exp", "command_char": "◊"}}` beside the string form.
+Racket's `make-at-readtable` takes `#:command-char` and Pollen's reader uses
+`◊`, so an at-exp-shaped lang is not always an `@` lang; with the character
+declared, `◊` dispatches and `@` is an ordinary symbol constituent again,
+which the test checks in both directions. `#lang at-exp X` is Racket's own
+at-exp reader and stays `@` whatever the config says. ⚠ ONE non-whitespace
+character; a malformed entry costs that entry, never the file, the same rule
+`racket_definition_forms` has. It rides in the existing config digest, so a
+changed character re-parses the index once like any other `racket_langs` edit.
+
+### Changed - `.rkt` is read by the Racket reader; the brace-blanking pass is gone
+
+`_parse_racket_symbols` reads through `racket_reader.py` now, with `@` as the
+command character when the `#lang` tier says `at-exp`, and tree-sitter is not
+consulted for Racket at all (`test_racket_language.py` fails if any path back
+to the grammar returns). The walker is unchanged: the reader produces the tree
+shape it already consumed. ⚠⚠ **The expander harness is byte-for-byte the
+committed run** -- 211 files, `extra` 0, `wrong_span` 0, `missing` 362, 89.7%
+-- which is the point of a behaviour-preserving swap and the reason the reader
+was measured against `read-syntax` on its own first. **On 208 `#lang conscript`
+files, with no blanking: 0 missing, 0 wrong spans.**
+
+Deleted: `_racket_blank_atexp_bodies`, the 1.108.303 pre-pass that overwrote
+every `{...}` body with spaces so the grammar would not see the `;` `"` `#` `|`
+inside. It could not see `@(define ...)` inside a body, or a `{` inside a
+string inside a body, or a `|{ ... }|` alternate delimiter; the reader reads
+bodies as Racket does, so none of those is a case any more.
+
+⚠ **A read error now costs the broken form, not the rest of the file.** The
+reader marks the form's span ERROR and resumes at the next column-0 form; the
+walker still skips ERROR. So a stray `)` at line 40 no longer loses every
+definition after it, and the WARNING names the file AND the line of the first
+error with a count. ⚠⚠ `test_definitions_after_a_stray_close_paren_are_missed_not_fabricated`
+pinned the loss as intended behaviour ("pinned so it is a decision rather than
+an accident") -- Practice 9, the defect written down as the spec -- and asserts
+the definitions are found now. An unterminated string inside a form leaves the
+form's INTERNAL define inside the ERROR rather than beside it, which is the
+fabrication tree-sitter's recovery produced (measured on a real `unit` body);
+and an EXTRA `)` folds the indented forms it leaked back into the ERROR.
+
+⚠⚠ **No `PARSER_GENERATION` bump.** The reader changes what unchanged `.rkt`
+bytes yield (at-exp bodies, error handling), and the incremental path never
+re-reads unchanged content -- so `racket_reader.READER_GENERATION` is stamped
+on every local index holding Racket files beside the config digest, under the
+same rule: absent means tree-sitter parsed it. A mismatch forces one full
+re-parse with its own reason, `racket_reader_changed`, and reaches exactly the
+indexes that hold `.rkt` files instead of every language for everybody -- the
+#556 argument, applied to the reader. ⚠ The shared parse cache key carries
+`INDEX_VERSION`, not `PARSER_GENERATION`, so without the generation in the key
+a `.rkt` parsed by tree-sitter last week would have been served after the swap;
+`:rr<generation>` is in the Racket key now, and a test bumps the constant and
+asserts the key moves.
+
+### Added - a Racket reader in Python, measured against Racket's reader
+
+`parser/racket_reader.py` reads Racket source -- the default reader of the
+Racket reference's "Reader" chapter, and the at-exp extension exactly as
+`scribble/reader` implements it -- into a tree shaped like tree-sitter-racket's,
+so the symbol walker can consume it unchanged. Nothing routes to it yet; that
+is the next entry. ⚠⚠ **It exists because a `#lang` line selects a READER, and
+a grammar cannot follow it.** 1.108.303 worked around that with a byte-blanking
+pre-pass over `{...}` bodies and an ERROR-skipping rule; both treated the
+symptoms of reading Racket with the wrong reader.
+
+⚠⚠ **Measured, not asserted: `benchmarks/racket_fidelity/run_reader_fidelity.py`
+compares the tree against `read-syntax` node for node.** `reader_oracle.rkt`
+reads each file with the reader its own `#lang` selects and emits every syntax
+object as (type, byte start, byte span); `only_racket`, `only_ours` and
+`our_only_error` gate at 0. On the whole `collects` tree plus every
+`#lang at-exp` file in the distribution -- 725 files, 761,009 nodes, 3,622
+at-forms -- all three are 0. On 152 conscript files with the lang promoted to
+at-exp: 53,269 nodes, 3,283 at-forms, 0, 0, 0. ⚠ What it does NOT compare is
+stated in the results file: strings inside an at-exp body (the form's span is
+compared; the walker never reads inside one), comments, `#hash`/`#s` contents
+(Racket does not position their keys), and the datum after `#reader <module>`,
+which is read by THAT module's reader.
+
+⚠ A differential against tree-sitter over 2,089 files agreed on all 1.8M nodes
+except where Racket sided with the reader: `#cs` is a case-fold switch, not a
+symbol; `#<< eos` (a terminator with a leading space) is a here string; `#\SPACE`
+is a character. ⚠⚠ Three of the harness's own defects were found by the harness
+before any of the reader's: the oracle spliced a dotted tail's syntax object
+into its parent (`(a . ,b)` showed a bare `,` symbol), it emitted a sized
+vector's repeated element three times (`#3(a)` fills by repetition -- the same
+object, `eq?`), and its `#lang` detection had the block-comment gap above.
+**An oracle is code too, and the first thing a new one measures is itself.**
+
+⚠ **Errors resynchronise instead of recovering.** tree-sitter re-parents on
+error, which is how a `unit` body's internal define became a module-level
+binding. The reader emits an ERROR node from the broken form to the next
+column-0 opener and reads on, so a missing `)` costs its own form and never the
+rest of the file (Racket rejects the whole file). ⚠⚠ An EXTRA `)` closes a form
+early and leaves its remaining internal definitions to be read as top-level
+forms -- exactly the fabrication tree-sitter's recovery produced -- so on an
+unexpected closer every indented top-level form read since the last column-0
+form is folded back into the ERROR. Unit-tested, because Racket has no opinion
+on what happens after an error.
+
+⚠ `@` is NEVER inferred from the text: in the default reader it is a symbol
+constituent and `(define @foo 1)` binds `@foo`. The at-exp mode is switched by
+the caller (the `#lang` tier), as `#lang at-exp` does; the command character is
+a parameter, because `make-at-readtable` takes one and Pollen uses `◊`.
+Performance: 17.3 MB of Racket in 1.71 s against tree-sitter's 0.61 s -- 2.8x
+slower and ~10 MB/s, far under the walker's own cost.
+
+Also: `tests/fixtures/racket/` gains `reader.rkt` (one instance of every
+default-reader form) and `atexp-syntax.rkt` (the Scribble documentation's own
+`@`-syntax examples, quoted so the file still expands), and a second frozen
+oracle, `racket_reader_oracle.json`, gates the reader in CI without Racket the
+way `racket_oracle.json` gates the extractor. ⚠ `test_racket_fidelity.py` listed
+its fixture names as a literal -- the `.303` Rust lesson, in the Racket test
+that taught it -- and reads them off disk now. ⚠ The frozen oracle is BYTE
+positions, so `.gitattributes` pins the fixtures to LF: a CRLF checkout moved
+every position after line 1 and failed all seven gate cases on Windows, the
+reader's first CI run, with diffs nothing explained. A dedicated test names
+the cause if the rule is ever lost.
+
+### Fixed - a `#| |#` block comment above `#lang` hid the lang from the gate
+
+`#lang` may follow "comment forms". The `#lang` gate (1.108.303) allowed `;`
+lines and `#!` shebangs before it but not a `#| |#` block. `openssl/mzssl.rkt`
+opens with a 900-byte block comment; its `#lang racket/base` was invisible, so
+the file read as a `#lang`-less module -- harmless there, because the default
+reader is what a `#lang`-less file gets anyway. ⚠ The other direction is not
+harmless: a Scribble or Pollen document behind a licence block would have been
+read as S-expressions, which is the fabrication class the gate exists to stop.
+One level of block comment; a regex cannot nest, and a nested block above a
+`#lang` line has not been seen. Found by the reader-fidelity harness (next
+entry), which compared 725 files against Racket's own reader and could not
+account for six nodes in one file.
+
 ## [1.108.309] - 2026-08-29 - A mean hides the tail, and a default invents a comparison
 
 ### Fixed - `analyze_perf` differenced latency against a baseline that never measured it

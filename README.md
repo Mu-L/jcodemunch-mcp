@@ -270,7 +270,7 @@ A `#lang` line names a *reader*, and jCodeMunch's Racket parser reads S-expressi
 }
 ```
 
-`sexp` is plain S-expressions; `at-exp` is at-exp text bodies over Racket (the bodies are blanked before parsing, so prose containing `;` `"` `#` or `|` cannot break the grammar); `text` is a document language that is never walked. A key also covers its sub-langs (`conscript` matches `conscript/with-require`), and a project may demote a lang as well as promote one.
+`sexp` is plain S-expressions; `at-exp` is at-exp text bodies over Racket (read with `@` as the command character, exactly as `#lang at-exp` reads them, so prose containing `;` `"` `#` or `|` is prose); `text` is a document language that is never walked. A key also covers its sub-langs (`conscript` matches `conscript/with-require`), and a project may demote a lang as well as promote one. An at-exp lang whose reader uses another command character declares it with the object form — `"mylang": {"tier": "at-exp", "command_char": "◊"}` — the way Racket's `make-at-readtable` takes `#:command-char`.
 
 Both keys change what the parser emits for *unchanged* files, so a change to either is stamped on the index and forces one full re-parse on the next index (`rebuild_reason: "racket_config_changed"`); you do not need to touch the files or clear the index. An index holding Racket files that was built before this stamp existed re-parses once the same way (`rebuild_reason: "racket_index_predates_gate"`).
 
