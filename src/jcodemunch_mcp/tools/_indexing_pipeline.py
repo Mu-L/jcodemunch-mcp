@@ -208,7 +208,7 @@ def parse_immediate(
         content = file_contents.get(rel_path)
         if content is None:
             continue
-        imps = extract_imports(content, rel_path, language)
+        imps = extract_imports(content, rel_path, language, repo=repo)
         if imps:
             file_imports[rel_path] = imps
 
@@ -334,7 +334,7 @@ def parse_and_prepare_incremental(
         content = file_contents.get(rel_path)
         if content is None:
             continue
-        imps = extract_imports(content, rel_path, language)
+        imps = extract_imports(content, rel_path, language, repo=repo)
         if imps:
             file_imports[rel_path] = imps
 
@@ -468,7 +468,7 @@ def parse_and_prepare_full(
     for path, content in file_contents.items():
         language = file_language_map.get(path)
         if language:
-            imps = extract_imports(content, path, language)
+            imps = extract_imports(content, path, language, repo=repo)
             if imps:
                 file_imports[path] = imps
 

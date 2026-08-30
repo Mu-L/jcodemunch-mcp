@@ -2892,7 +2892,7 @@ def index_folder(
                 logger.debug("PARSE ERROR: %s — %s", rel_path, e)
 
             # Extract imports while content is in scope
-            imps = extract_imports(content, rel_path, language)
+            imps = extract_imports(content, rel_path, language, repo=str(folder_path))
             if imps:
                 file_imports[rel_path] = imps
             # content is discarded at end of iteration

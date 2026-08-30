@@ -712,98 +712,10 @@ def _extract_svelte_imports(content: str) -> list[dict]:
 
 #: `\b` after `require` also matched `(require-syntax ...)` (`-` is a word
 #: boundary), which is a different form; the lookahead demands a delimiter.
-_RACKET_REQUIRE_RE = re.compile(r"\(\s*require(?=[\s()\[\]])")
-
 #: Wrappers that carry the real module path deeper inside.
 _RACKET_REQUIRE_UNWRAP = frozenset({
     "for-syntax", "for-template", "for-label", "for-meta", "combine-in",
 })
-
-
-def _racket_strip_comments(text: str) -> str:
-    """Blank out `;` line comments and `#| |#` blocks, preserving offsets.
-
-    String literals are stepped over so a `;` inside one is not treated as a
-    comment. Offsets are preserved so the caller's paren matching stays valid.
-    """
-    out = list(text)
-    i, n = 0, len(text)
-    while i < n:
-        ch = text[i]
-        if ch == '"':
-            i += 1
-            while i < n and text[i] != '"':
-                if text[i] == "\\":
-                    i += 1
-                i += 1
-            i += 1
-        elif ch == ";":
-            while i < n and text[i] != "\n":
-                out[i] = " "
-                i += 1
-        elif ch == "#" and i + 1 < n and text[i + 1] == "|":
-            depth = 1
-            out[i] = out[i + 1] = " "
-            i += 2
-            while i < n and depth:
-                if text.startswith("|#", i):
-                    depth -= 1
-                    out[i] = out[i + 1] = " "
-                    i += 2
-                elif text.startswith("#|", i):
-                    depth += 1
-                    out[i] = out[i + 1] = " "
-                    i += 2
-                else:
-                    if text[i] != "\n":
-                        out[i] = " "
-                    i += 1
-        else:
-            i += 1
-    return "".join(out)
-
-
-def _racket_read_form(text: str, start: int):
-    """Read one balanced form beginning at `text[start]`; return (node, end).
-
-    `node` is a str for an atom or quoted string, or a list for a form.
-    Returns (None, start + 1) when the character starts nothing readable.
-    """
-    n = len(text)
-    i = start
-    while i < n and text[i].isspace():
-        i += 1
-    if i >= n:
-        return None, n
-    ch = text[i]
-    if ch in "([":
-        close = ")" if ch == "(" else "]"
-        items = []
-        i += 1
-        while i < n:
-            while i < n and text[i].isspace():
-                i += 1
-            if i >= n:
-                break
-            if text[i] in ")]":
-                i += 1
-                break
-            item, i = _racket_read_form(text, i)
-            if item is not None:
-                items.append(item)
-        del close
-        return items, i
-    if ch == '"':
-        j = i + 1
-        while j < n and text[j] != '"':
-            if text[j] == "\\":
-                j += 1
-            j += 1
-        return text[i:j + 1], min(j + 1, n)
-    j = i
-    while j < n and not text[j].isspace() and text[j] not in "()[]":
-        j += 1
-    return text[i:j], j
 
 
 def _racket_atom_specifier(node: str) -> Optional[str]:
@@ -882,29 +794,70 @@ def _racket_edges(node) -> list[tuple[str, list[str]]]:
     return []
 
 
-def _extract_racket_imports(content: str) -> list[dict]:
-    """Extract Racket `(require ...)` edges.
+#: Node types under which a `(require ...)` is DATA, not a require of this
+#: file: quoted and syntax-quoted forms (macro templates, `eval` payloads),
+#: comments (`#;` above all), and a span the reader could not read.
+_RACKET_NOT_CODE = frozenset({
+    "quote", "quasiquote", "syntax", "quasisyntax",
+    "comment", "block_comment", "sexp_comment", "ERROR",
+})
+
+
+def _racket_datum(node):
+    """The nested-list-of-strings view `_racket_edges` consumes: atoms are
+    their source text (a string path keeps its quotes), lists are lists."""
+    if node.type == "list":
+        return [_racket_datum(c) for c in node.children
+                if c.type not in ("comment", "block_comment", "sexp_comment", "dot")]
+    return node.text.decode("utf-8", "replace")
+
+
+def _extract_racket_imports(content: str, repo: Optional[str] = None) -> list[dict]:
+    """Extract Racket `(require ...)` edges, read by ``racket_reader.py``.
 
     Handles bare collection paths, string paths, `(submod "file" sub)`, and
     the `only-in` / `rename-in` / `prefix-in` / `except-in` / `for-syntax` /
     `for-meta` / `combine-in` wrappers, each of which may carry several
     module paths. `(submod "." test)` is deliberately skipped -- it names a
     submodule of the same file, not another file.
+
+    ⚠ One reader. This used to carry its own comment-stripper and form reader
+    and find `(require` by regex, which matched inside `#;` comments, `#'`
+    syntax templates, quasiquoted `eval` payloads and here-strings: measured
+    over 2,489 files, 131 "requires" the files do not make and none missed.
+    Now the `#lang` tier decides the reader mode (so a project's own at-exp
+    lang needs `repo`, the same way the walker does), a `require` is a list
+    whose head is that symbol at any depth of CODE, and a document-tier
+    file contributes no edges -- a reader it does not have cannot say where
+    the Racket in it is.
     """
-    text = _racket_strip_comments(content)
+    from .extractor import _racket_command_char, _racket_tier   # lazy: the cycle runs the other way
+    from .racket_reader import read_racket
+
+    source = content.encode("utf-8", "surrogatepass")
+    tier, written = _racket_tier(source, repo)
+    if tier == "text":
+        return []
+    tree = read_racket(source, at_exp=(tier == "at-exp"),
+                       command_char=_racket_command_char(written, repo))
     edges: list[dict] = []
     seen: set[tuple] = set()
-    for m in _RACKET_REQUIRE_RE.finditer(text):
-        form, _ = _racket_read_form(text, m.start())
-        if not isinstance(form, list):
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if node.type in _RACKET_NOT_CODE:
             continue
-        for item in form[1:]:
-            for spec, names in _racket_edges(item):
-                key = (spec, tuple(names))
-                if key in seen:
-                    continue
-                seen.add(key)
-                edges.append({"specifier": spec, "names": names})
+        if node.type == "list":
+            kids = [c for c in node.children if c.type not in ("comment", "block_comment", "sexp_comment")]
+            if kids and kids[0].type == "symbol" and kids[0].text == b"require":
+                for item in kids[1:]:
+                    for spec, names in _racket_edges(_racket_datum(item)):
+                        key = (spec, tuple(names))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        edges.append({"specifier": spec, "names": names})
+        stack.extend(reversed(node.children))
     return edges
 
 
@@ -1053,13 +1006,16 @@ _LANGUAGE_EXTRACTORS = {
 }
 
 
-def extract_imports(content: str, file_path: str, language: str) -> list[dict]:
+def extract_imports(content: str, file_path: str, language: str,
+                    repo: Optional[str] = None) -> list[dict]:
     """Extract import edges from source file content.
 
     Args:
         content: Raw source file text.
         file_path: Path of the file (used for context; not used in extraction).
         language: Language name (must match LANGUAGE_REGISTRY keys).
+        repo: Index source root, for extractors whose reading depends on
+            project config (Racket's `racket_langs`); None where unknown.
 
     Returns:
         List of dicts: [{"specifier": str, "names": list[str]}, ...]
@@ -1085,6 +1041,8 @@ def extract_imports(content: str, file_path: str, language: str) -> list[dict]:
     if extractor is None:
         return []
     try:
+        if language == "racket":
+            return _extract_racket_imports(content, repo=repo)
         return extractor(content)
     except Exception:
         # Practice 2: an extractor that raises loses EVERY edge for this file,

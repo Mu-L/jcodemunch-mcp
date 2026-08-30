@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Changed - `require` edges come from the reader; the second mini-reader is gone
+
+`imports.py` carried its own comment-stripper and form reader and found
+`(require` by regex -- a second Racket reader beside the parser's, and the
+weaker one. ⚠⚠ **Measured over 2,489 files against the reader-based
+extraction: 131 edges the regex produced and the reader does not, and none
+the other way.** Every one of the 131 is a `(require ...)` the file does not
+make: inside `#;` datum comments, inside `#'` macro templates, inside a
+quasiquoted `eval` payload, inside a here-string that writes a `main.rkt` for
+someone else. The reader knows which lists are code; the regex knew which
+bytes spelled `(require`.
+
+`extract_imports` takes `repo` now, threaded from the four indexing call
+sites, because the `#lang` tier decides the reader mode and a project's own
+at-exp lang (`racket_langs`) is invisible without it -- the walker already
+read those files that way; the import extractor read them as text and got
+its edges by the regex's luck. ⚠ **A document-tier file contributes no edges
+now, and that is a measured loss, stated:** across the distribution and one
+developer's projects, with conscript promoted and `pollen/mode` built in, the
+regex found 60 edges in 17 of 211 document files (`2d`, `scribble/lp`,
+`beeswax/template`, `rash`, `camp/page` ...). A reader we do not have cannot
+say where the Racket in a document is, and any of those langs can be declared
+in `racket_langs` to get its edges back. Deleted: `_racket_strip_comments`,
+`_racket_read_form`, `_RACKET_REQUIRE_RE`.
+
 ### Fixed - `#lang pollen/mode racket/base` is Racket code, not a Pollen document
 
 `pollen/mode` is a meta-language: `make-at-readtable #:command-char #\◊` over
