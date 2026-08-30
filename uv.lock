@@ -1015,7 +1015,7 @@ wheels = [
 
 [[package]]
 name = "jcodemunch-mcp"
-version = "1.108.310"
+version = "1.108.311"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

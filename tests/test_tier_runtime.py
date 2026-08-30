@@ -501,14 +501,22 @@ async def test_plan_turn_model_piggyback_switches_tier(adaptive_on):
         args = {
             "repo": "local/jcodemunch-mcp-384d867b",
             "query": "anything",
-            "model": "claude-sonnet-4-6",
+            # ⚠ Was "claude-sonnet-4-6", which routed at "standard" -- a
+            # narrowing the server now refuses because it cannot repay its own
+            # cache invalidation. That made this test assert a switch that must
+            # not happen. Haiku -> core is a narrowing that DOES pay (4
+            # requests), so the property under test -- plan_turn(model=) flips
+            # the session tier as a side effect -- is unchanged and still real.
+            "model": "claude-haiku-4-5",
         }
         result = await call_tool("plan_turn", args)
         text = _rtext(result)
         data = json.loads(text)
-        assert _default_override() == "standard"
+        assert _default_override() == "core"
         ann = data.get("tier_announcement", {})
-        assert ann.get("tier") == "standard"
+        assert ann.get("tier") == "core"
+        assert ann.get("changed") is True
+        assert "refused" not in ann
     finally:
         config_mod._GLOBAL_CONFIG.clear()
         config_mod._GLOBAL_CONFIG.update(orig_config)

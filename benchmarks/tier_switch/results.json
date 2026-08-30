@@ -1,0 +1,100 @@
+{
+  "estimator": "bytes/4",
+  "rates": {
+    "cache_read": 0.1,
+    "cache_write_5min": 1.25,
+    "cache_write_1hour": 2.0,
+    "basis": "multiples of base input price; PUBLISHED, not measured here"
+  },
+  "tiers": {
+    "core": {
+      "tools": 20,
+      "schema_tokens": 6824
+    },
+    "standard": {
+      "tools": 82,
+      "schema_tokens": 25133
+    },
+    "full": {
+      "tools": 91,
+      "schema_tokens": 26943
+    }
+  },
+  "switches": [
+    {
+      "from": "full",
+      "to": "core",
+      "verdict": "pays",
+      "one_time_write": 8530.0,
+      "saved_per_request": 2011.9,
+      "breakeven_requests": 4.2,
+      "breakeven_by_history": {
+        "0": 4.2,
+        "10000": 10.5,
+        "25000": 19.8,
+        "50000": 35.3,
+        "100000": 66.4
+      }
+    },
+    {
+      "from": "full",
+      "to": "standard",
+      "verdict": "does_not_pay",
+      "one_time_write": 31416.2,
+      "saved_per_request": 181.0,
+      "breakeven_requests": 173.6,
+      "breakeven_by_history": {
+        "0": 173.6,
+        "10000": 242.6,
+        "25000": 346.2,
+        "50000": 518.9,
+        "100000": 864.2
+      }
+    },
+    {
+      "from": "standard",
+      "to": "core",
+      "verdict": "pays",
+      "one_time_write": 8530.0,
+      "saved_per_request": 1830.9,
+      "breakeven_requests": 4.7,
+      "breakeven_by_history": {
+        "0": 4.7,
+        "10000": 11.5,
+        "25000": 21.7,
+        "50000": 38.8,
+        "100000": 72.9
+      }
+    },
+    {
+      "from": "core",
+      "to": "full",
+      "verdict": "widening",
+      "one_time_write": 33678.8,
+      "saved_per_request": -2011.9,
+      "breakeven_requests": null,
+      "breakeven_by_history": {
+        "0": null,
+        "10000": null,
+        "25000": null,
+        "50000": null,
+        "100000": null
+      }
+    },
+    {
+      "from": "standard",
+      "to": "full",
+      "verdict": "widening",
+      "one_time_write": 33678.8,
+      "saved_per_request": -181.0,
+      "breakeven_requests": null,
+      "breakeven_by_history": {
+        "0": null,
+        "10000": null,
+        "25000": null,
+        "50000": null,
+        "100000": null
+      }
+    }
+  ]
+}

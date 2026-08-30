@@ -425,11 +425,19 @@ DEFAULTS = {
             "find_hot_paths", "find_unused_paths", "get_redaction_log",
         ],
     },
+    # ⚠⚠ No entry here targets "standard", and that is deliberate. This map
+    # drives a MID-SESSION switch, and `full` -> `standard` drops 6.7% of the
+    # schema payload while invalidating the whole cached prefix -- 174 requests
+    # to repay itself with an empty history, 864 with 100k of it. It is a fine
+    # STARTUP `tool_profile` and a losing transition, so the two must not be
+    # confused. `tier_switch_cost.classify` refuses it at the switch regardless;
+    # routing two of the most common models at it would just mean every such
+    # session opened with a refusal. `core` is the real narrowing (4 requests).
     "model_tier_map": {
         "claude-opus": "full",
-        "claude-sonnet": "standard",
+        "claude-sonnet": "full",
         "claude-haiku": "core",
-        "gpt-4o": "standard",
+        "gpt-4o": "full",
         "gpt-5": "full",
         "o1": "full",
         "llama": "core",
@@ -2357,11 +2365,16 @@ def generate_template() -> str:
   // glob, substring, "*", hardcoded "full" fallback in that order.
   // Keep keys specific where possible: very short substrings (e.g. "o1") can
   // over-match model ids that merely contain that token.
+  // No entry targets "standard", deliberately: this map drives a MID-SESSION
+  // switch, and full -> standard drops 6.7% of the schema payload while
+  // invalidating the whole cached prefix (174 requests to repay itself, 864
+  // with 100k of history). It is a fine startup tool_profile and a losing
+  // transition; the server refuses it at the switch either way.
   "model_tier_map": {{
     "claude-opus": "full",
-    "claude-sonnet": "standard",
+    "claude-sonnet": "full",
     "claude-haiku": "core",
-    "gpt-4o": "standard",
+    "gpt-4o": "full",
     "gpt-5": "full",
     "o1": "full",
     "llama": "core",

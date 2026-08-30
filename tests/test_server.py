@@ -1309,9 +1309,14 @@ def test_model_tier_map_default_present():
     mp = DEFAULTS["model_tier_map"]
     assert isinstance(mp, dict)
     assert mp["claude-opus"] == "full"
-    assert mp["claude-sonnet"] == "standard"
     assert mp["claude-haiku"] == "core"
     assert mp["*"] == "full"
+    # ⚠ `claude-sonnet` deliberately no longer names a tier here. It routed at
+    # "standard", a MID-SESSION narrowing that costs a full cache rewrite to
+    # save 6.7% of the payload -- 174 requests to repay itself. Pinning the
+    # literal made this test the defect's witness rather than its guard, so it
+    # asserts the PROPERTY instead; `test_tier_switch_cost.py` owns the rule.
+    assert set(mp.values()) <= {"core", "standard", "full"}
 
 
 def test_adaptive_tiering_defaults_false():

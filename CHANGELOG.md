@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+## [1.108.311] - 2026-08-30 - The intuition inverts once the block is cached
+
+### Fixed - a narrowing that cannot repay its own cache invalidation is refused
+
+`set_tool_tier("standard")` and the shipped `model_tier_map` both offered a
+mid-session switch that costs more than it saves, for the whole life of any
+session anyone runs.
+
+`tools` is serialised **ahead of** system and messages, so changing the
+published tool list invalidates the cached prefix -- the schema block and every
+turn accumulated behind it -- and the new block must be cache-*written* before
+it reads cheaply again. Measured on the live catalog
+(`benchmarks/tier_switch/`, regenerable, artifact committed): `full -> standard`
+drops 9 of 91 tools and 1,810 schema tokens, so it pays a full-rate write of
+25,133 tokens to save 181 per request. **174 requests to break even with an
+empty history; 864 with 100k of it.** `full -> core` breaks even in **4**.
+
+⚠⚠ **The intuition inverts on exactly the case that applies.** Uncached, the
+same switch saves 1,810 tokens on every request at no one-time cost and pays
+back immediately. It is wrong only because the block is CACHED --
+`benchmarks/codex_surface/` measured 86% of baseline input cached. "Fewer
+tokens is better" holds right up until the block is stable, which is precisely
+when it stops holding. That is why a surface built to save tokens shipped a
+control that spends them.
+
+⚠ This extends the codex_surface finding rather than restating it. That one
+says `standard` is **not a lever** (6.7% of the payload). The new half is that
+as a TRANSITION it is not a weak lever but a negative one.
+
+⚠⚠ **A widening is never refused.** Escalating to a larger surface after a
+capability-gated failure buys a capability; trading a correct answer for a
+cheap one is the worse error. Only a narrowing is judged, because only a
+narrowing claims to save. `standard` also remains a fine startup
+`tool_profile` -- there is no switch to pay for at startup, and the refusal
+names that route.
+
+Three findings fell out of writing it, each its own defect:
+
+- **The first pricing helper filtered the raw catalog by the tier bundle and
+  was wrong by three tools in every tier** -- it kept the hidden Counter front
+  door and dropped the force-included tier controls, pricing a surface no
+  client receives. `_build_tools_list` takes a `profile_override` now, so the
+  price comes from the function `list_tools` uses instead of a second copy of
+  the visibility rules.
+- **The refusal's explanation was put in `_meta`, which `meta_fields: []` --
+  the DEFAULT -- strips.** Most users would have received a bare verdict with
+  the reason removed by a display preference nobody would connect to it. It is
+  `reason`, in the body. Caught by the test, not by review.
+- **The map ships TWICE** and the first ratchet read `DEFAULTS` alone, passing
+  while the config TEMPLATE still routed `claude-sonnet` and `gpt-4o` at
+  `standard`. The guard reads every shipped copy and names which one offends.
+
+`tests/test_tier_switch_cost.py` (17 tests). Four fail against the
+reintroduced gate defect and one against each restored map copy; every refusal
+assertion has a sibling asserting the switch still happens where it pays, so a
+gate that refused everything fails the file.
+
 ## [1.108.310] - 2026-08-30 - A `#lang` line selects a reader, and a grammar cannot follow it
 
 ### Fixed - `#lang rosette` is S-expressions

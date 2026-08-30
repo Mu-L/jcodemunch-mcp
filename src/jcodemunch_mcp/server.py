@@ -518,6 +518,41 @@ def _catalog_names() -> set:
     return {t.name for t in _raw_catalog_tools() if t.name not in _COUNTER_FRONT_DOOR}
 
 
+def _schema_weight(tool) -> int:
+    """Schema token weight of ONE tool, estimator bytes/4.
+
+    ⚠ The single producer of this number. It was a closure inside
+    `_tool_surface_stats` until the tier-switch pricing needed the same scale;
+    a second copy that agreed digit for digit is what makes a later divergence
+    invisible (the `analyze_perf._percentile` lesson).
+    """
+    import json as _json
+
+    payload = _json.dumps(
+        {
+            "name": tool.name,
+            "description": tool.description or "",
+            "inputSchema": tool.inputSchema or {},
+        },
+        separators=(",", ":"),
+        default=str,
+    )
+    return max(1, len(payload.encode("utf-8")) // 4)
+
+
+def _schema_tokens_for_profile(profile: str) -> int:
+    """Schema token weight a profile WOULD publish, without switching to it.
+
+    ⚠⚠ Routes through `_build_tools_list`, never a local filter. The first
+    draft filtered the raw catalog by the tier bundle and was wrong by three
+    tools in every tier: it kept the hidden front door, dropped the
+    force-included tier controls, and ignored `disabled_tools`. It priced a
+    surface no client receives. Measuring by actually switching would instead
+    mutate session state to answer a question about whether to mutate it.
+    """
+    return sum(_schema_weight(t) for t in _build_tools_list(profile_override=profile))
+
+
 def _tool_surface_stats(top_n: int = 15) -> dict:
     """Schema token weight of the currently visible tool surface vs the raw catalog.
 
@@ -525,22 +560,8 @@ def _tool_surface_stats(top_n: int = 15) -> dict:
     the schema-budget baseline uses ({name, description, inputSchema}, compact
     separators). Advisory receipt only — never blocks, nothing persisted.
     """
-    import json as _json
-
-    def _weight(tool) -> int:
-        payload = _json.dumps(
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "inputSchema": tool.inputSchema or {},
-            },
-            separators=(",", ":"),
-            default=str,
-        )
-        return max(1, len(payload.encode("utf-8")) // 4)
-
-    visible = {t.name: _weight(t) for t in _build_tools_list()}
-    catalog = {t.name: _weight(t) for t in _raw_catalog_tools()}
+    visible = {t.name: _schema_weight(t) for t in _build_tools_list()}
+    catalog = {t.name: _schema_weight(t) for t in _raw_catalog_tools()}
     visible_total = sum(visible.values())
     catalog_total = sum(catalog.values())
     heaviest = dict(sorted(visible.items(), key=lambda kv: -kv[1])[:top_n])
@@ -724,6 +745,39 @@ def _resolve_tier_bundle(profile: str) -> frozenset[str] | None:
     return _PROFILE_TIERS.get(profile)
 
 
+def _price_tier_switch(src: str, dst: str) -> dict:
+    """Price a src -> dst tier switch against the cache it invalidates.
+
+    ⚠⚠ A mid-session tool-list change is not free and is not merely "fewer
+    tokens". `tools` is serialised AHEAD of system and messages, so the switch
+    invalidates the schema block AND every turn accumulated behind it, and the
+    new block must be cache-WRITTEN before it reads cheaply again. Measured on
+    this catalog: `full` -> `standard` drops 6.7% of the payload and needs 174
+    requests to repay itself, before any history is counted.
+
+    ⚠ `history_tokens` is deliberately 0 here. The server cannot see the
+    client's conversation length, and history only ever RAISES the break-even,
+    so pricing without it understates the cost -- the conservative direction.
+    Reported as `history_tokens_assumed` so the floor is never read as a total.
+    """
+    from .tier_switch_cost import classify
+
+    src_tokens = _schema_tokens_for_profile(src)
+    dst_tokens = _schema_tokens_for_profile(dst)
+    verdict, breakeven = classify(src_tokens, dst_tokens)
+    out = {
+        "from": src,
+        "to": dst,
+        "from_schema_tokens": src_tokens,
+        "to_schema_tokens": dst_tokens,
+        "verdict": verdict,
+        "history_tokens_assumed": 0,
+    }
+    if breakeven is not None:
+        out["breakeven_requests"] = round(breakeven, 1)
+    return out
+
+
 async def _emit_tools_list_changed() -> None:
     """Send notifications/tools/list_changed to the client, best-effort.
 
@@ -836,6 +890,28 @@ async def _apply_model_announcement(model: str) -> dict:
             f"route this model explicitly."
         )
     if changed:
+        price = _price_tier_switch(prev, tier)
+        res["switch_cost"] = price
+        # ⚠⚠ A narrowing that cannot repay its own cache invalidation is
+        # refused, because it advertises a saving and delivers a loss for the
+        # whole life of the session. Widening is NEVER refused -- escalating
+        # after a capability-gated failure buys a capability, and trading a
+        # correct answer for a cheap one is the worse error.
+        if price["verdict"] == "does_not_pay":
+            res["tier"] = prev
+            res["changed"] = False
+            res["refused"] = "switch_does_not_pay"
+            # ⚠⚠ BODY, not `_meta`: `meta_fields` defaults to `[]` and the
+            # dispatcher strips `_meta` on a default install.
+            res["reason"] = (
+                f"model {model!r} maps to {tier!r}, but switching {prev!r} -> "
+                f"{tier!r} mid-session invalidates the cached tool block and "
+                f"needs {price['breakeven_requests']:,.0f} further requests to "
+                f"repay itself. Tier left at {prev!r}. Set tool_profile="
+                f"{tier!r} at startup instead, where there is no switch to pay "
+                f"for."
+            )
+            return res
         _set_session_tier(tier)
         await _emit_tools_list_changed()
     return res
@@ -1332,8 +1408,16 @@ def _apply_readonly_annotations(tools: list[Tool]) -> list[Tool]:
     return annotated
 
 
-def _build_tools_list() -> list[Tool]:
-    """Build the full tool list, applying config-driven filtering and overrides."""
+def _build_tools_list(profile_override: "str | None" = None) -> list[Tool]:
+    """Build the full tool list, applying config-driven filtering and overrides.
+
+    ⚠ `profile_override` asks what a DIFFERENT tier would publish without
+    switching to it, for `_schema_tokens_for_profile`. It exists so the pricing
+    path runs THIS function rather than a second, simpler copy of the visibility
+    rules -- a reimplementation would miss the force-included tier controls, the
+    `disabled_tools` filter and the counter collapse, and would price a surface
+    no client ever receives. It changes nothing when omitted.
+    """
     all_tools = [
         Tool(
             name="index_repo",
@@ -4447,8 +4531,9 @@ def _build_tools_list() -> list[Tool]:
                 "Explicit tier override for the current session. "
                 "Narrows or widens the exposed tool list to 'core' / 'standard' / 'full'. "
                 "Prefer plan_turn(model=...) for routine per-task use; use "
-                "set_tool_tier only when you need an explicit override (e.g. escalate "
-                "mid-task to 'full' after a capability-gated failure)."
+                "set_tool_tier only for an explicit override (e.g. escalate to "
+                "'full' after a capability-gated failure). A narrowing that costs "
+                "more than it saves is refused."
             ),
             inputSchema={
                 "type": "object",
@@ -4531,7 +4616,7 @@ def _build_tools_list() -> list[Tool]:
     # Start with a mutable copy for filtering.
     tools = list(all_tools)
     # --- Profile filtering ---------------------------------------------------
-    profile = _effective_profile()
+    profile = profile_override or _effective_profile()
     allowed = _resolve_tier_bundle(profile)
     if allowed is not None:
         tools = [t for t in tools if t.name in allowed]
@@ -6741,10 +6826,37 @@ async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent] | Cal
                 result = {"error": f"invalid tier: {tier!r}"}
             else:
                 prev = _effective_profile()
-                _set_session_tier(tier)
-                if tier != prev:
-                    await _emit_tools_list_changed()
-                result = {"ok": True, "tier": tier, "changed": tier != prev}
+                if tier == prev:
+                    result = {"ok": True, "tier": tier, "changed": False}
+                else:
+                    price = _price_tier_switch(prev, tier)
+                    if price["verdict"] == "does_not_pay":
+                        # ⚠⚠ `reason` is in the BODY, never in `_meta`.
+                        # `meta_fields` defaults to `[]`, so the dispatcher
+                        # strips `_meta` on a default install -- a refusal
+                        # whose explanation lives there arrives as a bare
+                        # verdict for most users, and the display preference
+                        # that removed it is not one anybody would connect to
+                        # a missing reason.
+                        result = {
+                            "ok": True, "tier": prev, "changed": False,
+                            "refused": "switch_does_not_pay",
+                            "reason": (
+                                f"switching {prev!r} -> {tier!r} mid-session "
+                                f"invalidates the cached tool block and needs "
+                                f"{price['breakeven_requests']:,.0f} further "
+                                f"requests to repay itself, so it costs more "
+                                f"than it saves. Tier left at {prev!r}. Set "
+                                f"tool_profile={tier!r} at startup instead, "
+                                f"where there is no switch to pay for."
+                            ),
+                            "switch_cost": price,
+                        }
+                    else:
+                        _set_session_tier(tier)
+                        await _emit_tools_list_changed()
+                        result = {"ok": True, "tier": tier, "changed": True,
+                                  "switch_cost": price}
         elif name == "announce_model":
             model = arguments.get("model", "")
             if not isinstance(model, str) or not model:
