@@ -7,7 +7,16 @@ been recorded yet.
 Optional ``compare_release`` parameter loads a baseline snapshot from
 ``benchmarks/token_baselines/v{X}.json`` (created by
 ``capture_token_baseline.py``) and reports per-tool deltas in tokens_saved
-and latency vs the current session.
+and latency vs the current session. A field the baseline never recorded comes
+back as ``None`` with a reason in ``not_comparable`` -- never as a delta
+against zero.
+
+Two rankings, and they answer different questions: ``slowest_by_p95`` is
+per-call latency, ``heaviest_by_total_ms`` is the wall-clock each tool actually
+consumed. The orderings disagree whenever a fast tool is called often.
+
+⚠ The per-tool latency shape comes from ``token_tracker.latency_bucket``; this
+module holds no percentile of its own.
 """
 
 from __future__ import annotations
@@ -45,28 +54,110 @@ def _diff_baseline(
     current_latency: dict,
     current_breakdown: dict,
 ) -> dict:
-    """Compute per-tool deltas between baseline snapshot and live session."""
+    """Compute per-tool deltas between baseline snapshot and live session.
+
+    ⚠⚠ **A DELTA AGAINST AN ABSENT MEASUREMENT IS `None`, NEVER THE CURRENT
+    VALUE.** This read `float(b.get("p50_ms", 0.0))`, and a baseline entry may
+    legitimately carry `tokens_saved` alone -- the only baseline that ships,
+    `v1.108.163.json`, carries exactly that for all three of its tools. So the
+    zero stood in for a measurement nobody took and the result was published as
+    `p50_delta_ms`, a name that asserts a comparison happened. Measured against
+    that file, a tool at p95 900 ms reported `p95_delta_ms: 900.0` -- read by
+    any human as a 900 ms regression against a release that never timed it.
+    ⚠ `.get(key, default)` is not a None guard either; the default never fires
+    for a key that is present and null.
+
+    ⚠ **Calls and tokens have a meaningful zero on the CURRENT side; latency
+    does not.** A tool nobody called this session really did save nothing and
+    really was called zero times, so those deltas stay computable. It has no
+    p50, and inventing one would reintroduce the defect from the other end.
+
+    ⚠ `not_comparable` names every field that could not be differenced, so a
+    reader sees WHY a delta is missing rather than an unexplained `null`.
+    """
     out: dict = {}
     base_tools = baseline.get("tools", {})
     all_tools = set(base_tools) | set(current_latency) | set(current_breakdown)
     for tool in sorted(all_tools):
         b = base_tools.get(tool, {})
         cur_lat = current_latency.get(tool, {})
-        cur_tokens = int(current_breakdown.get(tool, 0))
-        out[tool] = {
-            "tokens_saved_delta": cur_tokens - int(b.get("tokens_saved", 0)),
-            "p50_delta_ms": round(float(cur_lat.get("p50_ms", 0.0)) - float(b.get("p50_ms", 0.0)), 2),
-            "p95_delta_ms": round(float(cur_lat.get("p95_ms", 0.0)) - float(b.get("p95_ms", 0.0)), 2),
-            "calls_delta": int(cur_lat.get("count", 0)) - int(b.get("calls", 0)),
-        }
+        entry: dict = {"in_baseline": tool in base_tools}
+        missing: dict = {}
+
+        def _delta(name: str, base_key: str, cur_val, cast=float):
+            base_val = b.get(base_key)
+            if base_val is None:
+                missing[base_key] = (
+                    "absent_in_both" if cur_val is None else "absent_in_baseline"
+                )
+                entry[name] = None
+            elif cur_val is None:
+                missing[base_key] = "absent_in_current"
+                entry[name] = None
+            else:
+                delta = cast(cur_val) - cast(base_val)
+                entry[name] = delta if cast is int else round(delta, 2)
+
+        _delta("tokens_saved_delta", "tokens_saved",
+               int(current_breakdown.get(tool, 0)), int)
+        _delta("p50_delta_ms", "p50_ms", cur_lat.get("p50_ms"))
+        _delta("p95_delta_ms", "p95_ms", cur_lat.get("p95_ms"))
+        _delta("calls_delta", "calls", int(cur_lat.get("count", 0)), int)
+
+        if missing:
+            entry["not_comparable"] = missing
+        out[tool] = entry
     return out
 
 
-def _percentile(sorted_vals: list[float], pct: float) -> float:
-    if not sorted_vals:
-        return 0.0
-    idx = max(0, min(len(sorted_vals) - 1, int(pct * len(sorted_vals))))
-    return sorted_vals[idx]
+def _rank_by_total(stats: dict, top: int) -> "tuple[list[dict], dict]":
+    """Rank tools by the wall-clock they actually consumed, with shares.
+
+    ⚠⚠ The companion to `slowest_by_p95`, not a replacement: one answers "how
+    slow is a call", this answers "where did the time go". They disagree
+    whenever a fast tool is called often, which is the ordinary case.
+
+    ⚠⚠ A share over a zero total is UNDEFINED, not even -- it refuses. And a
+    ring-capped bucket makes its own share a LOWER BOUND, so the tools that
+    capped are named: the cap bites hardest on the busiest tool, which is the
+    one this ranking exists to surface.
+    """
+    buckets = [(n, b) for n, b in stats.items() if b.get("total_ms") is not None]
+    meta: dict = {"basis": "total_ms", "tools": len(buckets)}
+
+    without_total = len(stats) - len(buckets)
+    if without_total:
+        meta["tools_without_total_ms"] = without_total
+
+    capped = sorted(n for n, b in buckets if b.get("count_is_ring_capped"))
+    if capped:
+        meta["ring_capped_tools"] = capped
+        meta["note"] = (
+            "The in-memory ring holds the most recent calls per tool, so a "
+            "capped tool's total and share are lower bounds."
+        )
+
+    grand = round(sum(b["total_ms"] for _, b in buckets), 2)
+    if not grand:
+        meta["measurable"] = False
+        meta["reason"] = "no_time_recorded"
+        return [], meta
+
+    meta["measurable"] = True
+    meta["total_ms"] = grand
+    ranked = sorted(buckets, key=lambda kv: kv[1]["total_ms"], reverse=True)[:top]
+    rows = [
+        {
+            "tool": name,
+            "total_ms": b["total_ms"],
+            "share": round(b["total_ms"] / grand, 3),
+            "count": b["count"],
+            "p50_ms": b.get("p50_ms"),
+            **({"count_is_ring_capped": True} if b.get("count_is_ring_capped") else {}),
+        }
+        for name, b in ranked
+    ]
+    return rows, meta
 
 
 def _ledger_summary(rows: list[tuple], top: int) -> dict:
@@ -184,15 +275,10 @@ def analyze_perf(
                 errors[t_name] = errors.get(t_name, 0) + 1
         for t_name, durs in by_tool.items():
             durs.sort()
-            n = len(durs)
-            persisted[t_name] = {
-                "count": n,
-                "p50_ms": round(_percentile(durs, 0.5), 2),
-                "p95_ms": round(_percentile(durs, 0.95), 2),
-                "max_ms": round(durs[-1], 2),
-                "errors": errors.get(t_name, 0),
-                "error_rate": round(errors.get(t_name, 0) / n, 3) if n else 0.0,
-            }
+            # ⚠ One producer for this shape, in `token_tracker.latency_bucket`.
+            # This was the second copy of it and the two already agreed digit for
+            # digit, which is what makes a divergence later invisible.
+            persisted[t_name] = _tt.latency_bucket(durs, errors.get(t_name, 0))
         if not _tt._state and persisted_meta["rows"] == 0:  # type: ignore[attr-defined]
             persisted_meta["note"] = (
                 "No persisted rows. Set config 'perf_telemetry_enabled': true "
@@ -206,6 +292,13 @@ def analyze_perf(
         key=lambda kv: kv[1].get("p95_ms", 0.0),
         reverse=True,
     )[:top]
+
+    # ⚠⚠ `slowest_by_p95` ranks how slow ONE call is. It is not, and has never
+    # been, an answer to where the time went -- that is count x latency, and
+    # the two orderings disagree whenever a fast tool is called often. An
+    # external audit of agent runs (Revenium, 2026-08) put 46% of spend in the
+    # top 1% of runs; a per-call ranking cannot see a distribution like that.
+    heaviest, totals_meta = _rank_by_total(ranked_source, top)
 
     # Cache hit-rate ranked low → high (low rates point to cold caches)
     by_tool_cache = cache_stats.get("by_tool", {})
@@ -237,6 +330,14 @@ def analyze_perf(
                     "found": True,
                     "tools_in_baseline": len(baseline.get("tools", {})),
                 }
+                # ⚠ Surfaced in the meta as well as per tool: a caller reading
+                # only the header must not conclude the baseline covered
+                # everything it is being differenced against.
+                incomparable = sum(
+                    1 for d in baseline_diff.values() if d.get("not_comparable")
+                )
+                if incomparable:
+                    baseline_meta["tools_not_fully_comparable"] = incomparable
             except Exception as exc:
                 baseline_meta = {
                     "version": compare_release,
@@ -254,6 +355,8 @@ def analyze_perf(
         "slowest_by_p95": [
             {"tool": name, **stats} for name, stats in slowest
         ],
+        "heaviest_by_total_ms": heaviest,
+        "totals": totals_meta,
         "cache": {
             # ⚠⚠ `hit_rate` is RAW: a hit is key-presence in the session LRU,
             # not a hit that still describes the current index. The cache is

@@ -1,23 +1,23 @@
 {
-  "current": "1.108.307",
+  "current": "1.108.309",
   "entries": [
+    {
+      "version": "1.108.309",
+      "date": "2026-08-29",
+      "title": "A mean hides the tail, and a default invents a comparison",
+      "summary": "`_diff_baseline` read `float(b.get(\"p50_ms\", 0.0))`. **The only baseline that ships, `benchmarks/token_baselines/v1.108.163.json`, carries `tokens_saved` for its three tools and no latency keys at all**, so the zero stood in for a measurement nobody took and the subtraction was published as `p50_delta_ms` --"
+    },
+    {
+      "version": "1.108.308",
+      "date": "2026-08-29",
+      "title": "Ownership and freshness are different properties",
+      "summary": "\u26a0\u26a0 **Measured 2026-08-29: this box ran 1.108.293 against a 1.108.307 tree -- fourteen releases and six days.** We develop jcodemunch using jcodemunch, so every tool call in that window exercised six-day-old code. It happened because the package was installed as a regular (copied) distribution and **the release"
+    },
     {
       "version": "1.108.307",
       "date": "2026-08-29",
       "title": "A phase boundary drawn at the wrong place",
       "summary": "\u26a0\u26a0 **`_TSCONFIG_SKIP_DIRS` was the FOURTH copy of a skip list in this tree, and the only one that derived from nothing.** `security._SKIP_DIRECTORY_NAMES` is the authority -- CLAUDE.md says so, and `SKIP_DIRECTORIES` and `SKIP_PATTERNS` already derive from it -- but this set was hand-maintained beside it and had never heard"
-    },
-    {
-      "version": "1.108.306",
-      "date": "2026-08-28",
-      "title": "A count taken after the page, and a field nobody read",
-      "summary": "`get_untested_symbols` computed `untested_count = len(symbols)` **after** the `max_results` slice, and derived `reached_pct` from it. `get_repo_health` calls it with `max_results=1` under the comment *\"we only need the count\"*."
-    },
-    {
-      "version": "1.108.305",
-      "date": "2026-08-28",
-      "title": "Only the reader was never fixed",
-      "summary": "Step 2c read `uv run --python 3.13 python -m pytest tests/ -q`. CI runs `uv sync --locked --group dev --extra watch` first. The documented command synced nothing and named no extra, so it **inherited whatever `.venv` happened to hold** -- it looked correct for exactly as long as a previous sync's packages"
     }
   ]
 }

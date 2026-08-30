@@ -2203,7 +2203,7 @@ def _build_tools_list() -> list[Tool]:
         ),
         Tool(
             name="analyze_perf",
-            description="Per-tool latency telemetry: p50/p95/max in ms, error rate, plus cache hit-rate by tool. Defaults to the in-memory session ring; pass window=1h|24h|7d|all to query persisted telemetry.db (requires perf_telemetry_enabled). Useful for finding slow tools, cold caches, and regressions.",
+            description="Per-tool latency telemetry: p50/p95/max in ms, error rate, plus cache hit-rate by tool. Two rankings, and they answer different questions: slowest_by_p95 is per-call latency, heaviest_by_total_ms is the wall-clock each tool actually consumed (count x latency), with shares over totals. Defaults to the in-memory session ring; pass window=1h|24h|7d|all to query persisted telemetry.db (requires perf_telemetry_enabled). Useful for finding slow tools, cold caches, and regressions.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -2224,7 +2224,7 @@ def _build_tools_list() -> list[Tool]:
                     },
                     "compare_release": {
                         "type": "string",
-                        "description": "Compare current session against a saved baseline at benchmarks/token_baselines/v{version}.json (e.g. \"1.74.0\"). Adds baseline_diff to the response with per-tool deltas in tokens_saved and latency.",
+                        "description": "Compare current session against a saved baseline at benchmarks/token_baselines/v{version}.json (e.g. \"1.74.0\"). Adds baseline_diff to the response with per-tool deltas in tokens_saved and latency. A field the baseline never recorded comes back null with a not_comparable reason, never as a delta against zero.",
                     },
                     "ledger": {
                         "type": "boolean",
