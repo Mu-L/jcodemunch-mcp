@@ -1978,11 +1978,35 @@ def _running_source_drift() -> dict[str, Any]:
     supply-chain question -- and would certify a fourteen-release-old official
     install without complaint. Ownership and freshness are different properties.
 
-    ⚠ Tri-state, deliberately. `drifted: None` means COULD NOT ESTABLISH (no
-    source tree beside the running module, an unreadable `pyproject.toml`, a
-    version that is `unknown` under `PYTHONPATH=src`). It is never `False`:
-    reporting "not drifted" for a comparison we could not make is the exact
-    defect this project keeps finding in its own instruments.
+    ⚠⚠ **CODE FRESHNESS AND METADATA FRESHNESS ARE ALSO DIFFERENT PROPERTIES,
+    and conflating them got this check backwards in BOTH directions
+    (2026-08-31).** `__version__` comes from `importlib.metadata`, frozen in
+    `.dist-info` at install time; it is NOT read from the tree. So:
+
+    * On an **editable** install the module is imported straight from the tree,
+      so a new process ALWAYS loads current code -- yet the version comparison
+      differs after every bump and reported `drifted: True` permanently. A
+      warning that is always on, whose stated remedy (`pip install -e .`) does
+      not change which code runs, is one people learn to scroll past -- and this
+      is the check written to stop a fourteen-release drift going unnoticed.
+      Proven by touching a source file and re-running: **the verdict does not
+      move, because nothing here reads a source file or a timestamp.**
+    * On a **copied** install -- the 2026-08-29 incident's actual shape -- there
+      was no `pyproject.toml` above site-packages, so it returned UNKNOWN. **It
+      could not detect the very case it was written for.**
+
+    Metadata staleness is real and is reported separately as `metadata_stale`:
+    `server = Server("jcodemunch-mcp", version=__version__)`, so a stale number
+    is what `serverInfo` hands the MCP host.
+
+    ⚠ Tri-state throughout. `drifted: None` means COULD NOT ESTABLISH and is
+    never `False`: reporting "not drifted" for a comparison we could not make is
+    the exact defect this project keeps finding in its own instruments.
+
+    ⚠ A copied install's tree is recovered from `direct_url.json` (PEP 610),
+    which records the local directory a `pip install .` came from. A wheel off
+    PyPI has no local tree and stays UNKNOWN -- honestly, since "newer than the
+    tree" is not a question that exists for it.
     """
     from .. import __version__ as _running
 
@@ -1992,6 +2016,7 @@ def _running_source_drift() -> dict[str, Any]:
         "tree_path": None,
         "editable": None,
         "drifted": None,
+        "metadata_stale": None,
         "reason": None,
     }
 
@@ -2005,19 +2030,30 @@ def _running_source_drift() -> dict[str, Any]:
         out["reason"] = "could not locate the running module"
         return out
 
-    # A tree layout is <root>/src/jcodemunch_mcp/__init__.py; an installed copy
-    # sits in site-packages and has no pyproject.toml above it.
+    # A tree layout is <root>/src/jcodemunch_mcp/__init__.py. When the module
+    # sits in site-packages instead, PEP 610 may still name the directory it was
+    # installed FROM -- which is what makes the copied-install case detectable.
+    # ⚠⚠ Routes through `install_layout`, the ONE authority for this question.
+    # It had three readers with three answers before the extraction; the `src`
+    # component and the reason it is required live there, not here.
+    from ..install_layout import is_source_layout
+
     root = module_file.parent.parent.parent
+    code_is_tree = is_source_layout(module_file)
+    if not code_is_tree:
+        root = _recorded_source_dir() or root
+
     pyproject = root / "pyproject.toml"
-    out["editable"] = pyproject.is_file()
-    if not out["editable"]:
+    if not pyproject.is_file():
+        out["editable"] = False
         out["reason"] = (
-            "installed copy, not a source tree -- nothing to compare against. "
-            "A regular install cannot drift silently the way an editable one "
-            "cannot drift at all; it simply goes stale until someone reinstalls."
+            "installed copy with no recorded source directory -- nothing to "
+            "compare against. Reinstall from your checkout to make freshness "
+            "checkable, or treat the published version as the source of truth."
         )
         return out
 
+    out["editable"] = code_is_tree
     out["tree_path"] = str(root)
     try:
         text = pyproject.read_text(encoding="utf-8")
@@ -2025,20 +2061,65 @@ def _running_source_drift() -> dict[str, Any]:
         out["reason"] = f"could not read {pyproject}"
         return out
 
-    m = re.search(r'(?m)^version\s*=\s*["\']([^"\']+)["\']', text)
+    m = re.search(r"""(?m)^version\s*=\s*["']([^"']+)["']""", text)
     if not m:
         out["reason"] = "no version found in pyproject.toml"
         return out
 
     out["tree_version"] = m.group(1)
-    out["drifted"] = out["tree_version"] != _running
+    out["metadata_stale"] = out["tree_version"] != _running
+
+    if code_is_tree:
+        # ⚠⚠ The module IS the tree, so a NEW process cannot load stale code.
+        # This is measured, not assumed: the loaded __file__ lives under root.
+        out["drifted"] = False
+        if out["metadata_stale"]:
+            out["reason"] = (
+                f"editable install -- the CODE is the tree, so a new process "
+                f"runs {out['tree_version']}. The RECORDED version is still "
+                f"{_running}, and that is what `serverInfo` reports to your MCP "
+                f"host; `pip install -e .` refreshes the number and does not "
+                f"change which code runs. A server started before your last "
+                f"edit is still serving what it loaded -- RESTART MCP clients to "
+                f"pick up code changes."
+            )
+        return out
+
+    # Copied install with a known source directory: the copy is only as new as
+    # its last install, so here the version gap IS a code gap.
+    out["drifted"] = out["metadata_stale"]
     if out["drifted"]:
         out["reason"] = (
-            f"running {_running} from a tree that says {out['tree_version']} -- "
-            f"reinstall (`pip install -e .`) and RESTART the MCP clients; a "
-            f"running server keeps serving what it loaded at startup"
+            f"running {_running} from a copy of a tree that says "
+            f"{out['tree_version']} -- reinstall (`pip install -e .`) and "
+            f"RESTART the MCP clients; a running server keeps serving what it "
+            f"loaded at startup"
         )
     return out
+
+
+def _recorded_source_dir() -> "Optional[Path]":
+    """The local directory this distribution was installed FROM (PEP 610).
+
+    ⚠ Returns None for anything without a local `file://` origin -- a PyPI
+    wheel has no tree, and inventing one would manufacture a comparison.
+    """
+    try:
+        import json
+        from importlib.metadata import distribution
+        from urllib.parse import unquote, urlparse
+
+        raw = distribution("jcodemunch-mcp").read_text("direct_url.json")
+        if not raw:
+            return None
+        url = json.loads(raw).get("url") or ""
+        if not url.startswith("file://"):
+            return None
+        path = Path(unquote(urlparse(url).path).lstrip("/"))
+        return path if path.is_dir() else None
+    except Exception:  # noqa: BLE001 - absent metadata is UNKNOWN, not an error
+        logger.debug("no recorded source directory", exc_info=True)
+        return None
 
 
 def _module_file_of(name: str) -> str:
@@ -2151,7 +2232,28 @@ def install_status() -> dict[str, Any]:
     #   so this is the only place the drift can surface.
     report["source_drift"] = _running_source_drift()
 
+    # Existing installs keep the tool_surface they were created with, because
+    # upgrade_config cannot back-inject that key -- so this is one of only two
+    # places the choice can ever be re-offered. Advisory; omitted when clean.
+    report["surface_offer"] = _surface_offer_block()
+
     return report
+
+
+def _surface_offer_block() -> Optional[dict[str, Any]]:
+    """The priced surface offer, or None when there is nothing to offer.
+
+    Lazy import: ``..server`` is heavy and ``cli.policy`` already reaches it
+    this way. It routes through ``_tool_surface_stats``, never a local count --
+    the offer must be priced by what ``list_tools`` publishes.
+    """
+    try:
+        from ..server import _tool_surface_stats
+
+        return _tool_surface_stats().get("surface_offer")
+    except Exception:
+        logger.debug("surface offer unavailable", exc_info=True)
+        return None
 
 
 def print_status(report: Optional[dict[str, Any]] = None, *, as_json: bool = False) -> None:
@@ -2198,10 +2300,27 @@ def print_status(report: Optional[dict[str, Any]] = None, *, as_json: bool = Fal
         print(f"  [!] STALE - running {drift['running_version']}, "
               f"tree is {drift['tree_version']}")
         print(f"      {drift.get('reason', '')}")
+    elif drift.get("drifted") is False and drift.get("metadata_stale") is True:
+        # ⚠ NOT "STALE": the code is current. What is behind is the RECORDED
+        # version, which `serverInfo` reports to the MCP host. Rendering this
+        # as STALE is what made the row fire on every editable install forever,
+        # under a remedy that does not change which code runs.
+        print("\nRunning code:")
+        print(f"  [ok] code is current (editable) - reported version "
+              f"{drift['running_version']}, tree is {drift['tree_version']}")
+        print(f"      {drift.get('reason', '')}")
     elif drift.get("drifted") is None and drift.get("reason"):
         # ⚠ UNKNOWN is reported, never silently rendered as fresh.
         print("\nRunning code:")
         print(f"  [?] {drift['reason']}")
+
+    offer = report.get("surface_offer")
+    if offer:
+        from ..surface_offer import render_offer_lines
+
+        print()
+        for line in render_offer_lines(offer):
+            print(line)
     print()
 
 

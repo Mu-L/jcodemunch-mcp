@@ -382,6 +382,11 @@ DEFAULTS = {
     # "counter" by _fresh_config_content — so a package update never silently
     # collapses a user's tool surface.
     "tool_surface": "full",  # "full" or "counter"
+    # ⚠ Purely a display latch for the surface OFFER (surface_offer.py). It
+    # never affects which tools are served; setting it true only stops the
+    # status commands re-asking. It exists so "no thanks" is a supported
+    # permanent answer that does not require accepting the offer to silence it.
+    "surface_offer_seen": False,
     "tool_tier_bundles": {
         "core": [
             "index_repo", "index_folder", "index_file",
@@ -546,6 +551,7 @@ CONFIG_TYPES = {
     "languages_adaptive": bool,
     "tool_profile": str,
     "tool_surface": str,
+    "surface_offer_seen": bool,
     "tool_tier_bundles": dict,
     "model_tier_map": dict,
     "adaptive_tiering": bool,
@@ -2264,6 +2270,14 @@ def generate_template() -> str:
   // demand — maximum token savings, all capability preserved. New installs
   // default to "counter"; set "full" here to advertise all tool schemas.
   // "tool_surface": "full",
+
+  // === Surface Offer ===
+  // Existing installs keep the tool_surface they were created with, because
+  // upgrade_config cannot back-inject that key. The status commands
+  // (`surface`, `install-status`) therefore print a one-time priced offer to
+  // move to the current default. Set true to stop being asked; it changes
+  // nothing about which tools are served.
+  // "surface_offer_seen": false,
 
   // === Compact Schemas ===
   // When true, strips rarely-used advanced parameters (debug, fusion, semantic_*,

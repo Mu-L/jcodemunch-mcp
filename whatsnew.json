@@ -1,6 +1,12 @@
 {
-  "current": "1.108.312",
+  "current": "1.108.313",
   "entries": [
+    {
+      "version": "1.108.313",
+      "date": "2026-08-31",
+      "title": "An install created before a default can never learn there is a choice",
+      "summary": "`tool_surface` is written into a config exactly once, by `_fresh_config_content` on a genuinely first-ever install, and is deliberately kept out of `generate_template` so `upgrade_config` can never back-inject it. That freeze is correct: it is what stops a package update silently collapsing a user's tool"
+    },
     {
       "version": "1.108.312",
       "date": "2026-08-30",
@@ -12,12 +18,6 @@
       "date": "2026-08-30",
       "title": "The intuition inverts once the block is cached",
       "summary": "`set_tool_tier(\"standard\")` and the shipped `model_tier_map` both offered a mid-session switch that costs more than it saves, for the whole life of any session anyone runs."
-    },
-    {
-      "version": "1.108.310",
-      "date": "2026-08-30",
-      "title": "A `#lang` line selects a reader, and a grammar cannot follow it",
-      "summary": "Rosette's reader is `#lang s-exp syntax/module-reader rosette` -- the default reader -- and the built-in list did not have it, so a Rosette file was a document: no symbols, and (previous entry) no `require` edges once the regex stopped guessing. Found by measuring what the document tier loses; one real"
     }
   ]
 }

@@ -553,6 +553,81 @@ def _schema_tokens_for_profile(profile: str) -> int:
     return sum(_schema_weight(t) for t in _build_tools_list(profile_override=profile))
 
 
+_SURFACE_OFFER_STATE_FILE = "surface_offer_state.json"
+
+
+def _surface_offer_state_path() -> "Path":
+    """Where the one-time announcement latch lives.
+
+    ⚠⚠ The latch is HERE and not in `surface_offer.py`, which must never write
+    anything -- its no-write property is asserted over its AST. It also is NOT
+    the user's config: a server start must not touch `config.jsonc` (Practice 8),
+    and `surface_offer_seen` stays the user's key to set, never ours.
+    """
+    from pathlib import Path
+
+    base = os.environ.get("CODE_INDEX_PATH") or str(Path.home() / ".code-index")
+    return Path(base) / _SURFACE_OFFER_STATE_FILE
+
+
+def _announce_surface_offer(transport: str = "unknown") -> bool:
+    """Log the surface offer once per install. Returns whether it announced.
+
+    ⚠ Fail-safe in every direction: an unwritable storage dir, an unreadable
+    latch or any pricing failure SKIPS the notice. Nothing about a server start
+    may depend on an advisory line.
+
+    ⚠⚠ **Silent when there is nothing to offer**, which is the whole difference
+    between a notice and a nag: already on the target surface, delta
+    non-positive, or `surface_offer_seen` set. The latch is written only when a
+    line was actually emitted, so a run that had nothing to say does not consume
+    the one announcement.
+    """
+    import json as _json
+    from datetime import datetime, timezone
+
+    try:
+        path = _surface_offer_state_path()
+        if path.is_file():
+            return False
+        stats = _tool_surface_stats()
+        offer = stats.get("surface_offer")
+        if not offer:
+            return False
+        from .surface_offer import render_offer_log_line
+
+        logger.warning("%s", render_offer_log_line(offer))
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(
+                _json.dumps(
+                    {
+                        "announced_at": datetime.now(timezone.utc).isoformat(),
+                        "surface": offer.get("current_surface"),
+                        "version": __version__,
+                        # ⚠ WHO said it. A once-per-install notice with no
+                        # attribution cannot answer "did a human ever see
+                        # this?" -- a background server whose stderr nobody
+                        # reads delivers it technically and not practically.
+                        "pid": os.getpid(),
+                        "transport": transport,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            tmp.replace(path)
+        except OSError:
+            # ⚠ An unwritable latch means the notice may repeat on the next
+            # start. That is the correct direction to fail: repeating an
+            # advisory line is recoverable, suppressing it forever is not.
+            logger.debug("surface offer latch not written", exc_info=True)
+        return True
+    except Exception:
+        logger.debug("surface offer announcement skipped", exc_info=True)
+        return False
+
+
 def _tool_surface_stats(top_n: int = 15) -> dict:
     """Schema token weight of the currently visible tool surface vs the raw catalog.
 
@@ -597,7 +672,54 @@ def _tool_surface_stats(top_n: int = 15) -> dict:
             f"tool_surface {_requested!r} is not recognized and was ignored; "
             f"'full' is in force. Valid values: {', '.join(VALID_TOOL_SURFACES)}."
         )
+    offer = _surface_offer(
+        current_surface=_surface,
+        current_tools=len(visible),
+        current_schema_tokens=visible_total,
+        catalog_tools=len(catalog),
+    )
+    if offer is not None:
+        out["surface_offer"] = offer
     return out
+
+
+def _surface_offer(
+    *,
+    current_surface: str,
+    current_tools: int,
+    current_schema_tokens: int,
+    catalog_tools: int,
+) -> "dict | None":
+    """Price the move to today's default surface, or return None.
+
+    ⚠⚠ The cheap gates run FIRST and the second tool-list build runs only if
+    they pass. `_build_tools_list` constructs the whole catalog, and this is
+    reached from `get_session_stats` -- paying that to compute an offer we are
+    about to discard is a cost with no reader.
+
+    ⚠ Best-effort by construction: a status command must never fail because an
+    advisory row could not be computed.
+    """
+    from .surface_offer import CURRENT_DEFAULT_SURFACE, build_offer
+
+    try:
+        if (current_surface or "").strip().lower() == CURRENT_DEFAULT_SURFACE:
+            return None
+        if config_module.get("surface_offer_seen", False):
+            return None
+        offer_tools = _build_tools_list(surface_override=CURRENT_DEFAULT_SURFACE)
+        return build_offer(
+            current_surface=current_surface,
+            current_tools=current_tools,
+            current_schema_tokens=current_schema_tokens,
+            offer_tools=len(offer_tools),
+            offer_schema_tokens=sum(_schema_weight(t) for t in offer_tools),
+            catalog_tools=catalog_tools,
+            seen=False,
+        )
+    except Exception:
+        logger.debug("surface offer computation failed", exc_info=True)
+        return None
 
 
 # --- Runtime session tier state -------------------------------------------- #
@@ -1418,7 +1540,10 @@ def _apply_readonly_annotations(tools: list[Tool]) -> list[Tool]:
     return annotated
 
 
-def _build_tools_list(profile_override: "str | None" = None) -> list[Tool]:
+def _build_tools_list(
+    profile_override: "str | None" = None,
+    surface_override: "str | None" = None,
+) -> list[Tool]:
     """Build the full tool list, applying config-driven filtering and overrides.
 
     ⚠ `profile_override` asks what a DIFFERENT tier would publish without
@@ -1427,6 +1552,12 @@ def _build_tools_list(profile_override: "str | None" = None) -> list[Tool]:
     rules -- a reimplementation would miss the force-included tier controls, the
     `disabled_tools` filter and the counter collapse, and would price a surface
     no client ever receives. It changes nothing when omitted.
+
+    ⚠⚠ `surface_override` is the same idea one axis over, for the surface OFFER
+    (`surface_offer.py`). Pricing `counter` by hand is the more tempting error
+    of the two, because the counter branch below deliberately BYPASSES tier
+    filtering and `disabled_tools` -- a hand-rolled count would apply them and
+    under-report what the client actually receives.
     """
     all_tools = [
         Tool(
@@ -4611,7 +4742,7 @@ def _build_tools_list(profile_override: "str | None" = None) -> list[Tool]:
         for t in all_tools
         if isinstance((props := (t.inputSchema or {}).get("properties")), dict) and props
     }
-    surface = _effective_surface()
+    surface = surface_override or _effective_surface()
     if surface == "counter":
         # Collapse to the front door + always-present controls. Tier filtering
         # is intentionally bypassed: 'counter' is the surface choice itself.
@@ -10285,6 +10416,11 @@ def main(argv: Optional[list[str]] = None):
             print("Heaviest tool schemas:")
             for name, weight in stats["heaviest_tools"].items():
                 print(f"  {name:<28} {weight:>5}")
+            if stats.get("surface_offer"):
+                from .surface_offer import render_offer_lines
+                print()
+                for line in render_offer_lines(stats["surface_offer"]):
+                    print(line)
         return
 
     if args.command == "delete-index":
@@ -11001,6 +11137,11 @@ def main(argv: Optional[list[str]] = None):
             warm_up_embedding_backend()
         except Exception:
             logger.debug("embedding warm-up failed", exc_info=True)
+
+        # One-time surface offer on the LOG channel. Same placement rationale as
+        # the warm-up above: one call above both dispatch branches covers every
+        # transport exactly once.
+        _announce_surface_offer(args.transport)
 
         if watcher_enabled:
             # Watcher params: CLI flag > config > default

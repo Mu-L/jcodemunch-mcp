@@ -2,6 +2,230 @@
 
 ## [Unreleased]
 
+## [1.108.313] - 2026-08-31 - An install created before a default can never learn there is a choice
+
+### Added - a priced, opt-in offer to move an existing install onto today's default surface
+
+`tool_surface` is written into a config exactly once, by `_fresh_config_content`
+on a genuinely first-ever install, and is deliberately kept out of
+`generate_template` so `upgrade_config` can never back-inject it. That freeze is
+correct: it is what stops a package update silently collapsing a user's tool
+surface.
+
+⚠⚠ **It also means every seat created before the `counter` default shipped is on
+`full` permanently, with no path off it.** The design solved the risk by making
+the change unreachable rather than by making it *offered*, and nothing in eight
+release steps ever revisits it. Measured on this box: `full` publishes 91 tools
+and 26,943 schema tokens; `counter` publishes 6 and 1,050.
+
+`surface_offer.py` prints the comparison on the two status commands that already
+answer questions about the install -- `jcodemunch-mcp surface` and
+`install-status` -- and stops there.
+
+⚠⚠ **It is a MESSAGE, never a migration.** Nothing in the module writes config,
+it does not import `config` at all, and `upgrade_config` is untouched; the only
+thing that can move the key is a command the user types. An offer that could
+apply itself would reintroduce precisely the failure the freeze exists to
+prevent. `tests/test_surface_offer.py` asserts that over the module's AST rather
+than its text -- **a substring scan fires on the docstring that explains the
+freeze**, which is a ratchet failing against something other than the defect it
+names.
+
+⚠⚠ **Both sides are priced by `_build_tools_list`, via a new `surface_override`
+parameter parallel to `profile_override`.** Pricing `counter` by hand is the more
+tempting of the two errors, because that branch deliberately BYPASSES tier
+filtering and `disabled_tools` -- a hand-rolled count would apply them and
+under-report the surface a client actually receives. Same lesson as
+`_schema_tokens_for_profile`, which was wrong by three tools in every tier.
+
+⚠ **The number is computed per install, never shipped as a literal.** A seat with
+`disabled_tools` set, or on a narrower `tool_profile`, has a different pair, and a
+baked-in figure would be wrong for most of them.
+
+⚠ **The saving carries its basis and its switching cost.** It reuses
+`SCHEMA_TOKENS_BASIS` from 1.108.312 rather than reformatting the number for
+persuasion, and discloses that the switch republishes the block -- cache-written
+once at the next session start. That is the half trace-mcp's equivalent
+migration omits: it moves existing installs silently, on the "paid on every
+turn" reasoning `benchmarks/codex_surface/` measured as wrong.
+
+⚠ **Omit-when-clean, and doing nothing is a supported permanent answer.** The
+offer does not render when the install is already on the target, when the delta
+is non-positive (reachable: `disabled_tools` can trim the visible surface below
+the front door's own weight), or when silenced. New config key
+`surface_offer_seen` (bool, default false, shipped COMMENTED) exists so "no
+thanks" does not require accepting the offer to stop being asked; it never
+affects which tools are served.
+
+⚠ Deliberately NOT wired into `digest`: that is a per-repo stand-up briefing
+about repo state, and a global install-config row does not belong in it.
+
+**A second surface, because the first one only reached people already looking.**
+The status commands are found by users who were *already* thinking about their
+tool surface. The defect is that nobody revisits this -- so a remedy that fires
+only when you revisit it has the same shape as the problem.
+
+⚠⚠ **MCP stdio has no channel for prompting a user, and the ones that look
+available are all closed by design**: `_meta` is stripped by the default
+`meta_fields: []` (the .311 lesson), the `instructions` string is a 1,000-char
+budget aimed at the MODEL and is the only prose surviving tool deferral, and an
+unrequested notification is what `progress.py` holds no notify channel BY
+CONSTRUCTION to prevent. What remains is the log.
+
+So server start emits **one WARNING line, once per install**, latched by a
+marker at `<CODE_INDEX_PATH>/surface_offer_state.json`. WARNING because that is
+the default `log_level` -- at INFO nobody sees it, the `HeartbeatReporter`
+precedent exactly. One line, not a banner: this server has a handshake watchdog
+for stderr chatter.
+
+⚠ **The latch is NOT the user's config.** A server start must not write
+`config.jsonc` (Practice 8), and `surface_offer_seen` stays the user's key to
+set, never ours. It also lives outside `surface_offer.py`, whose no-write
+property is asserted over its AST.
+
+⚠ **A run with nothing to say does not consume the announcement** -- the marker
+is written only when a line was actually emitted. And an unwritable marker still
+announces: repeating an advisory line is recoverable, suppressing it forever is
+not.
+
+⚠ Placed above both transport dispatch branches, beside the embedding warm-up
+that carries the same rationale. `serve` has two branches and six `asyncio.run`
+sites; a per-transport call is how one of six silently misses, so a test asserts
+**exactly one call site** in the AST.
+
+⚠ Disclosed in `SECURITY.md` under "Background behavior, fully disclosed" before
+shipping -- a new persistent local write is precisely what the standing rule
+covers.
+
+⚠⚠ **The latch records WHO announced -- pid and transport -- and that was added
+because the first version could not answer it.** On the dev box the one
+announcement had already been consumed by a server start nobody observed
+(`configs/jcodemunch.toml` registers jcodemunch in Claude Desktop too, so it is
+not the only spawner), and the latch held only a timestamp, a surface and a
+version. **A once-per-install notice with no attribution cannot answer "did a
+human ever see this?"** -- a background server whose stderr nobody reads
+delivers it technically and not practically. ⚠ A test asserts the single call
+site passes a real transport rather than relying on the parameter default: a
+parameter that is present and does nothing is indistinguishable from the defect
+it was added to fix (#508).
+
+⚠ **It is also evidence about the channel itself.** The log was always the
+weakest of the three surfaces, and the first thing it did on a real box was
+deliver to nobody. `surface`, `install-status` and `get_session_stats` are doing
+the actual work.
+
+### Fixed - a process registry whose `version` could not answer its own question
+
+`get_session_stats.processes` listed each live server with a `version`. On a
+source install that string is the RECORDED metadata number, identical across
+every process no matter when it started -- so the one question an operator
+brings to a process registry, *is this old server running old code?*, was
+unanswerable from the row, while a field that looked like it answered sat right
+there. Third reader of the conflation above.
+
+`code_stale` answers it from what actually decides the matter: a process holds
+what it imported at startup, so a source file newer than `started_at` means that
+process is behind. ⚠ Tri-state -- `None` for a copied install (the tree's mtimes
+say nothing about what a copy loaded), an unparseable `started_at`, or an
+unreadable tree -- and OMITTED rather than guessed, because a `code_stale: false`
+we never measured reads as a clean bill of health.
+
+⚠ `version` stays. It is what `serverInfo` hands the host, so it answers a real
+question; it just was never this one.
+
+⚠ **Caught a live instance on the dev box immediately**: the session's own
+server, `version: 1.108.309`, `code_stale: true`.
+
+⚠ Gated on having a peer to judge -- the mtime walk is ~13 ms over 274 files,
+cheap but not free, and a lone process has nothing to compare against.
+
+**`install_layout.py` is the new authority, and the extraction is the point.**
+"Is this a source install?" had grown THREE readers with three answers. Rather
+than add a fourth, the rule moved to a stdlib-only LEAF that `cli/init.py` and
+`storage/process_registry.py` both import -- `storage` importing `cli` would be
+the wrong direction, the same cycle `cli/policy.py` was extracted to break.
+⚠ A test walks the package AST and fails if any other module re-derives
+`parent.parent.name == "src"`, **and is run against the reintroduced copy**: a
+ratchet that scans only a clean tree is indistinguishable from one that matches
+nothing.
+
+⚠⚠ **Caught by step 2c, not by the local suite, and the cause is Practice 8's
+family.** `_recorded_source_dir` reads the REAL installed distribution's
+`direct_url.json`, so a test that did not pin it inherited whatever this machine
+has installed. Under `PYTHONPATH=src` there is no jcodemunch distribution and it
+returned None, so every test passed; under `uv run --python 3.13` the project IS
+installed editable, it resolved to the real tree, and a fake copied-install
+fixture suddenly had something to compare against. **Green on one interpreter,
+red on another, for a reason neither run could show on its own.** The helper now
+pins the input for every test in the file, so none can forget.
+
+### Fixed - the source-drift verdict was wrong in BOTH directions
+
+`install-status` conflated two different properties under one word. `__version__`
+comes from `importlib.metadata`, frozen in `.dist-info` at install time; it is
+never read from the tree. So the check compared a metadata number against
+`pyproject.toml` and called the result CODE freshness.
+
+⚠⚠ **On an editable install it false-alarmed forever.** The module is imported
+straight from the tree, so a new process always loads current code -- yet the
+versions differ after every bump, so it reported `drifted: True` permanently,
+under a remedy (`pip install -e .`) that does not change which code runs.
+**Proven by touching a source file and re-running: the verdict does not move,
+because nothing in the function reads a source file or a timestamp.** A warning
+that is always on is one people scroll past, and this is the check written to
+stop a fourteen-release drift going unnoticed.
+
+⚠⚠ **On a copied install it was blind -- and that was the actual incident.**
+2026-08-29 happened on a regular copied distribution, which has no
+`pyproject.toml` above site-packages, so the function returned UNKNOWN. **It
+reported `True` exactly where code cannot go stale and `None` exactly where it
+does.** `tests/test_source_drift.py` asserted that UNKNOWN and passed.
+
+Now split: `drifted` is about CODE, and the new `metadata_stale` is about the
+recorded version. ⚠ The metadata half is a real finding, not cosmetic --
+`server = Server("jcodemunch-mcp", version=__version__)`, so a stale number is
+what `serverInfo` hands the MCP host. The editable reason names that, keeps the
+RESTART advice (a long-running server holds the code it loaded, which is the one
+way editable code goes stale) and drops only the reinstall claim.
+
+⚠ A copied install's tree is now recovered from `direct_url.json` (PEP 610),
+which records the directory a `pip install .` came from -- so the incident shape
+is detectable at last. A PyPI wheel has no local tree and stays UNKNOWN, because
+"newer than the tree" is not a question that exists for it.
+
+⚠ **The `src` component is required, not decoration**: depth alone is not a
+discriminator, since `<x>/site-packages/jcodemunch_mcp/__init__.py` is also three
+levels under `<x>`. The first fix called a copied install editable on any shallow
+layout, and its own new test caught it.
+
+⚠ **Practice 9 applies and the old test was rewritten, not fixed back.**
+`test_a_stale_install_is_reported` claimed to reproduce the 2026-08-29 state
+while building a SOURCE TREE fixture -- the file's own docstring says the
+incident was a copied install. It asserted `drifted is True` for the one
+configuration where code cannot lag, so it could only pass while the conflation
+existed. **The test stated the mechanism; the property is whether a version gap
+means a code gap here.**
+
+### Fixed - the disproven per-request framing, in a third place
+
+`CONFIGURATION.md`'s Counter section still read *"Every turn the host serializes
+each resident tool's schema into context; the front door shrinks that fixed
+per-turn cost."*
+
+⚠⚠ **That is the framing `benchmarks/codex_surface/` rules out**, and it is the
+same defect 1.108.311 and .312 fixed on the config surface and on the two
+schema-token surfaces. Fixing a producer does not fix the prose that describes
+it: the docs kept asserting a per-request cost for two releases after the number
+carrying that claim learned to state its basis. The section now says payload
+size, quotes the 86%-cached measurement, and names the order-of-magnitude
+overstatement a per-request reading produces.
+
+⚠ Fourth instance of the family (`hit_rate_basis`, `basis: excess_calls`,
+`schema_tokens_basis`, and now the prose): **a figure whose period or
+denominator is unstated gets a wrong one supplied for free** -- and a document
+is as capable of supplying it as a JSON field.
+
+
 ## [1.108.312] - 2026-08-30 - A count with no time basis is read as per-request
 
 ### Fixed - every published schema-token figure carries its basis

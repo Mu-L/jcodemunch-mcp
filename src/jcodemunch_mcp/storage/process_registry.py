@@ -67,14 +67,45 @@ class ProcessEntry:
             started = started.replace(tzinfo=timezone.utc)
         return max(0.0, (datetime.now(timezone.utc) - started).total_seconds())
 
-    def as_dict(self) -> dict:
+    def code_stale(self, source_changed_at: Optional[float]) -> Optional[bool]:
+        """Did the package source change AFTER this process started?
+
+        ⚠⚠ This is the question `version` cannot answer, and the reason it must
+        exist. `version` is the RECORDED metadata number, frozen in
+        `.dist-info` at install time -- on an editable install every process
+        reports the same string no matter when it started, so the one thing an
+        operator wants from a process registry ("is this old server running old
+        code?") was unanswerable from the row. A start timestamp can answer it;
+        a version string never could.
+
+        ⚠ Tri-state. `None` means could not establish -- a copied install (the
+        tree's mtimes say nothing about what a copy loaded), an unparseable
+        `started_at`, or an unreadable tree. Never `False` for an unasked
+        question.
+        """
+        if source_changed_at is None:
+            return None
+        try:
+            started = datetime.fromisoformat(self.started_at)
+        except (TypeError, ValueError):
+            return None
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        return source_changed_at > started.timestamp()
+
+    def as_dict(self, source_changed_at: Optional[float] = None) -> dict:
         out = {
             "pid": self.pid,
             "client_id": self.client_id,
-            "transport": self.transport,
+            # ⚠ The RECORDED metadata version, not evidence of which code is
+            # loaded. Read `code_stale` for that.
             "version": self.version,
+            "transport": self.transport,
             "started_at": self.started_at,
         }
+        stale = self.code_stale(source_changed_at)
+        if stale is not None:
+            out["code_stale"] = stale
         age = self.age_seconds()
         if age is not None:
             out["age_seconds"] = round(age, 1)
@@ -197,9 +228,28 @@ def sprawl_report(storage_path: Optional[str] = None, max_listed: int = 10) -> d
     if ages:
         report["oldest_age_seconds"] = round(max(ages), 1)
     if others:
-        report["processes"] = [e.as_dict() for e in others[:max_listed]]
+        # ⚠ Gated on having something to judge: the walk is ~13 ms over 274
+        # files, cheap but not free, and a lone process has no peer to compare.
+        from ..install_layout import running_source_changed_at
+
+        changed_at = running_source_changed_at()
+        report["processes"] = [e.as_dict(changed_at) for e in others[:max_listed]]
         if len(others) > max_listed:
             report["processes_truncated"] = len(others) - max_listed
+        if changed_at is not None:
+            report["source_changed_at"] = datetime.fromtimestamp(
+                changed_at, timezone.utc
+            ).isoformat()
+            behind = [e for e in others if e.code_stale(changed_at)]
+            if behind:
+                report["processes_running_stale_code"] = len(behind)
+                report["hint_stale_code"] = (
+                    f"{len(behind)} of {len(others)} other jcodemunch processes "
+                    f"started before the package source last changed, so they are "
+                    f"serving older code. Their reported `version` cannot show "
+                    f"this -- it is the metadata number, identical across all of "
+                    f"them on a source install. Restart those MCP clients."
+                )
 
     # Each live process can hold its own hydrated index cache, so sprawl is a
     # memory story, not just a process-count story. Name the lever rather than

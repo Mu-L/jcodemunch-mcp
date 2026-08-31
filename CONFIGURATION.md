@@ -542,7 +542,7 @@ When `adaptive_tiering` is false, `plan_turn(model=...)` and `announce_model(...
 
 #### The Counter — collapse to a 3-tool front door (`tool_surface`)
 
-`tool_surface` goes further than tiering: it collapses the resident tool list to a **three-tool front door** that fronts the entire catalog without losing any capability. Every turn the host serializes each resident tool's schema into context; the front door shrinks that fixed per-turn cost and removes the "pick one of N" dispatch dilution. Measured on v1.108.199: **25,801 → 1,038 estimated schema tokens, ~25×**. That figure is an estimate at `bytes/4`, not a tokenizer count, and it moves as the catalog grows — so don't take ours. Run `jcodemunch-mcp surface` for your own install's number.
+`tool_surface` goes further than tiering: it collapses the resident tool list to a **three-tool front door** that fronts the entire catalog without losing any capability. The host serializes each resident tool's schema into context; the front door shrinks that payload and removes the "pick one of N" dispatch dilution. ⚠⚠ **The schema block is stable across requests, so it is paid at full rate roughly once per cache lifetime and at cache-read rates (~0.1x) thereafter** — we measured **86% of baseline input cached** (`benchmarks/codex_surface/`). Read the figure below as payload size, never as a per-request saving; reading it as one overstates the cost impact by roughly an order of magnitude. Measured on v1.108.199: **25,801 → 1,038 estimated schema tokens, ~25×**. That figure is an estimate at `bytes/4`, not a tokenizer count, and it moves as the catalog grows — so don't take ours. Run `jcodemunch-mcp surface` for your own install's number.
 
 **New installs default to `counter`** so a first-time user gets maximal token savings out of the box, with every tool one `menu()` / `route()` call away. This default is applied only to a genuinely first-ever install: an **existing install keeps its surface across upgrades** — if you never set `tool_surface`, a package update leaves you on `full` exactly as before, never silently collapsing your tool list. Set it explicitly any time:
 
@@ -555,6 +555,33 @@ When `adaptive_tiering` is false, `plan_turn(model=...)` and `announce_model(...
 - **`route(task, repo?, execute?)`** — map a natural-language task to the best action(s); with `execute=true`, dispatch the top recommendation in the same call. Recommends `assemble_task_context` / `plan_turn` for context-gathering intents.
 
 `counter` keeps the always-present controls (`set_tool_tier`, `announce_model`, `jcodemunch_guide`) alongside the front door. Setting `full` advertises every tool schema (the pre-`counter` behavior). The two mechanisms compose: under `counter`, `order` / `route` still reach every action regardless of the active `core` / `standard` / `full` tier. Seeing only three tools in your client's tool list is expected under `counter` — call `menu()` to list the full catalog.
+
+##### If you installed before `counter` became the default
+
+`tool_surface` is written into your config exactly once, when it is first created, and is deliberately absent from the config template so a package update can never inject it. That is what guarantees an upgrade never collapses your tool list — and it also means an install created before the `counter` default **stays on `full` permanently**, because nothing migrates it.
+
+So `jcodemunch-mcp surface` and `jcodemunch-mcp install-status` print a one-time offer showing what the move would cost and save **on your install**, computed at the moment you run it:
+
+```
+Tool surface: full (91 tools, 26,943 schema tokens)
+  A new install today would default to 'counter' (6 tools, 1,050 schema tokens).
+  Your install predates that default and was left as-is on purpose.
+
+  Switching would remove 25,893 tokens from your tool-schema block.
+    basis: one_time_at_full_rate_then_cache_read
+    ...
+  85 tools would stop being advertised. They stay callable through order/menu/route.
+
+  Switch:  jcodemunch-mcp config set tool_surface counter
+  Undo:    jcodemunch-mcp config set tool_surface full
+  Silence: jcodemunch-mcp config set surface_offer_seen true
+```
+
+⚠ **It is a message, not a migration.** Nothing changes until you run the switch command, and the undo is one command in the other direction. Doing nothing is a supported permanent answer — there is no countdown and no eventual default flip.
+
+⚠ `surface_offer_seen` silences the row **without** changing your surface, so declining does not require accepting. It has no effect on which tools are served.
+
+⚠ The numbers above are this machine's. Yours differ if you have `disabled_tools` set or are on a narrower `tool_profile` — which is why the offer computes them rather than quoting ours.
 
 #### `disabled_tools` precedence
 

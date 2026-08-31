@@ -19,6 +19,8 @@ The verification path routed AROUND the product without anyone deciding to.
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from jcodemunch_mcp.cli import init as _init
@@ -33,33 +35,143 @@ def tree(tmp_path):
     return tmp_path, str(pkg / "__init__.py")
 
 
-def _drift(monkeypatch, *, running, module_file, pyproject_text=None, root=None):
+def _drift(monkeypatch, *, running, module_file, pyproject_text=None, root=None,
+           recorded=None):
+    """Drive `_running_source_drift` with every environment input pinned.
+
+    ⚠⚠ `recorded` is ALWAYS patched, defaulting to None. `_recorded_source_dir`
+    reads the REAL installed distribution's `direct_url.json` (PEP 610), so a
+    test that leaves it alone inherits whatever this machine happens to have
+    installed. That is not hypothetical: it shipped red for exactly one release
+    candidate. Under `PYTHONPATH=src` there is no jcodemunch distribution at
+    all, so it returned None and every test passed; under
+    `uv run --python 3.13` the project IS installed editable, so it resolved to
+    the real tree and a fake copied-install fixture suddenly had something to
+    compare against -- `drifted: True` where the test demanded None.
+
+    ⚠ Practice 8's family: a test reading real machine state, green on one
+    interpreter and red on another for a reason neither run could show on its
+    own. Pin the input at the helper so no test can forget.
+    """
     monkeypatch.setattr(_init, "_module_file_of", lambda name: module_file)
     monkeypatch.setattr("jcodemunch_mcp.__version__", running, raising=False)
+    monkeypatch.setattr(_init, "_recorded_source_dir", lambda: recorded)
     if pyproject_text is not None and root is not None:
         (root / "pyproject.toml").write_text(pyproject_text, encoding="utf-8")
     return _init._running_source_drift()
 
 
 class TestTheDefectThatHappened:
+    """⚠⚠ Rewritten 2026-08-31 (Practice 9): the original
+    `test_a_stale_install_is_reported` claimed to reproduce the 2026-08-29 state
+    but built a SOURCE TREE fixture, while the incident was a **regular copied
+    install** -- this file's own opening docstring says so. It asserted
+    `drifted is True` for the one configuration where code CANNOT go stale, so
+    it could only pass while the conflation existed. The test stated the
+    mechanism; the property is "does a version gap mean a CODE gap here?"
+    """
 
-    def test_a_stale_install_is_reported(self, tree, monkeypatch):
-        """The real 2026-08-29 state: running .293 from a .307 tree."""
-        root, modfile = tree
-        out = _drift(monkeypatch, running="1.108.293", module_file=modfile,
-                     pyproject_text='version = "1.108.307"\n', root=root)
+    def test_a_stale_copied_install_is_reported(self, tree, tmp_path, monkeypatch):
+        """The real 2026-08-29 shape: a COPY in site-packages, 14 releases old.
+
+        The copy is only as new as its last install, so here the version gap IS
+        a code gap. ⚠ Before the fix this returned UNKNOWN -- the check could
+        not see the very incident it was written for.
+        """
+        root, _modfile = tree
+        (root / "pyproject.toml").write_text('version = "1.108.307"\n', encoding="utf-8")
+        copied = tmp_path / "site-packages" / "jcodemunch_mcp"
+        copied.mkdir(parents=True)
+        out = _drift(monkeypatch, running="1.108.293",
+                     module_file=str(copied / "__init__.py"), recorded=root)
         assert out["drifted"] is True
+        assert out["editable"] is False
         assert out["running_version"] == "1.108.293"
         assert out["tree_version"] == "1.108.307"
         assert "restart" in (out["reason"] or "").lower(), out["reason"]
 
-    def test_a_matching_tree_is_not_drifted(self, tree, monkeypatch):
+    def test_a_copied_install_that_matches_is_not_drifted(self, tree, tmp_path, monkeypatch):
         """Non-vacuity: without this, 'always report drift' passes above."""
+        root, _modfile = tree
+        (root / "pyproject.toml").write_text('version = "1.108.307"\n', encoding="utf-8")
+        copied = tmp_path / "site-packages" / "jcodemunch_mcp"
+        copied.mkdir(parents=True)
+        out = _drift(monkeypatch, running="1.108.307",
+                     module_file=str(copied / "__init__.py"), recorded=root)
+        assert out["drifted"] is False
+        assert out["metadata_stale"] is False
+
+
+class TestEditableCodeCannotGoStale:
+    """⚠⚠ `__version__` is `importlib.metadata`, frozen in `.dist-info` at
+    install time. An editable install imports straight from the tree, so a NEW
+    process always loads current code -- while the version comparison differs
+    after every bump. Reporting that as STALE fired forever, under a remedy
+    (`pip install -e .`) that does not change which code runs, and this is the
+    check written to stop a fourteen-release drift going unnoticed.
+    """
+
+    def test_a_version_gap_on_editable_is_metadata_not_code(self, tree, monkeypatch):
+        root, modfile = tree
+        out = _drift(monkeypatch, running="1.108.309", module_file=modfile,
+                     pyproject_text='version = "1.108.312"\n', root=root)
+        assert out["editable"] is True
+        assert out["drifted"] is False, "the module IS the tree; code cannot lag"
+        assert out["metadata_stale"] is True
+
+    def test_the_reason_names_serverinfo_and_keeps_the_restart_advice(self, tree, monkeypatch):
+        """⚠ `server = Server("jcodemunch-mcp", version=__version__)`, so a stale
+        number is what the MCP host is handed -- that is the real consequence
+        and it must be named. ⚠⚠ RESTART stays: a long-running server holds the
+        code it loaded at startup, which is the one way editable code goes
+        stale. Only the `reinstall` claim was wrong.
+        """
+        root, modfile = tree
+        out = _drift(monkeypatch, running="1.108.309", module_file=modfile,
+                     pyproject_text='version = "1.108.312"\n', root=root)
+        reason = out["reason"] or ""
+        assert "serverInfo" in reason
+        assert "RESTART" in reason
+        assert "does not change which code runs" in reason
+        assert "STALE" not in reason
+
+    def test_a_matching_editable_install_is_silent(self, tree, monkeypatch):
+        """Non-vacuity: nothing to say when nothing is behind."""
         root, modfile = tree
         out = _drift(monkeypatch, running="1.108.307", module_file=modfile,
                      pyproject_text='version = "1.108.307"\n', root=root)
         assert out["drifted"] is False
-        assert out["editable"] is True
+        assert out["metadata_stale"] is False
+        assert out["reason"] is None
+
+    def test_the_verdict_is_not_computed_from_source_timestamps(self, tree, monkeypatch):
+        """Pins what this check does NOT claim.
+
+        Touching a source file must not move the verdict -- it reads versions,
+        not mtimes. Recorded so nobody reads `drifted: False` as "no edits since
+        this process started"; that question belongs to the process registry,
+        which has start times.
+        """
+        root, modfile = tree
+        kw = dict(running="1.108.309", module_file=modfile,
+                  pyproject_text='version = "1.108.312"\n', root=root)
+        before = _drift(monkeypatch, **kw)
+        pathlib.Path(modfile).touch()
+        assert _drift(monkeypatch, **kw) == before
+
+
+class TestRecordedSourceDir:
+
+    def test_a_pypi_wheel_has_no_tree_and_stays_unknown(self, tmp_path, monkeypatch):
+        """⚠ A wheel off PyPI has no local directory. Inventing one would
+        manufacture a comparison; "newer than the tree" is not a question that
+        exists for it."""
+        copied = tmp_path / "site-packages" / "jcodemunch_mcp"
+        copied.mkdir(parents=True)
+        out = _drift(monkeypatch, running="1.108.293",
+                     module_file=str(copied / "__init__.py"))
+        assert out["drifted"] is None
+        assert out["editable"] is False
 
 
 class TestUnknownIsNeverFalse:
@@ -77,7 +189,13 @@ class TestUnknownIsNeverFalse:
         assert out["reason"]
 
     def test_an_installed_copy_is_unknown_not_fresh(self, tmp_path, monkeypatch):
-        """site-packages has no pyproject.toml above it -- nothing to compare."""
+        """A copy with NO recorded source directory -- nothing to compare.
+
+        ⚠ "Installed copy" alone no longer implies UNKNOWN: a copy that records
+        where it was installed FROM is comparable, which is the whole point of
+        the fix. The discriminator is the recorded directory, so this test names
+        it rather than leaving it to the machine.
+        """
         pkg = tmp_path / "site-packages" / "jcodemunch_mcp"
         pkg.mkdir(parents=True)
         out = _drift(monkeypatch, running="1.108.293",
