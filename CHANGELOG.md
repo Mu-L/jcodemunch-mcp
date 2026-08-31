@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+### Changed - the CLI and env tables leave the always-loaded budget
+
+`CLI Subcommands` (8,367 chars) and `Env Vars` (13,097) were 16.6% of CLAUDE.md's
+140,000-char session budget, and every row of both was loaded into every session.
+They are split along the axis the Key Files split used on 2026-08-29: **what is
+DERIVABLE leaves, what is NOT stays.** `jcodemunch-mcp --help` and
+`jcodemunch-mcp config` answer "what does this subcommand do" and "what is this
+variable's default" live, and `config.py` holds every default. Nothing answers
+"this is a RESPONSE limit, deliberately NOT `max_file_size`".
+
+69 rows moved to `CLI-AND-ENV.md`, 27 stayed. The rows themselves are -8,718
+chars; documenting the split in place cost 1,160 back. **Measured on the settled
+tree: 129,052 -> 121,580, headroom 10,948 -> 18,420.**
+
+⚠ Self-referential, and the first two figures written here were already wrong
+when written: **documenting the split inside the file being split changes the
+number the entry reports.** Quote the SETTLED tree, after the last edit.
+
+⚠⚠ **The ⚠ marker is a PROXY for load-bearing and it under-selects.** It found
+8 env rows and 1 CLI row. Reading the rest by hand found 18 more that state a
+prohibition, a constraint whose violation causes a defect, or a rationale with no
+marker on it -- `JCODEMUNCH_RUNTIME_REDACT` ("never on production traces"),
+`JCODEMUNCH_PERF_TELEMETRY` ("the ring is ALWAYS tracked; the env var only
+controls durable persistence"), `uninstall` ("preserves user-authored hook rules"),
+`hook-precompact` ("snapshot delivery is `hook-sessionstart`"). They are named in
+`CLI_RATIONALE` / `ENV_RATIONALE` in `tests/test_cli_env_split.py`, and **adding a
+name there to buy budget is the thing the split exists to stop.**
+
+⚠ `tests/test_cli_env_split.py` fails if a row lands in both files or in neither,
+if a warning-free row returns to the always-loaded half, or if either pointer
+goes missing. Its two roster tests close the "in neither" direction as far as it
+goes honestly: a hard roster is NOT available, because 37 `JCODEMUNCH_*` names
+and 12 `add_parser` names are deliberately absent from both tables. What is
+assertable is the other direction -- a documented row must still name something
+`src/` has, so a rename that orphans a row fails instead of rotting in a file no
+session loads. All six defects it names were reintroduced individually and each
+was detected.
+
+⚠ `CONFIGURATION.md` documents 18 of these variables in prose. That overlap
+predates this split, is disclosed in `CLI-AND-ENV.md`, and is not resolved by it.
+
 ## [1.108.313] - 2026-08-31 - An install created before a default can never learn there is a choice
 
 ### Added - a priced, opt-in offer to move an existing install onto today's default surface
