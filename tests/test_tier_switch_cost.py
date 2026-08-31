@@ -264,3 +264,51 @@ def _shipped_maps() -> "dict[str, dict]":
     assert block, "the config template no longer declares model_tier_map"
     maps["config template"] = json.loads(block.group(1))
     return maps
+
+# --------------------------------------------------------------------------- #
+# The published counts carry their basis
+# --------------------------------------------------------------------------- #
+
+def test_every_schema_token_figure_ships_with_its_basis():
+    """⚠⚠ A bare `schema_tokens_avoided` has no TIME basis, and a reader
+    supplies the wrong one: per request. `benchmarks/codex_surface/` measured
+    86% of baseline input cached and says in our own words that the
+    "N tokens in every request" framing is wrong -- *and that this repository
+    said exactly that before measuring*. The artifact knew; the shipped field
+    did not.
+
+    ⚠ Asserted as co-presence, not as a string: any consumer reading a count
+    also receives the basis. The wording is allowed to improve.
+    """
+    from jcodemunch_mcp.tier_switch_cost import SCHEMA_TOKENS_BASIS
+
+    stats = server_mod._tool_surface_stats(top_n=3)
+    counts = [k for k in stats if k.startswith("schema_tokens_") and "basis" not in k]
+    assert counts, "no schema token figures found -- this test asserts nothing"
+    assert stats["schema_tokens_basis"] == SCHEMA_TOKENS_BASIS
+    assert "cache" in stats["schema_tokens_basis_note"].lower()
+    assert "not a per-request saving" in stats["schema_tokens_basis_note"].lower()
+
+
+def test_the_count_is_not_silently_discounted():
+    """⚠⚠ The fix is a LABEL, never a scaled number. A count quietly
+    multiplied by the cache-read rate answers neither the payload question nor
+    the cost question, and nothing on the wire would show it had happened.
+    Same rule as `analyze_perf`'s raw `hit_rate`, kept beside its basis rather
+    than replaced."""
+    stats = server_mod._tool_surface_stats(top_n=3)
+    visible = sum(server_mod._schema_weight(t) for t in server_mod._build_tools_list())
+    catalog = sum(server_mod._schema_weight(t) for t in server_mod._raw_catalog_tools())
+    assert stats["schema_tokens_visible"] == visible
+    assert stats["schema_tokens_catalog"] == catalog
+    assert stats["schema_tokens_avoided"] == max(0, catalog - visible)
+
+
+def test_the_human_surface_prints_the_basis_too():
+    """⚠ `jcodemunch-mcp surface` is where a person reads this number, and a
+    person is exactly who supplies the wrong basis. A machine-readable field
+    the CLI does not print leaves the human surface carrying the old defect."""
+    import inspect
+    src = inspect.getsource(server_mod)
+    block = src.split("Schema tokens avoided:", 1)[1][:600]
+    assert "schema_tokens_basis" in block, "the CLI prints the count without its basis"

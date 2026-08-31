@@ -559,7 +559,15 @@ def _tool_surface_stats(top_n: int = 15) -> dict:
     Estimator matches the meter's scale (bytes/4) over the same serialization
     the schema-budget baseline uses ({name, description, inputSchema}, compact
     separators). Advisory receipt only — never blocks, nothing persisted.
+
+    ⚠⚠ Every token figure here carries `schema_tokens_basis`. A bare
+    "tokens avoided" count has no time basis and a reader supplies the wrong
+    one — PER REQUEST — which is the framing `benchmarks/codex_surface/`
+    forbids in our own words after measuring 86% of baseline input cached.
+    The counts are payload size; they are not per-request savings.
     """
+    from .tier_switch_cost import SCHEMA_TOKENS_BASIS, SCHEMA_TOKENS_BASIS_NOTE
+
     visible = {t.name: _schema_weight(t) for t in _build_tools_list()}
     catalog = {t.name: _schema_weight(t) for t in _raw_catalog_tools()}
     visible_total = sum(visible.values())
@@ -574,6 +582,8 @@ def _tool_surface_stats(top_n: int = 15) -> dict:
         "schema_tokens_visible": visible_total,
         "schema_tokens_catalog": catalog_total,
         "schema_tokens_avoided": max(0, catalog_total - visible_total),
+        "schema_tokens_basis": SCHEMA_TOKENS_BASIS,
+        "schema_tokens_basis_note": SCHEMA_TOKENS_BASIS_NOTE,
         "heaviest_tools": heaviest,
         "estimator": "bytes/4",
     }
@@ -10267,6 +10277,11 @@ def main(argv: Optional[list[str]] = None):
                 f"({stats['schema_tokens_visible']:,} of {stats['schema_tokens_catalog']:,} schema tokens)"
             )
             print(f"Schema tokens avoided: {stats['schema_tokens_avoided']:,} (estimator: {stats['estimator']})")
+            # ⚠ The basis travels with the number on the HUMAN surface too. A
+            # reader of a bare count supplies "per request", which is the one
+            # reading our own measurement rules out.
+            print(f"  basis: {stats['schema_tokens_basis']}")
+            print(f"  {stats['schema_tokens_basis_note']}")
             print("Heaviest tool schemas:")
             for name, weight in stats["heaviest_tools"].items():
                 print(f"  {name:<28} {weight:>5}")

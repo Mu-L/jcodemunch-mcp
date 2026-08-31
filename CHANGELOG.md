@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+## [1.108.312] - 2026-08-30 - A count with no time basis is read as per-request
+
+### Fixed - every published schema-token figure carries its basis
+
+`schema_tokens_avoided` shipped as a bare count, in `get_session_stats`'s
+`tool_surface` block and in `jcodemunch-mcp surface`. A count with no time
+basis gets one supplied by the reader, and the one a reader supplies is PER
+REQUEST.
+
+⚠⚠ **That is the exact framing `benchmarks/codex_surface/` rules out in our own
+words**, having measured **86% of baseline input cached** (1,938,176 of
+2,247,575): the tool-schema block is stable, so it is paid at full rate roughly
+once per cache lifetime and at cache-read rates (~0.1x) thereafter. The artifact
+also records that this repository used the "N tokens in every request" framing
+BEFORE measuring. **The artifact knew and the shipped field did not**, which is
+the same gap 1.108.311 closed one field over.
+
+`schema_tokens_basis` and `schema_tokens_basis_note` now travel with the counts,
+on the JSON surface and on the CLI — a person reading `surface` is exactly who
+supplies the wrong basis, so a machine-readable field the CLI did not print
+would have left the human surface carrying the defect.
+
+⚠ **The fix is a LABEL, never a scaled number.** A count quietly multiplied by
+the cache-read rate answers neither the payload question nor the cost question,
+and nothing on the wire would show it had happened. Same rule as `analyze_perf`'s
+raw `hit_rate`, kept beside `hit_rate_basis` rather than replaced. A test asserts
+the counts still equal the summed weights.
+
+⚠ Third instance of one shape, after `hit_rate_basis` and `basis: excess_calls`:
+**a figure whose denominator or period is not stated gets a wrong one supplied
+for free.**
+
+⚠ jdocmunch (`server.py:330`) and jdatamunch (`server.py:262`) ship the identical
+field, also unbased. Briefs written for both; not fixable from this repo.
+
+3 tests in `tests/test_tier_switch_cost.py` (20 total), each red against its own
+reintroduction: basis fields removed, count silently discounted, CLI stops
+printing it.
+
+
 ## [1.108.311] - 2026-08-30 - The intuition inverts once the block is cached
 
 ### Fixed - a narrowing that cannot repay its own cache invalidation is refused

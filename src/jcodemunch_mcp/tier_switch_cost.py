@@ -28,6 +28,27 @@ from __future__ import annotations
 CACHE_READ_MULTIPLIER = 0.1
 CACHE_WRITE_MULTIPLIER = 1.25
 
+# ⚠⚠ The basis stamped on every published schema-token figure. A bare count of
+# "tokens avoided" carries no time basis, and a reader supplies the wrong one:
+# PER REQUEST. The block is stable, so it is paid at full rate roughly ONCE and
+# at cache-read rates thereafter -- `benchmarks/codex_surface/` measured 86% of
+# baseline input cached, and states in its own words that any framing of "N
+# tokens in every request" is wrong *and that this repository said exactly that
+# before measuring*.
+#
+# ⚠ The COUNT is not discounted, deliberately. It answers a real question --
+# how much payload the surface carries -- and a silently scaled one answers
+# neither that nor the cost question. Same rule as `analyze_perf`'s raw
+# `hit_rate`, which is kept beside `hit_rate_basis` rather than replaced.
+SCHEMA_TOKENS_BASIS = "one_time_at_full_rate_then_cache_read"
+SCHEMA_TOKENS_BASIS_NOTE = (
+    "The tool-schema block is stable across requests, so it is paid at full "
+    "rate approximately once per cache lifetime and at cache-read rates "
+    "(~0.1x) thereafter. This count is payload size, NOT a per-request saving; "
+    "reading it as one overstates the cost impact by roughly an order of "
+    "magnitude. Measured: benchmarks/codex_surface/."
+)
+
 # ⚠ A CHOSEN threshold, not a measurement: how many further requests a switch
 # is allowed to take to repay itself. It is deliberately generous -- the
 # transition this exists to refuse needs 174 requests with an empty history and
