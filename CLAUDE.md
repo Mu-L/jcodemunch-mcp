@@ -464,6 +464,21 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   copy.** ⚠ Four copies suite-wide; ours was right only in
   `token_tracker.py`, whose key is `claude_sonnet_4_6`: **a key naming a FAMILY
   inherits whichever member's price someone last looked at.**
+- **A guard written against a SPELLING is fixed for that spelling only.** 09-01
+  (#566): #550 taught that `from . import receipts` depends on `receipts.py`,
+  then gated the fix on `set(specifier) == {"."}`. `from ..retrieval import
+  embed_drift` is the same dependency with the package named, and it kept
+  resolving to `__init__.py` for the whole life of the "fix" — 21 edges over 12
+  modules on our own `src/`, every one of them published by `find_dead_code` at
+  **confidence 1.0**. ⚠ The reported case and the property are different sizes;
+  #550's own comment argued the property and the code implemented the example.
+  ⚠⚠ **And the same error twice more in the fix**: the code comment's first
+  count (134) and the first repo-level ratchet (`built > 90`) both identified a
+  synthesised edge by its SHAPE — "the last segment appears in `names`" — which
+  also matches the hand-written `from .tools.index_repo import index_repo`. This
+  repo has **113** of those, already resolving, so **the ratchet passed against
+  the reintroduced defect and the number was 6x high**. Compare against the
+  import statements actually WRITTEN in the file. [[a-ratchet-can-pass-against-the-defect-it-names]]
 - **A competitor's fix list is a free defect probe.** 08-22: a rival's
   `fix(gini): measure a file's lines as its own span, not the sum of every node`
   named our defect precisely enough to confirm in one query —

@@ -292,9 +292,38 @@ def _extract_python_imports(content: str) -> list[dict]:
         # seen. `from . import a` followed by `from . import b` in one file
         # otherwise loses `b` entirely -- the dedup keys on the specifier, and
         # every bare-dot import in a file shares the same one.
-        if names and set(specifier) == {"."}:
+        #
+        # ⚠⚠ The guard was `set(specifier) == {"."}`, i.e. BARE dots only, so
+        # #550 was fixed for `from . import x` and left standing for
+        # `from ..retrieval import embed_drift` -- the same dependency on a
+        # sibling module, written with the package named. Every reason above
+        # applies to it word for word; only the spelling differs. Measured over
+        # this repo's `src/`: 21 SYNTHESISED edges that resolve, from 18
+        # importer files, reaching 12 modules -- `evidence/producers.py`,
+        # `evidence/receipts.py`, `retrieval/embed_drift.py`,
+        # `storage/embedding_matrix.py`, `storage/token_tracker.py` and seven
+        # more, every one of which `find_importers` reported as having zero
+        # importers while its importer sat at module scope in an indexed, live
+        # file (#566).
+        #
+        # ⚠⚠ The first count written here was 134, and it was wrong the way a
+        # measurement is usually wrong: it counted every edge matching the
+        # SHAPE rather than the ones this change creates. `from .tools.index_repo
+        # import index_repo` -- the convention where a module and its chief
+        # export share a name -- is hand-written, already resolved, and looks
+        # identical to a synthesised edge unless the raw source is consulted.
+        # 113 of the 134 were that. **Compare against the import statements
+        # actually written in the file, never against the specifier's spelling.**
+        #
+        # ⚠ A bare-dot specifier already ends in the separator (`.` + `x` is
+        # `.x`); a named one needs it (`..retrieval` + `embed_drift` is
+        # `..retrieval.embed_drift`). Absolute specifiers take the same path --
+        # `from pkg.storage import matrix` yields `pkg.storage.matrix`, which
+        # the module-path branch of `resolve_specifier` resolves.
+        if names:
+            _prefix = specifier if set(specifier) == {"."} else f"{specifier}."
             for _name in names:
-                _sub = f"{specifier}{_name}"
+                _sub = f"{_prefix}{_name}"
                 if _sub not in seen:
                     seen.add(_sub)
                     edges.append({"specifier": _sub, "names": [_name]})

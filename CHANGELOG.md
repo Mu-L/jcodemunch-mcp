@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+### Fixed - #550 was fixed for one spelling of the defect and left standing for the other
+
+`from ..retrieval import embed_drift` is a dependency on `embed_drift.py`, the
+same way `from . import receipts` is a dependency on `receipts.py`. #550 fixed
+the second and guarded the fix on `set(specifier) == {"."}` -- BARE dots -- so
+the first kept resolving to the package's `__init__.py` and never to the module.
+The specifier is `..retrieval`; the module actually imported is named in
+`names`, and nothing looked there.
+
+Every argument in #550's own comment applies to the named form word for word.
+Only the spelling differs, and the guard was written against the spelling.
+
+Measured on this repo's `src/`: **21 synthesised edges that resolve, from 18
+importer files, reaching 12 modules** -- `evidence/producers.py`,
+`evidence/receipts.py`, `retrieval/embed_drift.py`, `storage/embedding_matrix.py`,
+`storage/token_tracker.py` and seven more. Every one of them answered
+`importer_count: 0` from `find_importers` while its importer sat at module scope
+in an indexed, live file, and `find_dead_code` published them at **confidence
+1.0**.
+
+⚠ The per-name edge is offered ALONGSIDE the package edge, never instead of it,
+which is what keeps the 26 `resolve_specifier` call sites on their single-target
+contract. `from ..pkg import x` is `x` the submodule OR `x` an attribute of
+`__init__.py`; the importing file cannot say which, so both are offered and the
+one with no file behind it resolves to None, which every consumer already skips.
+
+⚠⚠ **An old test went red and it was the defect's witness, not its guard.**
+`test_every_other_import_form_is_untouched` asserted `_specs(source) ==
+[".receipts"]` under the docstring "a dotted relative import already names its
+module and must not gain a second edge". That states the MECHANISM, and the
+premise is false -- `from ..parser.fqn import x` names the module `fqn` only
+when `x` is an attribute of it. Rewritten to assert the module edge SURVIVES
+rather than that it is alone, per Practice 9.
+
+⚠⚠ **The first repo-level guard written for this PASSED against the
+reintroduced defect, and the first count in the code comment was wrong by 6x.**
+Both had the same cause: they identified a synthesised edge by its SPELLING
+("the last segment appears in `names`"), which also matches the hand-written
+`from .tools.index_repo import index_repo` -- the convention where a module and
+its chief export share a name. This repo has **113** of those, already
+resolving, so the guard scored 134 and could not fail. **Compare against the
+import statements actually written in the file.** Found on the non-vacuity pass,
+which is the entire reason that pass is run against the broken tree.
+
 ## [1.108.314] - 2026-09-01 - A rate written for a future date is wrong for every day before it
 
 ### Added - the published `counter` surface is a cached prefix, and nothing pinned it
