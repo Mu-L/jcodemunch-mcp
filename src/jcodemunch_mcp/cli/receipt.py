@@ -101,12 +101,23 @@ _DEFAULT_MULTIPLIER = 8.0
 # counterfactual (naive Read+Grep would have been *fresh* input, not
 # cached). Opus is the default: most jcodemunch users run an Opus-grade
 # model where savings actually move a budget needle.
-# Rates as of 2026-06-24 (anthropic.com/pricing). Update when the public
-# price list changes; the test suite pins these to that dated source.
+# Rates as of 2026-09-01 (platform.claude.com/docs/en/about-claude/pricing).
+# Update when the public price list changes; the test suite pins these to that
+# dated source.
+#
+# ⚠⚠ A KEY NAMES A FAMILY, AND THE FAMILY'S MEMBERS CAN BE PRICED DIFFERENTLY.
+# `sonnet` read 3.0 from 2026-06-24 to 2026-09-01 with the comment "Sonnet 5 /
+# 4.6" -- but Sonnet 5 has NEVER been $3. It launched at $2 introductory with a
+# $3 increase SCHEDULED for 2026-09-01, and that increase was cancelled the day
+# before it would have applied. ⚠ **A rate written for a future date is wrong
+# for the whole interval before it, and nothing distinguishes it from a stale
+# one** -- both read as a plausible number beside a plausible date. Price the
+# CURRENT member of the family and say which one; a superseded member's rate
+# goes in the comment, never in the value.
 _MODEL_PRICES_USD_PER_MTOK: dict[str, float] = {
     "fable":  10.0,   # Claude Fable 5 ($10/MTok input)
-    "opus":   5.0,    # Claude Opus 4.8 / 4.7 / 4.6 ($5/MTok input; retired 4.0/4.1 were $15)
-    "sonnet": 3.0,    # Claude Sonnet 5 / 4.6 ($3/MTok input)
+    "opus":   5.0,    # Claude Opus 5 / 4.8 / 4.7 / 4.6 ($5/MTok input; retired 4.0/4.1 were $15)
+    "sonnet": 2.0,    # Claude Sonnet 5 ($2/MTok input; superseded Sonnet 4.6 was $3)
     "haiku":  1.0,    # Claude Haiku 4.5 ($1/MTok input)
 }
 

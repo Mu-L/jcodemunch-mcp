@@ -441,6 +441,16 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   switch off.** ⚠ Found by the test, not by review — the local box had a
   non-default config, which is the #437 shape exactly.
   [[a-module-that-imports-clean-has-been-tested-for-nothing]]
+- **A constant written for a FUTURE date is wrong for the whole interval before
+  it, and looks identical to a stale one.** 09-01: the receipt priced `sonnet`
+  at $3 from 2026-06-24, the increase SCHEDULED for 2026-09-01 — cancelled the
+  day before. Sonnet 5 was never $3; the entry was wrong all 69 days, and its
+  dated comment made it look checked. ⚠⚠ **The pin agreed with it** (two literal
+  `3.0`s plus a DERIVED `"$0.09"` a name-search cannot see), so green meant
+  nothing — **re-read the SOURCE when touching a pinned table, never the other
+  copy.** ⚠ Four copies suite-wide; ours was right only in
+  `token_tracker.py`, whose key is `claude_sonnet_4_6`: **a key naming a FAMILY
+  inherits whichever member's price someone last looked at.**
 - **A competitor's fix list is a free defect probe.** 08-22: a rival's
   `fix(gini): measure a file's lines as its own span, not the sum of every node`
   named our defect precisely enough to confirm in one query —

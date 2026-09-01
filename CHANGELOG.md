@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### Fixed - the receipt priced Sonnet at a rate that was never charged
+
+`_MODEL_PRICES_USD_PER_MTOK["sonnet"]` was `3.0` with the comment
+"Claude Sonnet 5 / 4.6". **Sonnet 5 has never been $3.** It launched at $2
+introductory input pricing with an increase to $3 SCHEDULED for 2026-09-01, and
+Anthropic cancelled that increase the day before it would have applied. The
+entry was written 2026-06-24, so it recorded a FUTURE price as the current one
+and was wrong for every one of the 69 days it stood. Now `2.0`, verified against
+platform.claude.com/docs/en/about-claude/pricing, which states the $2/$10 rate
+is standard and the increase "will not occur".
+
+⚠⚠ **A rate written for a future date is wrong for the whole interval before it,
+and nothing distinguishes it from a stale one** -- both read as a plausible
+number beside a plausible date, and the date makes the stale one look checked.
+The value is what expires; the comment beside it cannot say so.
+
+⚠⚠ **The pin agreed with the defect.** `tests/test_receipt.py` restated `3.0` in
+`_EXPECTED_RATES` and asserted `dollar_savings(1M, "sonnet") == 3.0`, so the
+suite was green against a rate the vendor never charged for the model named
+beside it. A pin is only as good as the re-read that produced it -- **re-read the
+source page when touching the table, never the other copy.**
+
+⚠ A THIRD pin was a DERIVED figure -- `test_includes_dollar_headline` asserted
+`"$0.09"` in the rendered ledger. It is invisible to a search for the rate's
+name and only surfaced when the suite ran, which is the argument for keeping the
+arithmetic in the comment beside it (now `$0.06`).
+
+⚠⚠ **Four copies of this rate exist across the suite and this fixes ONE.** Still
+wrong: `jmunch-mcp/src/jmunch_mcp/meta.py:28`, `jdocmunch-mcp/.../
+storage/token_tracker.py:28`, `jdatamunch-mcp/.../storage/token_tracker.py:25`
+-- all keyed bare `claude_sonnet` at `3.00`, two carrying the identical
+conflating comment. jmunch's is the one stamping `_meta.cost_avoided` on live
+tool responses. ⚠ **This repo's own `storage/token_tracker.py:152` is CORRECT
+and shows why**: its key is `claude_sonnet_4_6`, which names the exact model, so
+the $3 beside it is true. **A key that names a FAMILY inherits whichever
+member's price someone last looked at.** ⚠ Renaming the sibling keys is a WIRE
+change for `_meta.cost_avoided` consumers, so it is not a free rename.
+
 ### Changed - the CLI and env tables leave the always-loaded budget
 
 `CLI Subcommands` (8,367 chars) and `Env Vars` (13,097) were 16.6% of CLAUDE.md's

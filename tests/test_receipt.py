@@ -172,8 +172,10 @@ class TestAggregate:
 
 class TestDollarSavings:
     def test_sonnet_rate(self):
-        # $3/MTok → 1M tokens = $3.
-        assert dollar_savings(1_000_000, "sonnet") == pytest.approx(3.0)
+        # Sonnet 5 = $2/MTok input → 1M tokens = $2. ⚠ NOT $3: that was the
+        # increase scheduled for 2026-09-01 and cancelled the day before, and
+        # the superseded Sonnet 4.6's rate. See the ⚠⚠ note on the table.
+        assert dollar_savings(1_000_000, "sonnet") == pytest.approx(2.0)
 
     def test_opus_rate(self):
         # Opus 4.8 / 4.7 / 4.6 = $5/MTok input (retired 4.0/4.1 were $15).
@@ -202,8 +204,13 @@ class TestRenderText:
         assert "Sonnet pricing" in out
         # search_symbols: 1000 × 20 = 20000; find_references: 500 × 25 = 12500.
         # savings = (20000 - 1000) + (12500 - 500) = 31000.
-        # $3/MTok × 31000 / 1e6 = $0.093 → rounds to $0.09.
-        assert "$0.09" in out
+        # $2/MTok × 31000 / 1e6 = $0.062 → rounds to $0.06.
+        # ⚠ A DERIVED figure, so it moves whenever the rate does — and it is
+        # invisible to a search for the rate's name, which is how it survived
+        # the same pass that found the two literal 3.0s. Keep the arithmetic
+        # in the comment; it is what makes the update mechanical instead of
+        # a guess at what the renderer now prints.
+        assert "$0.06" in out
 
     def test_empty_data_message(self):
         out = render_text(aggregate([]), days=30, model="sonnet")
@@ -247,12 +254,18 @@ class TestExports:
 
 
 class TestModelPriceTable:
-    # Pinned to anthropic.com/pricing as of 2026-06-24. Update this table AND
-    # the source table in cli/receipt.py together when the price list changes.
+    # Pinned to platform.claude.com/docs/en/about-claude/pricing as of
+    # 2026-09-01. Update this table AND the source table in cli/receipt.py
+    # together when the price list changes.
+    # ⚠⚠ This restatement is the POINT -- a pin that imports the value it
+    # checks asserts nothing. It is also why the wrong sonnet rate survived:
+    # both copies said 3.0 and agreed with each other, so the suite was green
+    # against a rate the vendor never charged for the model named beside it.
+    # **Re-read the source page when touching this, never the other copy.**
     _EXPECTED_RATES = {
         "fable": 10.0,
         "opus": 5.0,
-        "sonnet": 3.0,
+        "sonnet": 2.0,   # Sonnet 5. The $3 here until 2026-09-01 was Sonnet 4.6's.
         "haiku": 1.0,
     }
 
