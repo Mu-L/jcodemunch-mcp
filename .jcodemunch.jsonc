@@ -1,0 +1,23 @@
+{
+  // Per-project overlay. Only keys declared here override the global config;
+  // everything else resolves live against ~/.code-index/config.jsonc.
+
+  // ⚠⚠ Two files in this repo exceed the 512,000-byte default and were
+  // therefore MISSING from its own index -- `src/jcodemunch_mcp/server.py`
+  // (550,036 B) and `src/jcodemunch_mcp/parser/extractor.py` (516,820 B).
+  //
+  // server.py is the MCP dispatcher, so it imports most of the tree. Its
+  // absence made every module reached only from it look importer-less, and
+  // `find_dead_code` published those at confidence 1.0 -- `runtime_identity.py`
+  // (a TOP-LEVEL import at server.py:25), `evidence/producers.py`,
+  // `credentials.py` and `version_check.py` among them (#566, cause 2).
+  //
+  // ⚠ Raising the cap does NOT make that verdict honest; it removes one
+  // population of false positives. A withheld file still makes coverage
+  // `complete: false` and still refuses absence claims, which is correct.
+  //
+  // ⚠ 768000 is headroom over the larger file, not a measured limit. server.py
+  // has grown steadily; pick a number that survives a few releases rather than
+  // one that needs revisiting the next time a dispatcher branch is added.
+  "max_file_size": 768000
+}

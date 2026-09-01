@@ -104,6 +104,12 @@ packages = ["src/jcodemunch_mcp", "munch-bench/munch_bench"]
 # Nested .gitignore files do not reach hatchling, only the root one does.
 exclude = [
     ".claude/",
+    # Per-project index config for THIS source tree: it raises `max_file_size`
+    # so `server.py` and `parser/extractor.py` enter this repo's own index
+    # (#566). A consumer who installs the package does not have this tree, so
+    # the key describes nothing on their machine. Tracked because it is a real
+    # repo setting; excluded because "tracked" and "shipped" are different.
+    ".jcodemunch.jsonc",
     # Git-only: pins tests/fixtures/racket/*.rkt to LF for the frozen byte-position
     # oracle. A checkout concern, not a distribution one.
     ".gitattributes",
