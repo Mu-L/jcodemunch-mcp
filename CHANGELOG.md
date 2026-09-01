@@ -2,6 +2,51 @@
 
 ## [Unreleased]
 
+## [1.108.314] - 2026-09-01 - A rate written for a future date is wrong for every day before it
+
+### Added - the published `counter` surface is a cached prefix, and nothing pinned it
+
+`tools` is serialised ahead of system and messages, so every byte of the
+published tool list sits in the cached prefix -- **4,184 B across six tools**,
+measured. Changing any of it invalidates that prefix and every turn behind it,
+for every session on every install. `benchmarks/tier_switch/` priced that at 174
+requests to repay a `full`->`standard` narrowing. **A one-word edit to the
+`order` description is not a docs change; it re-bills a full-rate cache write to
+everyone**, and nothing in the suite would have said so.
+
+`tests/test_counter_surface_stability.py` pins six tools by name AND ORDER, each
+tool's `{name, description, inputSchema}` by sha, the total byte count, the
+`_COUNTER_FRONT_DOOR` / `_ALWAYS_PRESENT_TOOLS` membership, and independence
+from `tool_profile`.
+
+⚠⚠ **The property it exists for is the one arXiv:2608.22708 (CacheRouter) is
+built around -- the catalog can GROW without moving the prefix.** The Counter
+already had it (the counter branch is a whitelist, so a new tool cannot reach
+the surface); it had never been stated as a guarantee and nothing failed if it
+broke. That paper's own answer routes long-tail tools to a SUB-MODEL that
+selects, executes and returns results, which is lossy where ours is not, and its
+reported gains are against a NO-CACHE baseline under DeepSeek pricing (cache hit
+~1/30 of a miss, against Anthropic's 0.1x) -- so the headline does not transfer
+to a surface already measured at 86% cached (`benchmarks/codex_surface/`).
+
+⚠ Same blind spot as the schema-budget guardrail that "only walked
+`tool_profile`, which does not apply to the front door at all". The front door
+keeps being the part with no test under it.
+
+⚠ Per-tool hashes, not one blob: a blob says "something changed", a keyed dict
+NAMES the tool. ⚠ The byte-count assertion is redundant with the hashes BY
+DESIGN -- a hash says "different", a count says "bigger by how much", and only
+the second answers whether the edit was worth a cache write. ⚠ Description
+overrides are forced empty in the fixture; ambient config would make these
+hashes a property of the developer's machine (the #437 shape).
+
+⚠ Non-vacuity: five defects reintroduced individually into `server.py` --
+whitelist replaced by pass-through, one word reworded in `order`, list
+reordered, whitelist widened, surface made to depend on `tool_profile` -- and
+**5/5 were detected**; `server.py` restored byte-for-byte, verified with
+`git diff --quiet`. Only the name/order test catches a reorder, which is why it
+carries the ordering assertion alone.
+
 ### Fixed - the receipt priced Sonnet at a rate that was never charged
 
 `_MODEL_PRICES_USD_PER_MTOK["sonnet"]` was `3.0` with the comment

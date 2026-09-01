@@ -158,9 +158,9 @@ That's the highlight reel. The complete tour of 90+ tools, the MUNCH compact wir
 <!-- WHATSNEW:START -->
 #### What's new
 
+- **[v1.108.314](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.314)** (2026-09-01) — A rate written for a future date is wrong for every day before it
 - **[v1.108.313](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.313)** (2026-08-31) — An install created before a default can never learn there is a choice
 - **[v1.108.312](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.312)** (2026-08-30) — A count with no time basis is read as per-request
-- **[v1.108.311](https://github.com/jgravelle/jcodemunch-mcp/releases/tag/v1.108.311)** (2026-08-30) — The intuition inverts once the block is cached
 <!-- WHATSNEW:END -->
 
 ---
