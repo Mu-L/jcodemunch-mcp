@@ -97,7 +97,8 @@ def test_get_watch_status_shape(tmp_path, monkeypatch):
     real = tmp_path / "r"
     real.mkdir()
 
-    monkeypatch.setattr(mod, "discover_local_repos", lambda storage_path=None: [str(real)])
+    monkeypatch.setattr(mod, "discover_local_repo_entries",
+                        lambda storage_path=None: {str(real): {}})
     monkeypatch.setattr(mod, "service_status", lambda: {"active": False, "platform": "test"})
     monkeypatch.setattr(mod, "get_reindex_status", lambda repo: {
         "index_stale": False, "reindex_in_progress": False, "stale_since_ms": None,

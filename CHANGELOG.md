@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+### Fixed - `get_watch_status` reported watcher bookkeeping as index freshness (#565)
+
+`index_stale` was `state.reindexing or state.stale_since is not None` over
+`_RepoState` -- an in-memory, per-process container that only the watcher ever
+writes. A process that never watched anything has no state, so the field
+answered **False for every repo, forever**, and a repo nothing had ever looked
+at was indistinguishable from one measured fresh.
+
+Found on a box whose index was pinned eleven releases back while
+`get_watch_status` reported `any_stale: false` across all 33 repos. The truth
+on that machine: **1 stale, 2 unknown, 10 not_tracked, 20 fresh.**
+
+`index_freshness` now routes through `FreshnessProbe.repo_freshness`, which is
+the authority on this question and has been tri-state since v1.108.180 -- when
+the boolean `repo_is_stale` was replaced for exactly this reason. The watcher
+flag is kept as `watcher_flagged_stale`, which is what it always meant.
+
+⚠⚠ **`list_repos` inherited the defect verbatim** -- `"stale_index" if
+index_stale else "fresh"` -- so it published `fresh` for every repo on any box
+whose watcher had never run, including the ten that are not git-backed and can
+never be compared. Its vocabulary gained `unknown` and `not_tracked`, and its
+shape test now reads the mapping instead of restating a literal that was
+complete only while the field could not say "we did not establish it".
+
+⚠ Cost: the index side of the comparison is free (`indexed_at` and `git_head`
+ride on the discovery entry, via the new `discover_local_repo_entries`
+authority), so the whole addition is one `git rev-parse` per repo. Measured
+over 33 repos as the delta against `check_freshness=False`: **1.28 s cold,
+0.12 s warm**. The spread is OS and git caches, not variance. Both sit under
+the ~2.4 s already spent on discovery and lock inspection, so the check is on
+by default; `check_freshness=False` reports `unknown` rather than inventing
+`fresh`.
+
+⚠⚠ **Two old tests were the defect's witnesses.** `test_v1_108_81` asserted
+`any_stale is True` with nothing set but the watcher flag -- the defect stated
+as a requirement -- and `test_list_repos` enumerated a three-value vocabulary
+with no way to say unknown. Rewritten per Practice 9 rather than fixed back.
+Removing `discover_local_repos` from the module namespace broke three
+monkeypatch seams loudly, which is the right way for a contract change to
+arrive.
+
 ### Fixed - #550 was fixed for one spelling of the defect and left standing for the other
 
 `from ..retrieval import embed_drift` is a dependency on `embed_drift.py`, the

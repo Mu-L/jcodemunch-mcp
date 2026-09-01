@@ -26,7 +26,14 @@ def test_repos_report_shape(tmp_path):
     assert entry["symbol_count"] >= 1
     assert entry["file_count"] >= 1
     assert isinstance(entry["languages"], dict)
-    assert entry["freshness"] in ("fresh", "edited_uncommitted", "stale_index")
+    # ⚠ Read the vocabulary off the mapping instead of restating it: this
+    # literal was ("fresh", "edited_uncommitted", "stale_index"), complete
+    # only while the field could not say "we did not establish it". #565
+    # added `unknown` and `not_tracked`, and a hand-kept list is a second
+    # roster that goes stale the next time one is added.
+    from jcodemunch_mcp.tools.list_repos import _FRESHNESS_LABEL
+
+    assert entry["freshness"] in set(_FRESHNESS_LABEL.values())
     assert entry["watcher_state"] in ("idle", "watching", "reindexing")
     # Fresh, unwatched index in a throwaway store: no watcher holder.
     assert entry["watcher_state"] == "idle"

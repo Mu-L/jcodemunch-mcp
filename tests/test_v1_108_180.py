@@ -277,3 +277,95 @@ async def test_an_unreadable_revision_refuses_the_absence_live(
     assert verdict["channels"]["index"] == "unknown"
     assert verdict["state"] == "degraded"
     assert "evidence_ref" not in verdict
+
+
+# ── #565: get_watch_status reported watcher bookkeeping as index freshness ──
+
+
+def test_watch_status_reports_measured_freshness_not_watcher_bookkeeping(monkeypatch):
+    """⚠⚠ `index_stale` was `state.reindexing or state.stale_since is not None`
+    over an in-memory per-process container only the watcher writes. A process
+    that never watched anything has no state, so every repo answered False --
+    forever, and a repo nothing had ever looked at was indistinguishable from
+    one measured fresh.
+
+    The property: the row reports what was MEASURED about the index, and a
+    dead watcher cannot make an unmeasured repo look current."""
+    from jcodemunch_mcp.tools import get_watch_status as mod
+
+    monkeypatch.setattr(mod, "discover_local_repo_entries",
+                        lambda sp: {"/repo/a": {"indexed_at": "x", "git_head": "abc"}})
+    monkeypatch.setattr(mod, "service_status", lambda: {"active": False})
+    monkeypatch.setattr(mod.process_locks, "inspect", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "_repo_freshness", lambda folder, entry, check: "stale")
+
+    out = mod.get_watch_status()
+    row = out["repos"][0]
+    assert row["index_freshness"] == "stale"
+    assert out["any_stale"] is True, (
+        "a repo measured stale must reach the summary; the old field could not, "
+        "because nothing but the watcher ever set it"
+    )
+    assert "index_stale" not in row, (
+        "the watcher flag must not keep the name that was being read as an "
+        "index-vs-tree answer"
+    )
+    assert row["watcher_flagged_stale"] is False
+
+
+@pytest.mark.parametrize("probe_says,expected_any_stale,expected_any_unknown", [
+    ("fresh", False, False),
+    ("stale", True, False),
+    ("unknown", False, True),
+    ("not_tracked", False, False),
+])
+def test_unknown_is_never_folded_into_fresh_or_stale(
+    monkeypatch, probe_says, expected_any_stale, expected_any_unknown
+):
+    """⚠ The whole point of the tri-state. `unknown` is a comparison we should
+    have been able to make and could not; `not_tracked` is a subject with no
+    revision to compare and never will have. Neither is `fresh`, and neither
+    may be counted as `stale` either."""
+    from jcodemunch_mcp.tools import get_watch_status as mod
+
+    monkeypatch.setattr(mod, "discover_local_repo_entries", lambda sp: {"/repo/a": {}})
+    monkeypatch.setattr(mod, "service_status", lambda: {"active": False})
+    monkeypatch.setattr(mod.process_locks, "inspect", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "_repo_freshness", lambda *a: probe_says)
+
+    out = mod.get_watch_status()
+    assert out["repos"][0]["index_freshness"] == probe_says
+    assert out["any_stale"] is expected_any_stale
+    assert out["any_freshness_unknown"] is expected_any_unknown
+
+
+def test_skipping_the_check_reports_unknown_rather_than_fresh():
+    """⚠⚠ The opt-out must not reintroduce the defect in a new place. A caller
+    that declines to measure has not established freshness, so the honest
+    answer is `unknown` -- the same rule `has_any()` and `ledger_trust` apply."""
+    from jcodemunch_mcp.tools.get_watch_status import _repo_freshness
+
+    assert _repo_freshness("/repo/a", {"git_head": "abc"}, False) == "unknown"
+
+
+def test_a_probe_failure_is_unknown_not_fresh(monkeypatch):
+    """Practice 2's other half: the exception is swallowed, so the only honest
+    thing it can degrade to is `unknown`."""
+    import jcodemunch_mcp.retrieval.freshness as fresh_mod
+    from jcodemunch_mcp.tools.get_watch_status import _repo_freshness
+
+    def _boom(*a, **k):
+        raise RuntimeError("git exploded")
+
+    monkeypatch.setattr(fresh_mod, "FreshnessProbe", _boom)
+    assert _repo_freshness("/repo/a", {"git_head": "abc"}, True) == "unknown"
+
+
+def test_the_repo_listing_does_not_relabel_unknown_as_fresh():
+    """`list_repos` inherited the defect verbatim -- `"stale_index" if
+    index_stale else "fresh"`. Its map must carry all four states."""
+    from jcodemunch_mcp.tools.list_repos import _FRESHNESS_LABEL
+
+    assert _FRESHNESS_LABEL["not_tracked"] != "fresh"
+    assert _FRESHNESS_LABEL["unknown"] != "fresh"
+    assert set(_FRESHNESS_LABEL) == {"fresh", "stale", "unknown", "not_tracked"}

@@ -6,6 +6,19 @@ from typing import Optional
 from ..storage import IndexStore
 
 
+
+# `get_watch_status` speaks the FreshnessProbe vocabulary; this listing has its
+# own older labels. Map explicitly rather than passing the raw value through --
+# `not_tracked` (a plain folder with no revision to compare) and `unknown` (a
+# comparison we should have been able to make and could not) are different
+# facts, and collapsing either into "fresh" is #565.
+_FRESHNESS_LABEL = {
+    "fresh": "fresh",
+    "stale": "stale_index",
+    "unknown": "unknown",
+    "not_tracked": "not_tracked",
+}
+
 def list_repos(storage_path: Optional[str] = None) -> dict:
     """List all indexed repositories.
 
@@ -80,7 +93,14 @@ def repos_report(storage_path: Optional[str] = None) -> list[dict]:
             "symbol_count": r.get("symbol_count", 0),
             "languages": r.get("languages", {}) or {},
             "indexed_at": r.get("indexed_at", ""),
-            "freshness": "stale_index" if w.get("index_stale") else "fresh",
+            # ⚠⚠ Was `"stale_index" if w.get("index_stale") else "fresh"`, which
+            # inherited #565 wholesale: `index_stale` was watcher bookkeeping,
+            # so this published `fresh` for every repo on any box whose watcher
+            # had never run -- including repos that are not git-backed at all
+            # and can never be compared. Reports what was measured now.
+            "freshness": _FRESHNESS_LABEL.get(
+                w.get("index_freshness"), "unknown"
+            ),
             "watcher_state": watcher_state,
             "lock_holder": holder.get("client_id"),
         })

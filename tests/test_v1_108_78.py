@@ -160,7 +160,8 @@ class TestWatcherHealth:
         folder = str(tmp_path / "repo")
         repo_id = "local/repo-deadbeef"
 
-        monkeypatch.setattr(gws, "discover_local_repos", lambda sp=None: [folder])
+        monkeypatch.setattr(gws, "discover_local_repo_entries",
+                            lambda sp=None: {folder: {}})
         monkeypatch.setattr(gws, "_reindex_key", lambda f, sp: repo_id)
         monkeypatch.setattr(gws, "service_status", lambda: {"active": True})
         monkeypatch.setattr(gws.process_locks, "inspect", lambda *a, **k: None)

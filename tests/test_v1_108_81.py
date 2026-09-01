@@ -14,7 +14,8 @@ from jcodemunch_mcp.tools import get_watch_status as gws
 class TestWatchStatusLazyKeyResolution:
     def test_skips_key_resolution_when_no_reindex_state(self, tmp_path, monkeypatch):
         folders = [str(tmp_path / "a"), str(tmp_path / "b"), str(tmp_path / "c")]
-        monkeypatch.setattr(gws, "discover_local_repos", lambda sp=None: folders)
+        monkeypatch.setattr(gws, "discover_local_repo_entries",
+                            lambda sp=None: {f: {} for f in folders})
         monkeypatch.setattr(gws, "service_status", lambda: {"active": False})
         monkeypatch.setattr(gws.process_locks, "inspect", lambda *a, **k: None)
         monkeypatch.setattr(gws, "has_any_reindex_state", lambda: False)
@@ -33,13 +34,17 @@ class TestWatchStatusLazyKeyResolution:
         assert calls == []  # zero git identity probes
         assert out["repo_count"] == 3
         assert out["any_stale"] is False
-        # default freshness fields are still present so the output shape is stable
-        assert all(e.get("index_stale") is False for e in out["repos"])
+        # Shape is still stable, under the name that says what the flag is.
+        assert all(e.get("watcher_flagged_stale") is False for e in out["repos"])
         assert all("reindex_in_progress" in e for e in out["repos"])
+        # ⚠ These folders do not exist, so freshness cannot be established.
+        # `unknown`, never `fresh` (#565).
+        assert all(e["index_freshness"] == "unknown" for e in out["repos"])
 
     def test_resolves_keys_when_reindex_state_present(self, tmp_path, monkeypatch):
         folder = str(tmp_path / "repo")
-        monkeypatch.setattr(gws, "discover_local_repos", lambda sp=None: [folder])
+        monkeypatch.setattr(gws, "discover_local_repo_entries",
+                            lambda sp=None: {folder: {}})
         monkeypatch.setattr(gws, "service_status", lambda: {"active": False})
         monkeypatch.setattr(gws.process_locks, "inspect", lambda *a, **k: None)
         monkeypatch.setattr(gws, "has_any_reindex_state", lambda: True)
@@ -55,5 +60,15 @@ class TestWatchStatusLazyKeyResolution:
         out = gws.get_watch_status(str(tmp_path / "store"))
 
         assert calls == [folder]  # key resolved (probe runs) when state exists
-        assert out["any_stale"] is True
-        assert out["repos"][0]["index_stale"] is True
+        # ⚠⚠ REWRITTEN AT #565. This read `assert out["any_stale"] is True`
+        # with nothing but the watcher flag set -- which is the defect stated
+        # as a requirement: the summary took its freshness answer from
+        # per-process watcher bookkeeping. The flag is reported, under its own
+        # name, and it does NOT decide `any_stale`.
+        assert out["repos"][0]["watcher_flagged_stale"] is True
+        assert "index_stale" not in out["repos"][0]
+        assert out["any_stale"] is False, (
+            "the watcher queueing a reindex is not a measurement that the "
+            "index differs from the tree"
+        )
+        assert out["repos"][0]["index_freshness"] == "unknown"

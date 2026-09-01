@@ -38,15 +38,28 @@ logger = logging.getLogger(__name__)
 DEFAULT_REDISCOVER_INTERVAL_S = 30.0
 
 
-def discover_local_repos(storage_path: Optional[str] = None) -> list[str]:
-    """Return resolved on-disk paths for every locally-indexed repo.
+def discover_local_repo_entries(
+    storage_path: Optional[str] = None,
+) -> "dict[str, dict]":
+    """Resolved on-disk path -> that repo's `list_repos()` entry.
 
-    GitHub repos (empty `source_root`) and indexes whose source_root no longer
-    exists on disk are skipped — the latter protects against watchdog blowing
-    up when a repo was deleted out from under the index.
+    THE authority for "which local repos would watch-all cover". GitHub repos
+    (empty `source_root`) and indexes whose source_root no longer exists on
+    disk are skipped — the latter protects against watchdog blowing up when a
+    repo was deleted out from under the index.
+
+    ⚠ The entry is carried alongside the path because it already holds
+    `indexed_at` and `git_head`, which is the index half of a freshness
+    comparison. Re-reading those per repo costs a SQLite open apiece, and
+    resolving a repo id from a path costs a git subprocess apiece — the #353
+    probe that scaled `list-repos` past 60s on many-repo hosts. They are free
+    here.
+
+    ⚠ Two source roots can resolve to one path; last entry wins, which matches
+    the de-duplication `discover_local_repos` has always done.
     """
     store = IndexStore(base_path=storage_path) if storage_path else IndexStore()
-    repos: list[str] = []
+    found: dict[str, dict] = {}
     for entry in store.list_repos():
         src = (entry.get("source_root") or "").strip()
         if not src:
@@ -55,10 +68,19 @@ def discover_local_repos(storage_path: Optional[str] = None) -> list[str]:
         try:
             if not path.is_dir():
                 continue
-            repos.append(str(path.resolve()))
+            found[str(path.resolve())] = entry
         except OSError:
             logger.debug("Unreachable source_root: %s", src, exc_info=True)
-    return sorted(set(repos))
+    return {k: found[k] for k in sorted(found)}
+
+
+def discover_local_repos(storage_path: Optional[str] = None) -> list[str]:
+    """Resolved on-disk paths for every locally-indexed repo.
+
+    Derived from :func:`discover_local_repo_entries` rather than repeating its
+    filtering — one authority, two shapes.
+    """
+    return list(discover_local_repo_entries(storage_path))
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Event) -> None:
