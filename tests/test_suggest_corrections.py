@@ -163,14 +163,33 @@ def test_charter_writes_no_user_file(monkeypatch, tmp_path):
     assert claude.read_text(encoding="utf-8") == original
 
 
-def test_freshness_correction_no_patch(monkeypatch, tmp_path):
+@pytest.mark.parametrize("service_active,expected", [
+    (False, "watch-install"),
+    (True, "get_watch_status"),
+])
+def test_freshness_correction_no_patch(monkeypatch, tmp_path, service_active, expected):
+    """⚠⚠ The advice has TWO branches and this test used to assert one of them
+    while reading the DEVELOPER'S REAL MACHINE for which. It passed only while
+    nobody running it had the watch service installed; installing it flipped
+    `service_active` to True and the assertion failed with the code correct.
+    Same #437 shape as the config-isolation guard -- a test whose verdict is
+    decided by ambient state it never declares.
+
+    ⚠ `_freshness_correction` imports `get_watch_status` INSIDE the function,
+    so the patch target is the source module, not `suggest_corrections`.
+    Parametrised over both branches, which is strictly more coverage than the
+    original: whichever branch the dev box was not in had never run."""
     _enable(monkeypatch)
+    monkeypatch.setattr(
+        "jcodemunch_mcp.tools.get_watch_status.get_watch_status",
+        lambda **kw: {"service": {"active": service_active}},
+    )
     for _ in range(8):
         _ev(REPO, f"q{_}", returned=["a"], conf=0.6, stale=True)
     out = suggest_corrections(repo=REPO, storage_path=str(tmp_path))
     fresh = [c for c in out["corrections"] if c["kind"] == "index_freshness"]
     assert fresh and fresh[0]["suggested_patch"] is None
-    assert "watch-install" in fresh[0]["recommended_action"]
+    assert expected in fresh[0]["recommended_action"]
 
 
 def test_convergent_signals_dedupe(monkeypatch, tmp_path):

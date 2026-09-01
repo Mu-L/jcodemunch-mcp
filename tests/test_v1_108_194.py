@@ -46,6 +46,18 @@ def _run_config(env_extra: dict[str, str] | None = None) -> str:
     # TemporaryDirectory rather than mkdtemp (used elsewhere in this file)
     # because the config reporter WRITES a config.jsonc into the directory it
     # is pointed at, so an uncleaned dir per call accumulates.
+    # ⚠⚠ Isolate the PROJECT config as well, by running somewhere that has no
+    # `.jcodemunch.jsonc`. `config` loads one from the CWD, and the CWD under
+    # pytest is the repo root -- so the moment this repo gained a project
+    # config of its own (#566: raising `max_file_size` so `server.py` enters
+    # the index), `max_file_size` reported `768000 [project]` and both
+    # assertions below failed.
+    #
+    # ⚠ The global-config isolation above was added for the SAME reason one
+    # source over, and its comment reasons about "any box that sets the key" --
+    # it just did not ask which config files exist. **A user whose own repo
+    # carries a `.jcodemunch.jsonc` would have hit this identically**, which is
+    # the #437 shape: a test that passes on two machines and fails on a third.
     with tempfile.TemporaryDirectory(prefix="jcm-config-isolation-") as cfg_dir:
         env["CODE_INDEX_PATH"] = cfg_dir
         proc = subprocess.run(
@@ -53,6 +65,7 @@ def _run_config(env_extra: dict[str, str] | None = None) -> str:
             capture_output=True,
             text=True,
             env=env,
+            cwd=cfg_dir,
             timeout=120,
         )
     return proc.stdout
