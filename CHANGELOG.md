@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.315] - 2026-09-01 - A fix for a false positive can install a false negative
+
 ### Fixed - `find_dead_code` published "provably unreachable" over a corpus that could not support it (#566, #569)
 
 `confidence: 1.0` is documented as **provably unreachable**. That is a claim
