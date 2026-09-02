@@ -82,6 +82,40 @@ def test_the_human_corpus_artifact_is_fresh(tmp_path, monkeypatch, capsys):
     )
 
 
+def test_the_holdout_artifact_is_fresh(tmp_path, monkeypatch, capsys):
+    """⚠⚠ The gap this file had: two artifacts gated, three written.
+
+    `holdout_results.json` is produced by the SAME harness under `--corpus
+    holdout.json` and was covered by nothing, so it rotted in the one direction
+    that matters — it published **route@3 75.0** while the harness measured
+    **72.7**, and carried `null` for two fields (`blind_floor_kset`,
+    `route_vs_floor_pts`) that the harness had since started emitting. Caught
+    2026-09-02 while re-running the gated sibling after a description trim, and
+    proven pre-existing: the pre-trim tree measures 72.7 as well.
+
+    ⚠ **The held-out set is the honest one** — frozen before the routing fixes —
+    so a stale, flattering number here is worth more than a stale one on the
+    tuned corpus. Same family as Practice 4: several artifacts mirror one run,
+    and re-syncing the ones with tests is how the untested one goes stale.
+    """
+    module = _load("run_route_recall.py")
+    out = tmp_path / "holdout_results.json"
+    monkeypatch.setattr(sys, "argv", [
+        "run_route_recall.py", "--write",
+        "--corpus", str(BENCH / "holdout.json"),
+        "--out", str(out),
+    ])
+    assert module.main() == 0
+    capsys.readouterr()
+    fresh = json.loads(out.read_text(encoding="utf-8"))["summary"]
+    drift = _diff(fresh, _committed("holdout_results.json"))
+    assert not drift, (
+        "benchmarks/route_recall/holdout_results.json is stale — the harness "
+        "and the committed artifact disagree. Re-run it, do not edit this "
+        "test:\n" + "\n".join(drift)
+    )
+
+
 def test_the_emitted_task_artifact_is_fresh(tmp_path, monkeypatch, capsys):
     module = _load("run_emitted_task.py")
     out = tmp_path / "emitted_task_results.json"

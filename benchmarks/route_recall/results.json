@@ -63,7 +63,7 @@
     ],
     "leakage": {
       "mean_name_overlap": 0.133,
-      "mean_desc_overlap": 0.36,
+      "mean_desc_overlap": 0.358,
       "queries_containing_target_name_token": 19,
       "high_leak_queries": [
         "what columns does the orders model have",
@@ -220,12 +220,12 @@
       "menu_top3": [
         "find_similar_symbols",
         "index_dependency",
-        "diff_health_radar"
+        "analyze_perf"
       ],
       "route_proposed": [
         "find_similar_symbols",
         "index_dependency",
-        "diff_health_radar"
+        "analyze_perf"
       ],
       "leak_name": 0.0,
       "leak_desc": 0.2
@@ -274,7 +274,7 @@
         "get_dead_code_v2"
       ],
       "leak_name": 0.333,
-      "leak_desc": 0.538
+      "leak_desc": 0.462
     },
     {
       "query": "I do not know this repo, what should I look at first",
@@ -1073,7 +1073,7 @@
       "menu_top3": [
         "find_dead_code",
         "get_dead_code_v2",
-        "get_changed_symbols"
+        "find_hot_paths"
       ],
       "route_proposed": [
         "get_runtime_coverage"

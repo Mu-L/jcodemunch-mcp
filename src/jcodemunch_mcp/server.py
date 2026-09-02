@@ -4113,14 +4113,25 @@ def _build_tools_list(
         Tool(
             name="get_ranked_context",
             description=(
-                "Assemble the best-fit context for a query within a token budget. "
-                "Ranks all symbols by relevance (BM25) and/or centrality (PageRank), "
-                "loads source for the top candidates, and packs greedily until token_budget is exhausted. "
-                "Exact symbol names in the query (qualified, CamelCase, snake_case) are pinned ahead "
-                "of the ranking; include identifiers verbatim. "
-                "Use when you want 'the best N tokens of context for this task' without specifying exact symbols."
-            
-                " Truncates at token_budget."
+                # ⚠ Trimmed 2026-09-02 to recover core_compact headroom (103
+                # tokens -> 77, ceiling 4,000 standing at 3,998).
+                # ⚠⚠ Chosen because it is NOT one of the six byte-pinned
+                # counter-surface tools. The three fattest core descriptions --
+                # jcodemunch_guide, announce_model, set_tool_tier -- are all in
+                # that set, so trimming any of them moves the counter prefix
+                # too, and that surface is the default for new installs. One
+                # prefix moving is the cost; two was avoidable.
+                # What went: "Truncates at token_budget", which restated "packs
+                # greedily until token_budget is exhausted" in the same
+                # paragraph; the algorithm names, which no caller chooses on
+                # (`sort_by`'s own description carries them); and the casing
+                # list, which the pinning rule implies.
+                "Assemble the best-fit context for a query within a token budget: ranks "
+                "symbols by relevance and/or centrality, loads source for the top "
+                "candidates, and packs greedily until the budget is exhausted. Exact "
+                "symbol names in the query are pinned ahead of the ranking, so include "
+                "identifiers verbatim. Use when you want the best N tokens of context "
+                "for a task without naming exact symbols."
             ),
             inputSchema={
                 "type": "object",

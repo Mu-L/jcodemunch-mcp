@@ -2,6 +2,54 @@
 
 ## [Unreleased]
 
+### Changed - trimmed `get_ranked_context`'s description to recover schema headroom
+
+Live `core_compact` measured **3,998 of a hard 4,000**: two tokens, so the next
+core-tier description edit would have breached the ceiling and done it in CI
+rather than locally. Now **3,972** — 26 tokens back.
+
+⚠⚠ **The tool trimmed was chosen for WHICH PREFIX IT MOVES, not for its size.**
+The three fattest core descriptions — `jcodemunch_guide` (118), `announce_model`
+(92), `set_tool_tier` (78) — are all in the six byte-pinned `counter` tools, and
+`counter` is the default surface for new installs. Trimming `jcodemunch_guide`
+was written first and `tests/test_counter_surface_stability.py` caught it at
+**-203 B**, which is the pin doing its job: a description reword is a full-rate
+cache write for every user on that surface. `get_ranked_context` (103 -> 77)
+buys the headroom while leaving the counter prefix byte-identical. One prefix
+moves; two was avoidable.
+
+⚠ What went: `"Truncates at token_budget."`, which restated *"packs greedily
+until token_budget is exhausted"* in the same paragraph; the algorithm names,
+which no caller chooses on (`sort_by`'s own description carries them); and the
+casing list, which the pinning rule implies. Purpose and Length still pass the
+`benchmarks/description_smells/` rubric.
+
+⚠ **Routing recall is unchanged, and that was measured rather than assumed** —
+`route@1 71.2 / @3 86.4` on the human corpus and `65.9 / 72.7` on the holdout,
+identical on the pre-trim tree. Descriptions are the router's input, so a trim
+is exactly the change that could have moved them.
+
+### Fixed - `holdout_results.json` published a recall it no longer measured
+
+Found while re-running the gated artifact after the trim above.
+`benchmarks/route_recall/holdout_results.json` reported **route@3 75.0** where
+the harness measures **72.7**, and carried `null` for `blind_floor_kset` and
+`route_vs_floor_pts` — fields the harness had since started emitting. Stale by
+2.3 points **in our own favour**, on the corpus that is frozen before the
+routing fixes and is therefore the honest one.
+
+⚠⚠ **Pre-existing, and proven so rather than assumed**: the pre-trim tree
+measures 72.7 as well, so the trim did not cause it and could not have. Without
+that check the drift would have been attributed to the description change and
+"fixed" by reverting something that was correct.
+
+⚠⚠ **Three artifacts, two ratchets.** `test_route_recall_artifacts_are_fresh.py`
+gated `results.json` and `emitted_task_results.json`; `holdout_results.json`
+comes out of the SAME harness under `--corpus holdout.json` and was covered by
+nothing, so re-running the two with tests is precisely how the third went stale.
+That file's own docstring already argued this case for `results.json` in
+August. It now has a third test, non-vacuity checked against the stale artifact.
+
 ### Fixed - `search_symbols(kind="field")` was refused by both gates (#571, @devtomnl)
 
 `field` has been emitted by the Python parser since the dataclass-fields change
