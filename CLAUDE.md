@@ -719,6 +719,26 @@ re-publish on a zero-row read; fix the parse.** Also confirm
 `server.packages[].version` advanced, not only `server.version` — an entry can
 move one and not the other.
 
+⚠⚠ **THE PUBLISH LINE IS HANDED OVER IN cmd.exe FORM. ONE FORM, NO MENU.**
+jjg is NEVER at a Bash prompt — stated flatly 2026-09-02 (*"We've danced this
+dance a thousand times"*) after the skill's `/c/...` "default route" was handed
+over and died on "The system cannot find the path specified". Literal paths
+only: no `~`, no `%USERPROFILE%`, no `$env:USERPROFILE`.
+
+```
+cd /d C:\MCPs\jcodemunch-mcp && "C:\Users\j\mcp-publisher.exe" login github && "C:\Users\j\mcp-publisher.exe" publish
+```
+
+⚠⚠ **The `!` prefix DOES run Git Bash, and that is not the rule.** The
+2026-09-01 revision reasoned from the mechanism — `!` is bash, so write bash —
+and inverted the practice, because the premise it needed was which prompt jjg
+ACTUALLY USES and nobody had asked. **A mechanism is not a habit.** A line that
+must genuinely run through `!` is a tool call to make, not a paste to hand over.
+⚠ Offering three labelled forms is not thoroughness; it is the indecision that
+picked the wrong one. ⚠ This lives HERE because the skill is gitignored and a
+correction there is gone on a fresh checkout — the same reason the registry note
+below does.
+
 ⚠ **The release checklist itself lives at `.claude/skills/release/SKILL.md`,
 which is GITIGNORED** (`.gitignore:58`, the v0.2.6 credential-leak fix, with
 the matching sdist exclusion asserted by `tests/test_sdist_exclusions.py`). So
