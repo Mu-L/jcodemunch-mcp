@@ -603,6 +603,54 @@ async def test_meta_fields_empty_list_removes_meta_envelope():
 
 
 @pytest.mark.asyncio
+async def test_meta_fields_empty_list_preserves_blast_radius_cache(
+    tmp_path, monkeypatch,
+):
+    """Stripping response metadata must not corrupt the cached tool result."""
+    from jcodemunch_mcp import config as config_module
+    from jcodemunch_mcp.tools.index_folder import index_folder
+
+    (tmp_path / "owner.py").write_text(
+        "def target_symbol():\n    return 1\n"
+    )
+    (tmp_path / "consumer.py").write_text(
+        "from owner import target_symbol\n\n"
+        "def consume():\n    return target_symbol()\n"
+    )
+    store_path = str(tmp_path / "idx")
+    repo = index_folder(
+        path=str(tmp_path), use_ai_summaries=False,
+        storage_path=store_path, incremental=False, identity_mode="local",
+    )["repo"]
+
+    orig_config = config_module._GLOBAL_CONFIG.copy()
+    config_module._GLOBAL_CONFIG.clear()
+    monkeypatch.setenv("CODE_INDEX_PATH", store_path)
+
+    try:
+        config_module._GLOBAL_CONFIG["meta_fields"] = []
+        arguments = {
+            "repo": repo,
+            "symbol": "target_symbol",
+        }
+
+        first = await call_tool("get_blast_radius", arguments)
+        assert isinstance(first, list), first
+        first_payload = json.loads(first[0].text)
+        assert "error" not in first_payload, first_payload
+        assert "_meta" not in first_payload
+
+        second = await call_tool("get_blast_radius", arguments)
+        assert isinstance(second, list), second
+        second_payload = json.loads(second[0].text)
+        assert "error" not in second_payload, second_payload
+        assert "_meta" not in second_payload
+    finally:
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(orig_config)
+
+
+@pytest.mark.asyncio
 async def test_sql_removed_auto_disables_search_columns(monkeypatch):
     """search_columns should be auto-disabled when SQL not in languages."""
     from jcodemunch_mcp import config as config_module
