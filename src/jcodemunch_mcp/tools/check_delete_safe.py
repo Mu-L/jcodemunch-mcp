@@ -14,6 +14,13 @@ Verdict tiers (most-permissive first):
   - cross_repo_blocking    — used by other indexed repos (highest static severity)
   - runtime_observed       — Phase 7 traces show this code runs (red flag regardless of static refs)
   - entry_point            — decorator/main pattern suggests external invocation
+  - corpus_inadequate      — nothing references it, and this index cannot support
+                             that as proof (stale, withheld files, or an import
+                             edge that only exists at runtime). #566/#569
+
+⚠⚠ **`corpus_inadequate` replaces an absence verdict, never a blocking one.**
+A found importer is positive evidence and a thin corpus cannot unfind it — the
+same asymmetry `_stop_rule._HARD_BLOCKER` already encodes.
 """
 
 from __future__ import annotations
@@ -25,6 +32,7 @@ from typing import Optional
 
 from ..storage import IndexStore, record_savings, estimate_savings, cost_avoided
 from ..storage.generation import connect_readonly
+from ._corpus_adequacy import assess_corpus
 from ._stop_rule import build_stop_rule
 from ._utils import index_status_to_tool_error, resolve_repo
 
@@ -300,6 +308,13 @@ def check_delete_safe(
 
     # ── Signal 4: dead-code confidence ─────────────────────────────────
     dead_code_conf = _check_dead_code_conf(f"{owner}/{name}", target_id, storage_path)
+    # ...and whether the corpus behind it can support an absence claim at all
+    # (#566). Same authority `find_dead_code` uses, never a second reading.
+    # ⚠ Imported at MODULE level deliberately: a function-local import resolves
+    # through `_corpus_adequacy`'s globals, so patching it here would silently
+    # do nothing -- the `cli/policy.py` monkeypatch trap, found by a test that
+    # patched this name and watched the verdict not move.
+    corpus_adequacy = assess_corpus(index)
 
     # ── Signal 5: runtime evidence (Phase 7) ────────────────────────────
     runtime_hits = _runtime_hits(store, owner, name, target_id) if include_runtime else None
@@ -372,10 +387,41 @@ def check_delete_safe(
     else:
         verdict = "internal_only"
 
+    # ── Corpus adequacy (#566/#569) ────────────────────────────────────
+    # ⚠⚠ This is the DESTRUCTIVE surface of the same defect, and the branch
+    # above is why it needed its own fix: the "no refs at all" fallback reaches
+    # `safe_to_delete` REGARDLESS of dead_code_conf, and then floors the
+    # confidence at 0.85. Capping `find_dead_code` alone left that path
+    # certifying a delete over a stale index — the twelve `encoding/schemas`
+    # encoders of #569 have no refs at all, so each one graded safe at 0.85.
+    #
+    # ⚠ Only the ABSENCE verdicts are overridden. A found importer is positive
+    # evidence and an inadequate corpus cannot unfind it, which is the same
+    # asymmetry `_HARD_BLOCKER` already encodes.
+    corpus_gap = None
+    if not corpus_adequacy.adequate and verdict in (
+        "safe_to_delete", "internal_only", "test_coverage_only",
+    ):
+        verdict = "corpus_inadequate"
+        corpus_gap = {
+            "action": "re-index this repo",
+            "why": corpus_adequacy.warning(),
+        }
+        blockers.append({
+            "kind": "corpus_inadequate",
+            "blockers": list(corpus_adequacy.blockers),
+            "severity": _SEVERITY_INTERNAL_REF,
+        })
+
     # ── Confidence ─────────────────────────────────────────────────────
     # Start at dead-code confidence (or 0.5 baseline) and decay per blocker.
     confidence = max(0.5, dead_code_conf)
-    if verdict == "safe_to_delete":
+    if verdict == "corpus_inadequate":
+        # ⚠ The floor below is what made the old path dangerous: it raised an
+        # unproven verdict to 0.85. Nothing was established here, so nothing is
+        # floored.
+        confidence = min(confidence, corpus_adequacy.ceiling)
+    elif verdict == "safe_to_delete":
         confidence = max(confidence, 0.85 if dead_code_conf < 0.9 else 0.95)
     elif verdict == "runtime_observed":
         confidence = 0.05  # nearly certain unsafe
@@ -410,6 +456,10 @@ def check_delete_safe(
 
     actions = {
         "safe_to_delete": safe_action,
+        "corpus_inadequate": (
+            "No references found, but this index cannot support that as proof. "
+            + (corpus_adequacy.warning() or "")
+        ),
         "test_coverage_only": "Only tests reference this symbol. Remove the tests alongside it.",
         "internal_only": "Refs exist only in the same file. Safe with local refactor.",
         "internal_uses_blocking": (
@@ -469,7 +519,9 @@ def check_delete_safe(
             cross_repo=cross_repo,
             include_runtime=include_runtime,
             runtime_data_present=runtime_data_present,
+            corpus_gap=corpus_gap,
         ),
+        "corpus_adequacy": corpus_adequacy.as_dict(),
         "signals": {
             "external_import_count": external_import_count,
             "test_import_count": test_import_count,
@@ -488,6 +540,8 @@ def check_delete_safe(
             **cost_avoided(tokens_saved, total_saved),
         },
     }
+    if not corpus_adequacy.adequate:
+        result["signal_warning"] = corpus_adequacy.warning()
     if scip_block is not None:
         result["_meta"]["scip"] = scip_block
     if runtime_hits is not None:

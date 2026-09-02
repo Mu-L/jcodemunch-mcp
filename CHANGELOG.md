@@ -2,6 +2,70 @@
 
 ## [Unreleased]
 
+### Fixed - `find_dead_code` published "provably unreachable" over a corpus that could not support it (#566, #569)
+
+`confidence: 1.0` is documented as **provably unreachable**. That is a claim
+about the tree, and it was computed from the index with nothing in between.
+
+**Runtime-discovered packages (#569).** `encoding/schemas/` is enumerated by
+`pkgutil.iter_modules(__path__)` at import time, an edge no static graph can
+see, so twelve live encoders were published at 1.0. ⚠⚠ **Which three of the
+fifteen escaped depended only on whether a test happened to import the module
+directly** -- `search_symbols.py` and `search_text.py` have the same role, the
+same shape and the same load path, and one was called dead. The signal was
+test-authoring habit. `_runtime_discovery.py` resolves a package that
+enumerates ITSELF and revives its modules; `walk_packages` extends that to
+subpackages and `iter_modules` deliberately does not.
+
+⚠⚠ **The near-miss is a false NEGATIVE, and only the non-vacuity test saw it.**
+The first working draft asked whether `__path__` appeared anywhere in the call.
+`tests/test_v1_108_169.py` writes `pkgutil.iter_modules(schemas_pkg.__path__)`
+-- another package's search path -- so the test directory was read as
+self-enumerating and **502 files went live**, suppressing every real finding
+under `tests/`. Only an UNQUALIFIED `__path__`/`__file__`, or a local name bound
+to one, names the loader's own package. A fix for a false positive that installs
+a false negative is the worse trade.
+
+**Corpus adequacy (#566).** `install_layout.py` was reported dead at 1.0 with
+two live importers added in v1.108.313, against an index pinned at v1.108.303;
+and a `too_large` file is *withheld*, taking every import it made with it.
+⚠⚠ **`search_text` handled the identical situation correctly on the identical
+index in the same session** -- `absence_refused: true`, `complete: false`, and
+it named `coverage.generation.git_head`. `_corpus_adequacy.py` reads those same
+disclosures and caps the confidence at **0.6**, below the 0.8 default, so the
+default call refuses rather than asserting.
+
+⚠ **UNKNOWN caps; NOT APPLICABLE does not.** An `index_repo` snapshot has no
+local tree to compare against and is complete by construction, so it reports
+`no_source_root` and keeps its proof; a revision we should have been able to
+read and could not does cap. ⚠ A capped run returns FEWER findings, which read
+alone is the `dead_code_pct: 0.0` shape of #559 seen from the other side --
+hence `signal_warning`, the spelling `get_dead_code_v2` already uses, plus
+`uncapped_confidence` and `confidence_capped_by` on every clamped row. Both
+numbers, never just the survivor.
+
+⚠ Fixed at BOTH call sites, not the reported one: `get_dead_code_v2`'s signal 1
+is `unreachable_file` off the same graph, so the runtime roots apply there too.
+That only ever ADDS roots, so its effect on a published grade is one direction.
+
+⚠⚠ **A THIRD surface, and it is the destructive one.** `check_delete_safe`
+reaches `safe_to_delete` from a "no refs at all" fallback **regardless of
+dead-code confidence**, then floors the confidence at 0.85 — so capping
+`find_dead_code` alone left a delete certified over a corpus that could not
+support it, and the twelve encoders of #569 each graded safe at 0.85. It now
+consults the same authority and answers `corpus_inadequate`: a classified,
+non-terminal verdict whose `stop_rule` names re-indexing as the gap. ⚠ Only the
+ABSENCE verdicts are replaced — a found importer is positive evidence and a thin
+corpus cannot unfind it. ⚠ `assess_corpus` is imported at MODULE level there
+deliberately; a function-local import resolves through the source module's
+globals, so patching it would silently do nothing (the `cli/policy.py`
+monkeypatch trap, found by a test that patched the name and watched the verdict
+not move).
+
+⚠ `json_passthrough.py` survives the fix as the one likely TRUE positive in the
+original thirteen. It is reported, not deleted -- the deletion has not been
+proven safe and is not part of this change.
+
 ### Fixed - `get_watch_status` reported watcher bookkeeping as index freshness (#565)
 
 `index_stale` was `state.reindexing or state.stale_since is not None` over

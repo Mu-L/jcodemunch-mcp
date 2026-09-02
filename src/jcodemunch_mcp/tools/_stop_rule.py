@@ -61,6 +61,10 @@ _BOUNDED = {
         "safe_to_delete",
         "internal_only",
         "test_coverage_only",
+        # (#566) The corpus could not back an absence claim. It belongs here
+        # rather than among the hard blockers because nothing was PROVEN to use
+        # the symbol — re-indexing can still move it either way.
+        "corpus_inadequate",
     }),
     "check_edit_safe": frozenset({
         "safe_to_edit",
@@ -86,9 +90,15 @@ def _channel_gaps(
     cross_repo: bool,
     include_runtime: bool,
     runtime_data_present: bool,
+    corpus_gap: Optional[dict] = None,
 ) -> list[dict]:
     """Evidence channels that could still move a bound-style verdict."""
     gaps: list[dict] = []
+    # (#566) The corpus itself is a channel. A stale index or a withheld file
+    # is not a disabled probe -- it is the ground every other probe stands on --
+    # so it is listed FIRST: re-indexing can change what the other channels see.
+    if corpus_gap:
+        gaps.append(corpus_gap)
     if not cross_repo:
         gaps.append({
             "action": "re-run with cross_repo=true",
@@ -117,6 +127,7 @@ def build_stop_rule(
     cross_repo: bool,
     include_runtime: bool,
     runtime_data_present: bool,
+    corpus_gap: Optional[dict] = None,
 ) -> dict:
     """Return the ``stop_rule`` block for one verdict.
 
@@ -132,6 +143,7 @@ def build_stop_rule(
         cross_repo=cross_repo,
         include_runtime=include_runtime,
         runtime_data_present=runtime_data_present,
+        corpus_gap=corpus_gap,
     )
 
     if verdict in _BOUNDED.get(tool, frozenset()):

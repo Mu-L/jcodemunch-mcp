@@ -14,6 +14,8 @@ from ..parser.imports import resolve_specifier
 from ._utils import index_status_to_tool_error, resolve_repo
 from ..parser.context._route_utils import ENTRY_POINT_DECORATOR_RE
 from ._entry_points import entry_point_spec
+from ._runtime_discovery import discover_dynamic_packages
+from ._corpus_adequacy import assess_corpus
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +338,23 @@ def find_dead_code(
     live_roots.update(render_reachable)
 
     # -----------------------------------------------------------------------
+    # Phase 1c: runtime-discovered packages (#569)
+    # -----------------------------------------------------------------------
+    # A package that enumerates itself at import time — `pkgutil.iter_modules`
+    # over its own `__path__`, then `importlib.import_module` on each name —
+    # builds an edge no static graph can see. Twelve live encoders under
+    # `encoding/schemas/` were published here at confidence 1.0, and which of
+    # the fifteen escaped depended only on whether a test happened to import
+    # the module directly. That is test-authoring habit, not reachability.
+    #
+    # ⚠ The unresolved half is NOT silent: a loader whose target directory we
+    # cannot name feeds `assess_corpus` below and caps the confidence instead,
+    # because the alternative is publishing a proof over a graph we know has an
+    # invisible edge somewhere in it.
+    dynamic = discover_dynamic_packages(index, store, owner, name)
+    live_roots.update(f for f in dynamic.roots if f in source_files)
+
+    # -----------------------------------------------------------------------
     # Phase 2: content check for `if __name__ == "__main__"` (Python only,
     # only for files not yet classified as live and with zero importers)
     # -----------------------------------------------------------------------
@@ -354,6 +373,20 @@ def find_dead_code(
     # Pre-compute which files have only dead importers (for cascading 0.7 case)
     # A file's importers are "all dead" when each importer has zero importers
     # of its own and is not a live root — simple one-hop check, avoids deep BFS.
+
+    # ⚠⚠ (#566) `confidence: 1.0` is documented as PROVABLY UNREACHABLE, which
+    # is a claim about the tree. It was being computed from the index with
+    # nothing in between, so a stale index and a withheld `too_large` file each
+    # published live files as proven dead. `assess_corpus` reads the disclosures
+    # the index already carries — the same ones `search_text` reads to refuse an
+    # absence claim on the identical corpus — and caps what may be asserted.
+    adequacy = assess_corpus(
+        index,
+        extra_blockers=(
+            ["runtime_discovery_unresolved"] if dynamic.unresolved else []
+        ),
+    )
+    ceiling = adequacy.ceiling
 
     dead_files: list[dict] = []
 
@@ -381,15 +414,23 @@ def find_dead_code(
             else:
                 continue  # file is reachable, skip
 
-        if confidence < min_confidence:
+        capped = min(confidence, ceiling)
+        if capped < min_confidence:
             continue
 
-        dead_files.append({
+        entry = {
             "file": f,
-            "confidence": confidence,
+            "confidence": capped,
             "reason": reason,
             "importer_count": len(importers),
-        })
+        }
+        if capped < confidence:
+            # Both numbers, never just the survivor: a reader auditing this
+            # verdict needs to see that the graph said one thing and the corpus
+            # could not back it, which a single clamped figure hides.
+            entry["uncapped_confidence"] = confidence
+            entry["confidence_capped_by"] = list(adequacy.blockers)
+        dead_files.append(entry)
 
     # -----------------------------------------------------------------------
     # Phase 4: symbol-level results
@@ -444,6 +485,15 @@ def find_dead_code(
         analysis_notes.append(
             f"Reachable via render edges (not imports): {len(render_reachable)}"
         )
+    # Same rule as the render-edge line above: a file kept alive by a runtime
+    # enumeration is reachable for a reason the import graph does not contain,
+    # and a single entry-point total cannot say so.
+    if dynamic.roots:
+        analysis_notes.append(
+            f"Reachable via runtime package enumeration (not imports): "
+            f"{len(dynamic.roots)} in "
+            f"{', '.join(sorted(dynamic.packages)[:3])}"
+        )
     # ⚠ Which framework supplied the roots is part of the verdict, not trivia:
     # "42 entry points" and "42 entry points, because we recognised Next.js"
     # are different claims, and only the second lets a reader see that the
@@ -466,9 +516,26 @@ def find_dead_code(
         "live_root_count": len(live_roots),
         "framework_profile": fw_spec.profile_name,
         "render_reachable_count": len(render_reachable),
+        "runtime_discovered_count": len(dynamic.roots),
+        "corpus_adequacy": adequacy.as_dict(),
         "analysis_notes": analysis_notes,
         "_meta": {"timing_ms": round(elapsed, 1)},
     }
+    if dynamic.packages:
+        result["runtime_discovered_packages"] = {
+            d: sorted(loaders) for d, loaders in sorted(dynamic.packages.items())
+        }
+    if dynamic.unresolved:
+        result["runtime_discovery_unresolved"] = dynamic.unresolved
+    # ⚠⚠ A capped run returns FEWER findings, and an empty list read alone is
+    # the `dead_code_pct: 0.0` shape (#559) seen from the other side — an
+    # admission that nothing was established, rendered as a clean bill of
+    # health. `signal_warning` is the spelling `get_dead_code_v2` already uses
+    # for exactly this, so a consumer gates on one field across both tools.
+    _adequacy_warning = adequacy.warning()
+    if _adequacy_warning:
+        result["signal_warning"] = _adequacy_warning
+        analysis_notes.append(_adequacy_warning)
 
     # v1.108.275 (#446). Until now this tool reported NOTHING when a caller's
     # patterns matched no file, at any confidence — the sibling `get_dead_code_v2`
