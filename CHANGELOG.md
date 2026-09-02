@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Fixed - `search_symbols(kind="field")` was refused by both gates (#571, @devtomnl)
+
+`field` has been emitted by the Python parser since the dataclass-fields change
+and was in neither gate — **399 of them in this repo's own index**, every one
+unreachable through the `kind` filter. The runtime check
+(`kind_filter not in VALID_KINDS`) refused it, and so did the published enum.
+
+⚠⚠ **The wire enum was a SECOND COPY and had drifted from the set it was meant
+to mirror.** Nothing compared them, and each side looked internally consistent:
+a reader of either sees seven kinds and no reason to doubt it. `KIND_ORDER` is
+now the one authority, `VALID_KINDS` derives from it, and the schema publishes
+it — with `tests/test_kind_enum_is_derived.py` reading the AST, because a
+literal that happens to equal the tuple today passes any value check and drifts
+the moment a kind is added, which is the history being fixed.
+
+⚠ **`KIND_ORDER` is an ordered tuple and that is not cosmetic.** The enum sits
+in the cached prefix, and `frozenset` iteration over strings varies with
+per-process hash randomisation — publishing the set directly would serve a
+different schema on every server start for the same build. Append, never
+reorder: each existing position is bytes a client has already cached.
+
+⚠ Practice 9: `test_search_symbols_tool_schema` asserted the literal seven-kind
+roster, so it could only pass while the defect existed. Rewritten to the
+property — what the parser can emit is what the schema offers — not fixed back.
+
+⚠⚠ **Measured while landing this: live `core_compact` is 3,998 of a hard
+4,000.** Two tokens. The next core-tier description edit breaches the ceiling,
+and the failure arrives in CI rather than locally whenever the tokenizer
+download is unavailable.
+
+Found by @devtomnl in #571, which was closed on the ecosystem boundary
+(markdown section extraction is jdocmunch's half). The finding was right and is
+independent of that call.
+
 ## [1.108.315] - 2026-09-01 - A fix for a false positive can install a false negative
 
 ### Fixed - `find_dead_code` published "provably unreachable" over a corpus that could not support it (#566, #569)

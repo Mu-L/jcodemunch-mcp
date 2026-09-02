@@ -34,7 +34,17 @@ class Symbol:
 
 
 # Single source of truth for all symbol kinds emitted by parsers.
-VALID_KINDS: frozenset[str] = frozenset({
+#
+# ⚠⚠ **ORDERED, because it is PUBLISHED.** The `kind` enum in `search_symbols`'
+# `inputSchema` derives from this tuple, and that schema sits in the CACHED
+# PREFIX of every request. A frozenset cannot be published directly: `str`
+# hashing is randomised per process, so set iteration order differs between
+# runs and the served schema would change for the same build — invalidating
+# the prefix at every server start, for every user, forever.
+#
+# ⚠ Append, never reorder. Each existing position is bytes a client has
+# already cached; a new kind at the end leaves them untouched.
+KIND_ORDER: tuple[str, ...] = (
     "function",   # Standalone functions, procedures, subroutines
     "class",      # Classes, structs, modules-as-containers
     "method",     # Methods belonging to a class/module
@@ -42,7 +52,16 @@ VALID_KINDS: frozenset[str] = frozenset({
     "type",       # Type aliases, interfaces, enums, traits, protocols
     "template",   # C++ templates
     "import",     # Import directives (C++ #include, etc.)
-})
+    # ⚠⚠ (@devtomnl, #571) Emitted by the Python parser since the
+    # dataclass-fields change and absent from this set for its whole life —
+    # 399 of them in this repo's own index. BOTH gates rejected it: the
+    # runtime check at `server.py` (`kind_filter not in VALID_KINDS`) and the
+    # hardcoded wire enum, which had drifted from this set because it was a
+    # SECOND COPY. Deriving the enum is what stops the next kind repeating it.
+    "field",      # Struct/dataclass/record fields
+)
+
+VALID_KINDS: frozenset[str] = frozenset(KIND_ORDER)
 
 
 def make_symbol_id(file_path: str, qualified_name: str, kind: str = "") -> str:

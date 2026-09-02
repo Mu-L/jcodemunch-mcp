@@ -28,7 +28,7 @@ from .tools import _arg_contract
 # This defers loading heavy dependencies (tree-sitter, httpx, pathspec) until
 # the first actual call to a tool that needs them, reducing cold-start latency
 # for sessions that only use query tools and never trigger indexing.
-from .parser.symbols import VALID_KINDS
+from .parser.symbols import KIND_ORDER, VALID_KINDS
 from .summarizer import get_provider_name
 from .reindex_state import await_freshness_if_strict
 from .storage import result_cache_invalidate as _result_cache_invalidate
@@ -2111,7 +2111,13 @@ def _build_tools_list(
                     "kind": {
                         "type": "string",
                         "description": "Optional filter by symbol kind",
-                        "enum": ["function", "class", "method", "constant", "type", "template", "import"]
+                        # ⚠⚠ DERIVED, never a literal (@devtomnl, #571). This list
+                        # was a second copy of `KIND_ORDER` and had drifted from it:
+                        # `field` was emitted by the parser, accepted by nothing, and
+                        # the divergence was invisible because each side looked
+                        # internally consistent. `tests/test_kind_enum_is_derived.py`
+                        # fails if a literal returns here.
+                        "enum": list(KIND_ORDER)
                     },
                     "file_pattern": {
                         "type": "string",

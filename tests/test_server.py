@@ -88,8 +88,17 @@ async def test_search_symbols_tool_schema():
     assert "max_results" in props
 
     # kind should have enum
+    #
+    # ⚠⚠ This asserted a LITERAL seven-kind roster until #571, which is the
+    # defect stated as a requirement: it could only pass while `field` was
+    # missing from the published enum, and it is what made the wire schema a
+    # second copy of `KIND_ORDER` rather than a view of it. Practice 9 — the
+    # tell is that a test restates the implementation instead of the property.
+    # The property is that what the parser can EMIT is what the schema OFFERS.
+    from jcodemunch_mcp.parser.symbols import KIND_ORDER
+
     assert "enum" in props["kind"]
-    assert set(props["kind"]["enum"]) == {"function", "class", "method", "constant", "type", "template", "import"}
+    assert props["kind"]["enum"] == list(KIND_ORDER)
     assert "enum" in props["language"]
     assert "cpp" in props["language"]["enum"]
     assert "razor" in props["language"]["enum"]
