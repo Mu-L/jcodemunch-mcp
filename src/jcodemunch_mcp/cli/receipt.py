@@ -123,6 +123,33 @@ _MODEL_PRICES_USD_PER_MTOK: dict[str, float] = {
 
 _DEFAULT_MODEL = "opus"
 
+#: What the dollar figure actually prices, stated because a figure whose rate
+#: basis is unstated gets one supplied for free. Fourth instance of the family
+#: after `hit_rate_basis`, `schema_tokens_basis` and `basis: excess_calls`.
+#:
+#: ⚠⚠ **A LABEL, NEVER A SCALED NUMBER.** The arithmetic below is unchanged and
+#: must stay unchanged. Prompted by a competitor (Graft, 2026-09-02) converting
+#: claimed savings to a *blended session rate* — correct for tokens CONSUMED and
+#: wrong for tokens AVOIDED, which is what this measures. Measured on this box
+#: across 25 transcripts: **98.6% of input is cache reads**, a 0.1166x blended
+#: multiplier. Dividing by that would cut the figure ~8.6x and would be pricing
+#: an avoided token as though it were sitting in the cache being re-read. It is
+#: not there: it was never written, so it is never read.
+#:
+#: ⚠ The honest direction is that this is a FLOOR. A token we did not return
+#: would have been paid once at the fresh-input or cache-write rate (the latter
+#: carries a premium) and then again at the cache-read rate on every subsequent
+#: turn it sat in the prefix. In a session that is 98.6% cache reads — i.e. a
+#: long one — that sum exceeds one list-price charge. Same inversion
+#: `tier_switch_cost.py` documents: the intuition flips once the block is cached.
+SAVINGS_USD_BASIS = "uncached_list_input_rate_once_per_token"
+
+SAVINGS_USD_NOTE = (
+    "Each avoided token is priced ONCE at the uncached list input rate. "
+    "Counts neither the cache-write premium avoided nor the cache reads "
+    "avoided on later turns, so this is a floor, not an estimate."
+)
+
 # Approximate bytes-per-token used to convert tool_result content
 # byte-length into a token estimate. Same heuristic the rest of the
 # package uses (see _BYTES_PER_TOKEN in storage/token_tracker.py).
@@ -456,6 +483,7 @@ def _write_lifetime(out: "io.StringIO", meter: dict, model: str) -> None:
     out.write("  Lifetime savings (jCodeMunch meter, all-time):\n")
     out.write(f"    Tokens saved:                {total:>15,}\n")
     out.write(f"    Value at {model.title()} pricing (${rate:.2f}/MTok input):  ${usd:,.2f}\n")
+    out.write("      Floor: priced once at the uncached list rate.\n")
     out.write("    Persistent per-call meter under the index root; survives\n")
     out.write("    Claude Code reinstalls. The windowed figure above only counts\n")
     out.write("    tool calls still present in local transcripts.\n\n")
@@ -511,6 +539,12 @@ def render_text(
     rate = _MODEL_PRICES_USD_PER_MTOK.get(model.lower(), _MODEL_PRICES_USD_PER_MTOK[_DEFAULT_MODEL])
     primary_dollars = dollar_savings(totals["savings_tokens"], model)
     out.write(f"  Saved at {model.title()} pricing (${rate:.2f}/MTok input):  ${primary_dollars:,.2f}\n")
+    # ⚠ The human surface carries the basis too. A machine-readable field the
+    # CLI does not print leaves a human to supply the missing basis himself,
+    # and a human is exactly who does that (the v1.108.312 lesson).
+    out.write("    Floor: each avoided token priced ONCE at the uncached list\n")
+    out.write("    input rate — counts neither the cache-write premium avoided\n")
+    out.write("    nor the cache reads avoided on every later turn.\n")
 
     if not primary_only:
         for other in ("fable", "opus", "sonnet", "haiku"):
@@ -599,6 +633,8 @@ def render_rates() -> str:
         {
             "rates_usd_per_mtok": _MODEL_PRICES_USD_PER_MTOK,
             "default_model": _DEFAULT_MODEL,
+            "savings_usd_basis": SAVINGS_USD_BASIS,
+            "savings_usd_note": SAVINGS_USD_NOTE,
         },
         indent=2,
     )
@@ -629,6 +665,8 @@ def render_json(
         "per_tool": agg["per_tool"],
         "model": model,
         "savings_usd": dollar_savings(agg["totals"]["savings_tokens"], model),
+        "savings_usd_basis": SAVINGS_USD_BASIS,
+        "savings_usd_note": SAVINGS_USD_NOTE,
         "provenance": measured_provenance(),
     }
     if window:

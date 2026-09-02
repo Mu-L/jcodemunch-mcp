@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Added - the receipt's dollar figure states what it prices
+
+`savings_usd_basis` / `savings_usd_note` on `receipt --export json` and on
+`--rates`, plus a line on both human surfaces. Fourth instance of a family
+already fixed three times — `hit_rate_basis`, `schema_tokens_basis`,
+`basis: excess_calls` — and the rule holds: **a figure whose basis is unstated
+gets a wrong one supplied for free.**
+
+⚠⚠ **A LABEL, NEVER A SCALED NUMBER, and the arithmetic is unchanged.**
+Prompted by a competitor (Graft) converting claimed savings to a *blended
+session rate*. **That is the right correction for tokens CONSUMED and the wrong
+one for tokens AVOIDED.** Measured here across 25 transcripts: **98.6% of input
+is cache reads**, a **0.1166x** blended multiplier — dividing by it would cut
+the figure ~8.6x and would price an avoided token as though it sat in the cache
+being re-read. It was never written, so it is never read. `dollar_savings` is
+pinned at exactly `$5.00` per avoided MTok at Opus, because a number quietly
+scaled by 0.1166 would answer neither question and nothing on the wire would
+show it happened (the `analyze_perf` raw `hit_rate` rule).
+
+⚠ **The honest direction is that the figure is a FLOOR.** An avoided token would
+have cost once at the fresh-input or cache-write rate — the latter carries a
+premium — and again at the cache-read rate on every later turn it sat in the
+prefix. In a session that is 98.6% cache reads, that sum exceeds one list-price
+charge. Same inversion `tier_switch_cost.py` documents: the intuition flips once
+the block is cached.
+
+⚠⚠ **The code already knew and the shipped field did not.** A comment above
+`_MODEL_PRICES_USD_PER_MTOK` has explained this counterfactual since the table
+was written — one field over from what v1.108.312 fixed, where the benchmark
+artifact knew the basis and the response omitted it.
+
+⚠ Both surfaces, not just the JSON: a machine-readable field the CLI does not
+print leaves a human to supply the missing basis, and a human is exactly who
+does. `--rates` carries it too, since it exists so consumers price their own
+counts off one table and would otherwise reproduce the omission downstream.
+
 ### Changed - trimmed `get_ranked_context`'s description to recover schema headroom
 
 Live `core_compact` measured **3,998 of a hard 4,000**: two tokens, so the next
