@@ -1,5 +1,29 @@
 # ENFORCEMENT PLAN — moving each criterion to MEASURED and gated
 
+**Status 2026-09-03 (branch `harness/source-of-truth`):** items 1, 2, 4, 6-partial, 7, 12-partial, 13-partial, 16, 17, 18 are DONE by the harness build; the table below keeps the original order and marks each.
+
+| # | Done? |
+|---|---|
+| 1 | DONE: `run_benchmark.py --floor`, `benchmark.yml` fails on an upward move; `tests/test_token_benchmark_floor.py` |
+| 2 | DONE: `benchmarks/self_latency/measure.py`, six thresholds at 2x the median of three runs, bench tier |
+| 3 | NOT DONE: branch protection is an admin setting (not changeable from a branch); the release pre-flight script is not written |
+| 4 | DONE: `tests/test_standard_invariants.py` (+ `tests/test_retirement_ledger.py`, `tests/test_thresholds_are_the_only_copy.py`) |
+| 5 | NOT DONE: post-publish handshake job |
+| 6 | NOT DONE: `ruff check tests/` still 292; not touched (tests are the fossil record and a mass auto-fix would rewrite 274 files in one commit) |
+| 7 | DONE: `tests/conftest.py::_no_network` |
+| 8 | NOT DONE: dependency audit step |
+| 9 | NOT DONE: CLIENTS.md block parser |
+| 10 | NOT DONE: type-check baseline |
+| 11 | NOT DONE: fidelity oracles for Python/TypeScript/Go |
+| 12 | PARTIAL: `tests/test_security_md_limits_parity.py` (strict xfail on the 500-files row, FINDINGS F-01); threat model page not written |
+| 13 | PARTIAL: the full tier prints coverage as a threshold verdict; `coverage.json` is not yet uploaded |
+| 14 | NOT DONE: larger replay set |
+| 15 | PARTIAL: `cache_stability` is EXCLUDED from every tier with the reason (FINDINGS F-06); corpus not pinned |
+| 16 | DONE: `tests/test_config_docs_reverse_parity.py` (12 keys in INTERNAL_KEYS, FINDINGS F-03) |
+| 17 | DONE: skip ceiling in `test.yml` and the full tier |
+| 18 | DONE: `timeout-minutes: 20` on the test job |
+
+
 Written 2026-09-03 at `63a621d`. Nothing here is implemented. Ordered by
 leverage: the items that let the most future work run unattended come first.
 Sizes: S = under half a day, M = one to two days, L = more than two days.

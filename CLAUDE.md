@@ -9,18 +9,26 @@
 - **Python:** >=3.10
 - **Tool count:** 91 visible in `full` / 94 in catalog (front door hidden; counts verified 2026-07-30 from `jcodemunch-mcp surface`, which is the only place to get them — do NOT hand-type this; +1 v1.108.111 `get_parity_map`, +1 v1.108.112 `get_decorator_census`, +1 v1.108.113 `get_architecture_metrics`); `tool_surface=counter` exposes a 3-tool front door (`order`/`menu`/`route`) instead
 
-## The Standard (2026-09-03)
+## The Standard and the Harness (2026-09-03)
 
-**`docs/standard/STANDARD.md` is the authority on what "good" means here.** It
-holds one criterion block per ranked axis (metric, method, current, floor,
-target, status, gap), the **Definition of Regression** (13 blocking rules) and
-the **Definition of Done** (9 artifacts a PR needs). `NICHE.md` ranks the axes,
-`DISCOVERY.md` records how each number was measured, `ENFORCEMENT-PLAN.md` is
-the ordered work to gate what is not gated yet. ⚠ **Every Floor is a value the
-tree clears with margin; conservative by design.** ⚠⚠ **Never copy a figure
-from those files or from here** -- tool counts, benchmark ratios, token weights
-and test totals are recomputed by the command in each block's Method line, then
-written with date and commit. Quote the artifact or the test, never the prose.
+**`docs/standard/STANDARD.md` is the authority on what "good" means here,
+and `python -m harness` is the one command that says whether a change meets
+it.** Tiers: `fast` (85 offline files + ruff + Floor checks, 90 s ceiling;
+run before committing), `full` (all of `tests/` + coverage + skip ceiling,
+the PR gate), `bench --offline` (replay, route recall, schema capture,
+self-latency; main + Mondays). `check <id>` prints one Floor's verdict.
+⚠⚠ **A Floor lives ONLY in `harness/thresholds.json`**; a literal restated
+anywhere else fails `tests/test_thresholds_are_the_only_copy.py`. Loosening
+needs a `loosened` block and is announced on every run. ⚠⚠ **Read
+`docs/harness/ARCHAEOLOGY.md` before touching any test** — 491 files, each
+with the reason it exists; **retiring one requires a `harness/retired.json`
+entry naming the lesson and the replacement assertion**, or
+`tests/test_retirement_ledger.py` fails. UNCLEAR items stay byte-identical.
+⚠ **Every Floor is a value the tree clears with margin; conservative by
+design.** ⚠⚠ **Never copy a figure** from the standard, the archaeology or
+here: tool counts, ratios, token weights, latencies and test totals are
+recomputed by each block's Method line and stamped with commit and date.
+Open findings: `docs/harness/FINDINGS.md`.
 
 ## Key Files
 
