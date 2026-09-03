@@ -85,6 +85,9 @@ docs/*
 # PARSER_GENERATION comment cites it as the thing that ends the manual-bump
 # obligation), so a contributor bound by that rule has to be able to read it.
 !docs/prd-extraction-fingerprint.md
+# The engineering standard (2026-09-03): tracked, because a gitignored
+# standard is machine-local and cannot be enforced by CI.
+!docs/standard/
 # ...except a spec CLAUDE.md binds a live rule to. `prd-extraction-fingerprint`
 # is cited by the PARSER_GENERATION comment as the thing that ends the
 # manual-bump obligation, so a contributor who is bound by that rule has to be
