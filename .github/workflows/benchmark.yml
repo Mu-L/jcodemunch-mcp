@@ -20,6 +20,11 @@ on:
     # contend for the same runner minutes.
     - cron: "0 7 * * 1"
   workflow_dispatch:
+    inputs:
+      reference:
+        description: "Also run --reference and upload jcm_reference.json, results.md and provenance/measured.json (harness F-13: the reference is captured on THIS runner, not a dev box)"
+        type: boolean
+        default: false
   push:
     paths:
       - "benchmarks/tasks.json"
@@ -95,6 +100,24 @@ jobs:
             --floor \
             --json "${RUNNER_TEMP}/benchmark.json" \
             --out "${RUNNER_TEMP}/benchmark.md"
+
+      - name: Capture the reference on this runner (dispatch with reference=true)
+        if: ${{ github.event.inputs.reference == 'true' }}
+        env:
+          CODE_INDEX_PATH: ${{ runner.temp }}/bench-index
+        run: |
+          set -euo pipefail
+          uv run python benchmarks/harness/run_benchmark.py             --verify-determinism --floor --reference             --out benchmarks/results.md
+          mkdir -p "${RUNNER_TEMP}/reference"
+          cp benchmarks/jcm_reference.json benchmarks/results.md benchmarks/provenance/measured.json "${RUNNER_TEMP}/reference/"
+          git diff --stat
+
+      - name: Upload the reference
+        if: ${{ github.event.inputs.reference == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: benchmark-reference
+          path: ${{ runner.temp }}/reference/
 
       - name: Compare against the committed artifact
         env:

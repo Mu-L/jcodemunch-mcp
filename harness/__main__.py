@@ -262,6 +262,7 @@ DELEGATED = {
     "suite.full_seconds": "this runner, full tier wall clock",
     "ci.skips_ubuntu": "this runner / test.yml, pytest summary",
     "ci.skips_windows": "this runner / test.yml, pytest summary",
+    "suite.fast_skips_max": "harness fast tier, pytest summary",
 }
 
 
@@ -326,6 +327,11 @@ def tier_fast(result: dict) -> bool:
     if rc != 0:
         ok = False
         print(out[-4000:])
+    # A skip ceiling here too: a rebuilt .venv without the watch extra took
+    # this tier from 7 skips to 112 at exit 0 (2026-09-03, the 08-28 shape).
+    print(T.verdict_line("suite.fast_skips_max", summ["skipped"]))
+    if not T.passes("suite.fast_skips_max", summ["skipped"]):
+        ok = False
     print("== ruff check src/")
     rc2, out2, _ = _run([PY, "-m", "ruff", "check", "src/"])
     print("  ", out2.strip().splitlines()[-1] if out2.strip() else "")

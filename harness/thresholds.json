@@ -612,6 +612,24 @@
         "benchmarks/self_latency/measure.py",
         "harness/__main__.py"
       ]
+    },
+    {
+      "id": "suite.fast_skips_max",
+      "criterion": "N7",
+      "metric": "pytest skipped count in the fast tier",
+      "comparator": "<=",
+      "floor": 15,
+      "unit": "tests",
+      "set_at": {
+        "commit": "20e86e0",
+        "date": "2026-09-03",
+        "reason": "STANDARD N7 Floor; observed 7 on this box, 9 on CI. Added after `uv run --python 3.10` silently rebuilt .venv without the watch extra and the fast tier passed at 1055 passed / 112 skipped (the 2026-08-28 shape); the full tier has a ceiling, the fast tier had none"
+      },
+      "measured": null,
+      "history": [],
+      "enforced_by": [
+        "harness/__main__.py"
+      ]
     }
   ]
 }
