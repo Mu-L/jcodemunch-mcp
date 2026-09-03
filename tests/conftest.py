@@ -1,8 +1,17 @@
 """Shared pytest fixtures for jcodemunch-mcp tests."""
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
+
+# `harness/` (thresholds, tiers) is a root-level dev package, deliberately
+# outside src/ and the wheel. Tests reach it through the repo root, which
+# pytest's prepend import mode does not put on sys.path by itself.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 
 @pytest.fixture(autouse=True, scope="session")
