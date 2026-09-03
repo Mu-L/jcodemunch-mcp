@@ -1,0 +1,51 @@
+# Security (docs/cicd/DESIGN.md section 5; STANDARD.md criterion 8).
+#
+# Purpose:  CodeQL over python and the workflows themselves, on PRs, on push
+#           to main and weekly. The dependency Floor (deps.vuln_max) and the
+#           secret scan live in pr-gate.yml stage 1; SECURITY.md's reporting
+#           policy is asserted by tests/test_security_md_policy.py in the fast
+#           tier. This file is only what needs the code-scanning upload.
+# Trigger:  pull_request, push to main, Mondays 05:00Z, dispatch.
+# Blocks:   INFORMS for the first two weeks (baseline), then the `codeql`
+#           check is added to branch protection -- a one-line change in
+#           docs/cicd/RUNBOOK.md. The `queries` set is security-and-quality.
+# Rules:    actions SHA-pinned; minimal permissions; no continue-on-error.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  codeql:
+    name: "codeql (${{ matrix.language }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938  # v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938  # v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"
