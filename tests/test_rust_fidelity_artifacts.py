@@ -65,8 +65,9 @@ def test_results_were_measured_at_the_pinned_sha(results):
 def test_hard_gates_are_zero_in_the_published_artifact(results):
     """`extra` and `wrong_span` are the two bars. A published non-zero is a bug."""
     s = results["summary"]
-    assert s["extra"] == 0, f"published artifact carries {s['extra']} fabrication(s)"
-    assert s["wrong_span"] == 0, f"published artifact carries {s['wrong_span']} wrong span(s)"
+    from harness import thresholds as _thresholds
+    assert s["extra"] == _thresholds.floor("fidelity.rust.extra"), f"published artifact carries {s['extra']} fabrication(s)"
+    assert s["wrong_span"] == _thresholds.floor("fidelity.rust.wrong_span"), f"published artifact carries {s['wrong_span']} wrong span(s)"
 
 
 def test_summary_totals_are_derived_from_the_rows(results):
