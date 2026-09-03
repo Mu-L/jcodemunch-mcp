@@ -86,8 +86,8 @@ Grand total across 15 task-runs, both baselines measured in the same run:
 
 | Baseline | Tokens | jCodeMunch | Reduction | Ratio |
 |---|--:|--:|--:|--:|
-| **Grep-top-3** (quote this) | **664,975** | 24,249 | **96.4%** | **27.4x** |
-| Read-all (ceiling) | 5,658,685 | 24,249 | 99.6% | 233.4x |
+| **Grep-top-3** (quote this) | **664,975** | 24,044 | **96.4%** | **27.7x** |
+| Read-all (ceiling) | 5,658,685 | 24,044 | 99.6% | 235.3x |
 
 Small differences in `file_count` are expected across installations and are not
 a bug in either run: what a machine can index depends on its grammar pack and
