@@ -83,11 +83,20 @@ def _pytest_summary(out: str) -> dict:
 
 
 def _xdist_args() -> list[str]:
-    try:
-        import xdist  # noqa: F401
+    """Probe the interpreter that will RUN pytest, not this one.
+
+    First run of the fast tier under a bare `python -m harness` took 110 s
+    serial and failed its own 90 s ceiling: the conda interpreter had no
+    xdist while `.venv` did. `uv run python -m harness` is the documented
+    spelling; a serial fallback is announced so a ceiling failure reads as
+    "wrong interpreter", not "slow tests" (FINDINGS F-12).
+    """
+    probe = subprocess.run([PY, "-c", "import xdist"], capture_output=True)
+    if probe.returncode == 0:
         return ["-n", "auto", "--dist", "loadfile"]
-    except Exception:
-        return []
+    print(f"[harness] WARNING: pytest-xdist not importable by {PY}; running SERIAL. "
+          "Use `uv run python -m harness` (the .venv has xdist).", file=sys.stderr)
+    return []
 
 
 # --------------------------------------------------------------------------- measurers
@@ -217,7 +226,8 @@ def check(tid: str, *, stamp: bool = False) -> tuple[bool | None, object]:
         if stamp:
             _stamp(tid, observed)
         return ok, observed
-    print(f"{tid:<40} crit {e['criterion']:<3} floor {e['comparator']} {e['floor']!s:<12} delegated to {DELEGATED.get(tid, '?')}")
+    if not DELEGATED.get(tid, "").startswith("this runner"):
+        print(f"{tid:<40} crit {e['criterion']:<3} floor {e['comparator']} {e['floor']!s:<12} delegated to {DELEGATED.get(tid, '?')}")
     return None, None
 
 
