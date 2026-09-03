@@ -39,31 +39,34 @@ class TestResultCacheBasics:
         payload = {"symbol": "foo", "confirmed": [], "_meta": {"timing_ms": 42.0}}
         result_cache_put("get_blast_radius", "owner/repo", ("sym", 1, 0, False, False), payload)
         got = result_cache_get("get_blast_radius", "owner/repo", ("sym", 1, 0, False, False))
-        assert got is payload
+        # ⚠ `==`, not `is`. The cache hands back an isolated copy as of #572 —
+        # identity was the defect written down as a contract, and the reasons
+        # are in tests/test_result_cache_isolation.py.
+        assert got == payload
 
     def test_different_tools_dont_collide(self):
         a = {"tool": "a"}
         b = {"tool": "b"}
         result_cache_put("tool_a", "r/r", ("k",), a)
         result_cache_put("tool_b", "r/r", ("k",), b)
-        assert result_cache_get("tool_a", "r/r", ("k",)) is a
-        assert result_cache_get("tool_b", "r/r", ("k",)) is b
+        assert result_cache_get("tool_a", "r/r", ("k",)) == a
+        assert result_cache_get("tool_b", "r/r", ("k",)) == b
 
     def test_different_repos_dont_collide(self):
         a = {"repo": "r1"}
         b = {"repo": "r2"}
         result_cache_put("get_blast_radius", "owner/r1", ("sym",), a)
         result_cache_put("get_blast_radius", "owner/r2", ("sym",), b)
-        assert result_cache_get("get_blast_radius", "owner/r1", ("sym",)) is a
-        assert result_cache_get("get_blast_radius", "owner/r2", ("sym",)) is b
+        assert result_cache_get("get_blast_radius", "owner/r1", ("sym",)) == a
+        assert result_cache_get("get_blast_radius", "owner/r2", ("sym",)) == b
 
     def test_different_specific_keys_dont_collide(self):
         a = {"depth": 1}
         b = {"depth": 2}
         result_cache_put("get_blast_radius", "o/r", ("sym", 1, 0, False, False), a)
         result_cache_put("get_blast_radius", "o/r", ("sym", 2, 0, False, False), b)
-        assert result_cache_get("get_blast_radius", "o/r", ("sym", 1, 0, False, False)) is a
-        assert result_cache_get("get_blast_radius", "o/r", ("sym", 2, 0, False, False)) is b
+        assert result_cache_get("get_blast_radius", "o/r", ("sym", 1, 0, False, False)) == a
+        assert result_cache_get("get_blast_radius", "o/r", ("sym", 2, 0, False, False)) == b
 
 
 # ---------------------------------------------------------------------------

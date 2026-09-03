@@ -2,6 +2,55 @@
 
 ## [Unreleased]
 
+### Fixed - the result cache handed out the object it was holding (#572, #570)
+
+Reported by @rknighton, twice: #570 for the crash and #572 for the cause, with a
+standard-library reproduction that builds its own repo and needs no fixtures.
+`cache_put` stored the caller's dict and `cache_get` returned that same dict, so
+the dispatcher's metadata step — a DISPLAY preference — reached into the session
+cache and changed what every later caller was served. `_isolate` in
+`storage/token_tracker.py` now clones every container on the way in and on the
+way out.
+
+⚠⚠ **The crash was the loud case and the quiet ones needed no unusual config.**
+`meta_fields: []` is the shipped default, so out of the box the second call to
+`find_references` or `get_blast_radius` came back `KeyError: '_meta'`. But
+`suppress_meta` is a per-CALL argument: on a machine with ordinary
+`meta_fields`, one call passing it emptied the shared entry, and the next caller
+— who had asked for metadata — was served the damage. Measured pre-fix on that
+sequence: an empty `_meta`. A partial `meta_fields` does the same by
+replacement.
+
+⚠⚠ **The window is the MISS path, which is why a two-call reproduction shows
+the crash and shows neither quiet case.** Both cached tools already rebuild
+`_meta` from `dict(cached)` on a hit, so a repeat call survives; it is the call
+that FILLS the cache that returns the stored object to a dispatcher that then
+edits it.
+
+⚠⚠ **Fixed in the cache, not at the two call sites, and that is @rknighton's
+argument rather than ours.** `search_symbols` keeps its own cache and had
+already paid for this twice — #377 item 3 for `_meta.verdict`, then #404 (also
+@rknighton) for the rows — and neither fix reached the shared cache. A third
+per-consumer patch clears both tools today and leaves the trap armed for the
+tool written next. Standing lesson: **we fix the reported call site and leave
+the mechanism.**
+
+⚠ **Containers only, and the depth is unbounded on purpose.** Leaves in a tool
+result are JSON-serialisable immutables by the time they reach the cache, so
+cloning them buys nothing: measured on an 800 KB response, **4.15 ms
+container-only vs 16.58 ms `copy.deepcopy`** (0.42 vs 1.67 at 80 KB). A rule
+shaped to the containers the two current callers happen to use would be a guard
+written against a spelling.
+
+⚠ **The price is seven assertions.** `tests/test_result_cache.py` asserted
+`cache_get(...) is cache_put(...)` in seven places; they are `==` now. Identity
+was never a contract anyone wanted — it was the defect written down — and the
+values are untouched.
+
+⚠ #570's `cached.get("_meta", {})` guard is merged and kept. It covers one tool
+and cannot see either quiet case; on the non-vacuity pass it is why the
+`get_blast_radius` arm stays green while `find_references` goes red.
+
 ### Added - the receipt's dollar figure states what it prices
 
 `savings_usd_basis` / `savings_usd_note` on `receipt --export json` and on

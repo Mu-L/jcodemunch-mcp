@@ -85,6 +85,41 @@ _DEFAULT_TOKENS_PER_CALL = 700  # cold-start per-call estimate before session da
 _LATENCY_RING_DEFAULT = 512  # per-tool latency ring size
 
 
+
+def _isolate(obj):
+    """Clone every CONTAINER in a tool result, sharing every leaf.
+
+    ⚠⚠ **The result cache stored the caller's object and handed the same
+    object back** (#572, @rknighton). The dispatcher then edits that object as
+    a DISPLAY step -- ``_meta`` is deleted outright under ``meta_fields: []``
+    (the shipped default) or under a per-call ``suppress_meta``, and replaced
+    with a subset under any other ``meta_fields`` -- so a display preference
+    reached into the cache and changed what every later caller was served.
+    The loud symptom was ``KeyError: '_meta'`` on the second call; the quiet
+    ones are worse, because one call passing ``suppress_meta`` silently
+    emptied the entry for callers that had asked for metadata.
+
+    ⚠ Containers only, and that is the whole point: leaves in a tool result
+    are JSON-serialisable immutables by the time they reach here, so cloning
+    them buys nothing and costs the copy. Measured against ``copy.deepcopy``
+    on an 800 KB response: **4.15 ms vs 16.58 ms**, and 0.42 ms vs 1.67 ms at
+    80 KB. Depth is unbounded on purpose -- a rule shaped to the containers
+    the two current callers happen to use is a guard written against a
+    spelling, and the point of fixing this in the cache rather than at the two
+    call sites is the tool written next.
+
+    ⚠ ``search_symbols`` keeps its OWN cache and learned this twice already
+    (``_result_cache_get``: #377 item 3 for ``_meta.verdict``, then #404 for
+    the rows). Both fixes were per-consumer; the shared cache never got one.
+    """
+    kind = type(obj)
+    if kind is dict:
+        return {k: _isolate(v) for k, v in obj.items()}
+    if kind is list:
+        return [_isolate(v) for v in obj]
+    return obj
+
+
 def _percentile_at(sorted_vals: "list[float]", pct: float) -> float:
     """Nearest-rank-style pick: the value at ``int(pct * n)``, clamped."""
     if not sorted_vals:
@@ -327,7 +362,7 @@ class _State:
             if full_key in self._result_cache:
                 self._result_cache.move_to_end(full_key)
                 self._cache_hits[tool_name] = self._cache_hits.get(tool_name, 0) + 1
-                return self._result_cache[full_key]
+                return _isolate(self._result_cache[full_key])
             self._cache_misses[tool_name] = self._cache_misses.get(tool_name, 0) + 1
             return None
 
@@ -335,7 +370,7 @@ class _State:
         """Store result in LRU cache. Evicts oldest entry when full. Thread-safe."""
         with self._lock:
             full_key = (tool_name, repo, specific_key)
-            self._result_cache[full_key] = result
+            self._result_cache[full_key] = _isolate(result)
             self._result_cache.move_to_end(full_key)
             if len(self._result_cache) > _RESULT_CACHE_MAXSIZE:
                 self._result_cache.popitem(last=False)
