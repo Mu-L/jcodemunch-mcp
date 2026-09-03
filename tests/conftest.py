@@ -15,6 +15,36 @@ if _REPO_ROOT not in sys.path:
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _no_network():
+    """No test reaches the network (STANDARD N5).
+
+    Before 2026-09-03 this was established by inspection only. Any outbound
+    `socket.connect` to a non-loopback address raises; the in-process ASGI
+    transports the HTTP tests use never touch a socket. A test that genuinely
+    needs the network opts out with `@pytest.mark.network` (zero users today)
+    and is excluded from every harness tier by that marker.
+    """
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded_connect(self, address, *a, **kw):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and host not in ("127.0.0.1", "::1", "localhost", ""):
+            raise RuntimeError(
+                f"test attempted a network connection to {host!r}; tests are offline "
+                "(STANDARD N5). Mark it @pytest.mark.network if it must reach out."
+            )
+        return real_connect(self, address, *a, **kw)
+
+    socket.socket.connect = guarded_connect
+    try:
+        yield
+    finally:
+        socket.socket.connect = real_connect
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _pin_code_index_path(tmp_path_factory):
     """Point `CODE_INDEX_PATH` at a per-worker temp store for the whole run.
 
