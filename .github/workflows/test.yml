@@ -36,6 +36,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
+    # ⚠ harness/thresholds.json ci.test_job_timeout_minutes; last 10 runs 9m44s-15m59s.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
@@ -103,7 +105,20 @@ jobs:
         # ⚠ `-v` is deliberately dropped: under xdist it interleaves output from
         # 4 workers, which is less readable than the default progress line, not
         # more. `--tb=short` still gives full tracebacks on failure.
-        run: uv run pytest tests/ -n 4 --dist loadfile --tb=short --cov=src --cov-report=term-missing --cov-fail-under=74
+        # ⚠ The coverage floor and the skip ceiling are read from
+        # harness/thresholds.json (the ONLY copy); tests/test_thresholds_are_the_only_copy.py
+        # fails if a literal reappears here. The skip ceiling exists because
+        # 105 tests once stopped executing at exit 0 (2026-08-28).
+        shell: bash
+        run: |
+          set -o pipefail
+          COV=$(uv run python -m harness threshold coverage.min)
+          uv run pytest tests/ -n 4 --dist loadfile --tb=short --cov=src --cov-report=term-missing --cov-fail-under="$COV" 2>&1 | tee pytest.log
+          if [ "${{ runner.os }}" = "Windows" ]; then SKIP_ID=ci.skips_windows; else SKIP_ID=ci.skips_ubuntu; fi
+          MAX_SKIPS=$(uv run python -m harness threshold "$SKIP_ID")
+          SKIPS=$(grep -oE '[0-9]+ skipped' pytest.log | tail -1 | grep -oE '[0-9]+' || echo 0)
+          echo "skipped=$SKIPS ceiling=$MAX_SKIPS ($SKIP_ID)"
+          if [ "$SKIPS" -gt "$MAX_SKIPS" ]; then echo "::error::$SKIPS tests skipped, over the $SKIP_ID ceiling of $MAX_SKIPS -- the environment, not the code (see CLAUDE.md 'Reproducing CI')"; exit 1; fi
 
       - name: Verify sdist contains no sensitive paths
         if: runner.os == 'Linux'
