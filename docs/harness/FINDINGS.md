@@ -6,7 +6,7 @@ the tests that carry them.
 
 | ID | Finding | Where | Status |
 |---|---|---|---|
-| F-01 | `SECURITY.md` limits table says "File count limit ... 500 files"; `security.DEFAULT_MAX_INDEX_FILES` is 10,000 and `DEFAULT_MAX_FOLDER_FILES` 2,000. | `tests/test_security_md_limits_parity.py::test_file_count_limit_row_matches_code` (strict xfail) | OPEN: doc fix pending; remove the marker with it |
+| F-01 | `SECURITY.md` limits table says "File count limit ... 500 files"; `security.DEFAULT_MAX_INDEX_FILES` is 10,000 and `DEFAULT_MAX_FOLDER_FILES` 2,000. | `tests/test_security_md_limits_parity.py::test_file_count_limit_row_matches_code` (strict xfail) | FIXED 2026-09-03: SECURITY.md row now states 10,000 / 2,000; the xfail marker is gone and both defaults must appear in the row |
 | F-02 | `STANDARD.md` §4 stated the route floor as "route@1 >= 60% on the human corpus"; the gated assertion is control-subset route@1 >= 40.0 (baseline, minus 0.1) and 55.0 is the moratorium EXIT bar, a target. Design doc repeated the 55 as a floor. | `harness/thresholds.json` route.control_at1; `tests/test_catalog_moratorium.py` | FIXED in the threshold file; STANDARD.md corrected in Phase 6 |
 | F-03 | 12 config keys documented nowhere: `trusted_folders_whitelist_mode`, `server_output`, `server_output_threshold`, `worktree_base_path`, `git_root_identity`, `git_blame_enabled`, `summarizer_max_failures`, `cache_mode`, `summarize_from_docstrings`, `render_diagram_viewer_enabled`, `mermaid_viewer_path`, and `runtime_redact_enabled` (documented only as `JCODEMUNCH_RUNTIME_REDACT`). | `tests/test_config_docs_reverse_parity.py` INTERNAL_KEYS | OPEN: each needs a CONFIGURATION.md row or removal; the list may only shrink |
 | F-04 | `tests/test_server.py` pins `len(tools) == 90` as a literal while the live `full` profile serves 91 (COVERAGE-MAP §4.3). The test passes because it disables `test_summarizer`; the literal is a second copy of the surface count. | `tests/test_server.py` | OPEN: LOAD-BEARING, untouched; should derive from `_build_tools_list()` |
@@ -26,4 +26,4 @@ None. No file under `src/` was modified in this build. (`benchmarks/`,
 
 ## Tests that fail against current code
 
-- `tests/test_security_md_limits_parity.py::test_file_count_limit_row_matches_code` (F-01), carried as `xfail(strict=True)` so the doc fix must remove the marker.
+- none since F-01 was fixed (2026-09-03).

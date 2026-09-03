@@ -325,7 +325,7 @@ The performance and ranking telemetry introduced in v1.74.0–v1.80.0 is
 | Response secret redaction | `redact.redact_dict()` in the `call_tool` dispatcher | Enabled; `JCODEMUNCH_REDACT_RESPONSE_SECRETS=0` disables. **Exempt:** `get_file_content`, `get_symbol_source`, `get_context_bundle` |
 | Binary file detection     | `security.is_binary_file()`    | Always enabled              |
 | File size limit           | File discovery pipeline        | 500 KB                      |
-| File count limit          | File discovery pipeline        | 500 files                   |
+| File count limit          | File discovery pipeline        | 10,000 files per `index_repo` (`max_index_files`), 2,000 per `index_folder` (`max_folder_files`); each has an env override |
 | `.gitignore` respect      | Indexing pipeline              | Enabled                     |
 | UTF-8 safe decode         | All file reads                 | `errors="replace"`          |
 | Perf telemetry sink       | `perf_telemetry_enabled`       | **Disabled** (opt-in)       |
