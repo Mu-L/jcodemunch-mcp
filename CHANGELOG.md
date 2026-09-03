@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Fixed - tied `search_symbols` scores ranked by the order the disk was walked
+
+The bounded ranking heap broke equal scores by encounter order, which is
+`os.walk` order: directory order on NTFS, hash order on ext4. gin's "context
+bind" has five candidates at exactly 10.202, so which three a caller got
+depended on the filesystem, and the same pinned corpora gave the token
+benchmark 24,044 tokens on Windows and 23,440 on CI (harness F-13). Ties now
+rank by symbol id, byte order, on every platform; nothing else in the ranking
+moved. `tests/test_search_symbols_tie_order.py` reverses the index order and
+expects the same answer, and it is red against the old key.
+
+⚠ The investigation found two more contributors, each documented rather than
+papered over. A CRLF checkout serves `
+` inside every fetched symbol
+(+603 tokens on the same pins), so `benchmarks/REPRODUCING.md` now says clone
+LF. And `_meta.total_tokens_saved` is read from `~/.code-index/_savings.json`
+in HOME regardless of `CODE_INDEX_PATH`, so the published count carries the
+width of the measuring box's lifetime ledger (+1 search / +3 fetch tokens per
+query on a nine-digit ledger) and every benchmark run grows it; that one is
+open as harness F-17 because fixing it is a basis change.
+
+### Changed - the token benchmark's reference is captured on CI
+
+`benchmark.yml` dispatched with `reference=true` runs `--reference` on the
+ubuntu runner and uploads `jcm_reference.json`, `results.md` and
+`provenance/measured.json`; those are committed, so the number the weekly
+gate compares against was measured where the gate runs. Re-measured
+2026-09-03 on the same pins: **96.5% / 28.3x** against grep-top-3 (664,975
+-> 23,467), 99.6% / 241.1x against read-all, per-query 7.6x to 81.2x
+(median 26.1x). The six prose mirrors are re-synced.
+
 ## [1.108.316] - 2026-09-02 - A display preference edited the data it was displaying
 
 ### Fixed - the result cache handed out the object it was holding (#572, #570)

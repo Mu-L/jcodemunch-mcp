@@ -4,7 +4,7 @@
     "average_pct": 99.6,
     "task_runs": 15,
     "baseline_tokens": 5658685,
-    "jcodemunch_tokens": 24044,
+    "jcodemunch_tokens": 23467,
     "tokenizer": "cl100k_base",
     "run_date": "2026-09-03",
     "methodology": "benchmarks/METHODOLOGY.md",

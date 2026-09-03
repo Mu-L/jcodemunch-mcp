@@ -536,6 +536,15 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   read it on every path**, not just the one the fix touched. A destructive
   recommendation is the surface that matters, and it was reading a signal it
   also had permission to ignore.
+- **A number that reproduces on one box is reproducible on one box.** 09-03
+  (harness F-13): the token benchmark was deterministic on this machine AND
+  on CI and disagreed by 2.5% between them, for three causes at once — a CRLF
+  checkout, ranking ties broken by `os.walk` order (NTFS vs ext4), and a
+  `_meta` counter read from HOME. **Capture a published reference where the
+  gate runs, and diff per-row, never per-total** — the total hid one cause
+  behind another. ⚠ And `uv run --python X` REBUILDS `.venv` without the
+  extras; the fast tier ran 1055/112-skipped at exit 0 minutes later. The
+  fast tier has a skip ceiling now. [[pipes-and-missing-xdist-both-report-exit-zero]]
 - **A competitor's fix list is a free defect probe.** 08-22: a rival's
   `fix(gini): measure a file's lines as its own span, not the sum of every node`
   named our defect precisely enough to confirm in one query —

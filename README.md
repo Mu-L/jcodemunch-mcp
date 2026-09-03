@@ -1,6 +1,6 @@
 # jCodeMunch MCP
 
-**The most token-efficient MCP server for precise source code retrieval via tree-sitter AST parsing.** Cut AI token costs 86-99% on code exploration (96% average, benchmarked at 27.7x fewer tokens than a grep-and-read agent) and stop burning your context window reading entire files.
+**The most token-efficient MCP server for precise source code retrieval via tree-sitter AST parsing.** Cut AI token costs 86-99% on code exploration (96% average, benchmarked at 28.3x fewer tokens than a grep-and-read agent) and stop burning your context window reading entire files.
 
 > **Real results, live from production**
 > **838B+ tokens saved** · **136,000+ reporting installs** · **$4.2M+ in AI spend avoided** · **100,000+ kg CO₂ prevented**
@@ -56,9 +56,9 @@ Measured with `tiktoken cl100k_base` across three public repos pinned to upstrea
 | expressjs/express | 186 | 455 | 15,724 avg | 1,017 avg | **15.5x** | 152.0x |
 | fastapi/fastapi | 1,186 | 13,240 | 85,296 avg | 2,218 avg | **38.4x** | 372.0x |
 | gin-gonic/gin | 98 | 1,451 | 31,975 avg | 1,573 avg | **20.3x** | 96.5x |
-| **Grand total (15 task-runs)** | | | **664,975** | **24,044** | **27.7x** | 235.3x |
+| **Grand total (15 task-runs)** | | | **664,975** | **23,467** | **28.3x** | 241.1x |
 
-**Against a grep-and-read agent: 96.4% reduction, 27.7x fewer tokens.** Per-query results range from 7.4x to 84.6x (median 25.5x); no single multiple describes every query. Against read-all the figure is 99.6%, but nobody pays that ceiling. Compact [MUNCH](SPEC_MUNCH.md) wire encoding then trims a median 45.5% more bytes off responses.
+**Against a grep-and-read agent: 96.5% reduction, 28.3x fewer tokens.** Per-query results range from 7.6x to 81.2x (median 26.1x); no single multiple describes every query. Against read-all the figure is 99.6%, but nobody pays that ceiling. Compact [MUNCH](SPEC_MUNCH.md) wire encoding then trims a median 45.5% more bytes off responses.
 
 Full methodology, pinned commits, harness, and known caveats: [benchmarks/METHODOLOGY.md](benchmarks/METHODOLOGY.md) · [Reproduce it yourself](benchmarks/REPRODUCING.md) · [TOKEN_SAVINGS.md](TOKEN_SAVINGS.md)
 
@@ -314,7 +314,7 @@ Conditions on all uses: retain the copyright notice, clearly mark modifications 
 ## FAQ
 
 **How much can I save on Claude / Opus tokens?**
-In retrieval-heavy workflows, code-reading tokens typically drop 86-99%, benchmarked at 96.4% average (27.7x) against a grep-and-read agent across 15 tasks and 3 repositories. Per-query results span 7.4x to 84.6x. Methodology: [TOKEN_SAVINGS.md](TOKEN_SAVINGS.md) and [benchmarks/](benchmarks/).
+In retrieval-heavy workflows, code-reading tokens typically drop 86-99%, benchmarked at 96.5% average (28.3x) against a grep-and-read agent across 15 tasks and 3 repositories. Per-query results span 7.6x to 81.2x. Methodology: [TOKEN_SAVINGS.md](TOKEN_SAVINGS.md) and [benchmarks/](benchmarks/).
 
 **How is this different from RAG or grep-based tools?**
 jCodeMunch retrieves at the **symbol level** with byte-level precision (functions, classes, importers, blast radius, hierarchies) rather than fuzzy chunks (RAG) or raw line matches (grep) the agent still has to read and reason over.

@@ -34,6 +34,14 @@ Directory names do not matter. The index is keyed from the clone's `origin`
 remote, so `./gin` indexes as `gin-gonic/gin`, which is what the harness looks
 up.
 
+**Check out LF.** Clone with `-c core.autocrlf=false` on Windows (or run
+`git config core.autocrlf false && git rm --cached -r -q . && git reset --hard`
+inside each clone). A CRLF checkout serves `
+
+` inside every fetched symbol
+and measured **+603 tokens (2.5%)** over the same pins on 2026-09-03; the
+published reference is captured on an LF checkout (harness F-13).
+
 ## 2. Index them
 
 ```bash
@@ -86,8 +94,8 @@ Grand total across 15 task-runs, both baselines measured in the same run:
 
 | Baseline | Tokens | jCodeMunch | Reduction | Ratio |
 |---|--:|--:|--:|--:|
-| **Grep-top-3** (quote this) | **664,975** | 24,044 | **96.4%** | **27.7x** |
-| Read-all (ceiling) | 5,658,685 | 24,044 | 99.6% | 235.3x |
+| **Grep-top-3** (quote this) | **664,975** | 23,467 | **96.5%** | **28.3x** |
+| Read-all (ceiling) | 5,658,685 | 23,467 | 99.6% | 241.1x |
 
 Small differences in `file_count` are expected across installations and are not
 a bug in either run: what a machine can index depends on its grammar pack and
@@ -119,6 +127,21 @@ tokens — the headline never moved. The point is that this was established by
 measuring it, and until v1.108.222 there was no way to.
 
 ## Known measurement conditions
+
+**The reference is captured on CI, not on a developer box** (2026-09-03,
+harness F-13). `benchmark.yml` dispatched with `reference=true` runs
+`--reference` on the ubuntu runner and uploads `jcm_reference.json`,
+`results.md` and `provenance/measured.json`; those are what get committed. A
+local run reproduces it to the token only under the same three conditions:
+an LF checkout, a fresh `CODE_INDEX_PATH`, and `~/.code-index/_savings.json`
+either absent or the same width (see the next two paragraphs).
+
+**The published count includes the width of your lifetime savings counter.**
+`_meta.total_tokens_saved` is read from `~/.code-index/_savings.json` in the
+HOME directory, not from `CODE_INDEX_PATH`, and it rides inside every counted
+search and fetch payload. A box with a nine-digit ledger measures +1 search and
++3 fetch tokens per query over a fresh runner, on every query, and each run
+adds to that ledger. `stable_tokens` pins it; the published figure does not.
 
 **Every query is measured cold.** `search_symbols` adds a `_meta.cache_hit`
 field once a query has been served in-process, which costs 5 more tokens
