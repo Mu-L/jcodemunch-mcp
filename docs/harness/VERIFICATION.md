@@ -104,6 +104,10 @@ temp store for the replay index) and both pass after the fix:
 | fast (empty tokenizer cache) | 1160 passed, 7 skipped, 56.23 s | HARNESS PASS |
 | bench --offline (fresh self-index store) | replay mrr 1.0, all steps rc=0 | HARNESS PASS |
 
+The fixing commit's own first CI run then failed the fast tier on the corpus
+checksums (F-16: pinned over CRLF bytes on this box, LF on the runner); the
+digest normalises line endings now and the re-pinned values equal CI's.
+
 The lesson is the one from Practice 5's `docs/` trap: a green run on the
 box that built the harness proves the harness plus that box's cache. The
 CI verdict on the fixing commit is recorded beside it in git.

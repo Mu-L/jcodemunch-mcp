@@ -4,22 +4,22 @@
     "rust_fixtures": {
       "path": "tests/fixtures/rust",
       "pattern": "*.rs",
-      "sha256": "13789fc91b702e9ff8580413bf9d402d2219815e52e30a92f191e4730853289b"
+      "sha256": "2daa88d90f30a2696c17ca7e17dd2fca57517314f47abe57b721fd1c21f4ed65"
     },
     "rust_oracle": {
       "path": "tests/fixtures/rust_oracle.json",
       "pattern": null,
-      "sha256": "d2b6097744ca074e034995d1361c3c0433669c3b73a26b02a0fd70a92511c8b0"
+      "sha256": "467d14fd611270da03f1351f227d6f12b732d2850f6dd356b40110e78bc28aa8"
     },
     "racket_fixtures": {
       "path": "tests/fixtures/racket",
       "pattern": "**/*",
-      "sha256": "e2de77046b3a7037e80e7c3b757a0da60f2f9fcc4d42c19517ced2fd4ebb901d"
+      "sha256": "cb3d2447e3976cd8698de7982218e25420a9f548e6a7e82ab61144ee279ed9d6"
     },
     "racket_oracle": {
       "path": "tests/fixtures/racket_oracle.json",
       "pattern": null,
-      "sha256": "fb1cac99c2266f3fad52fb51fecfdbffc40b08392a16e2297ca73598f4feed72"
+      "sha256": "2ffb41799feb7ab7e97d2c3413751efd9c3dae7521f5bea26cff2b51e1b219af"
     },
     "racket_reader_oracle": {
       "path": "tests/fixtures/racket_reader_oracle.json",
@@ -34,7 +34,7 @@
     "replay_golden": {
       "path": "benchmarks/replay/results/self_v1_75_0-golden.json",
       "pattern": null,
-      "sha256": "f04fb7d2165eae03116030291a8e8ffa7981a74365de5d6d9c74e6ac33a78f10"
+      "sha256": "4abedeef27fbad2016294c8d37c2fa41827f157e9d3f39e150cce92eb80a5e43"
     },
     "goldset_corpus": {
       "path": "benchmarks/goldset/corpus",
@@ -49,27 +49,27 @@
     "route_queries": {
       "path": "benchmarks/route_recall/queries.json",
       "pattern": null,
-      "sha256": "feedb6ccc881683defb9619fbf2a68321e8e327153643a4a0fe33ee90ee5cfdf"
+      "sha256": "c8525214485ee23b823d67d1171838bea53cd3006309ed30edd83458eed833f9"
     },
     "route_holdout": {
       "path": "benchmarks/route_recall/holdout.json",
       "pattern": null,
-      "sha256": "9239d77f3d7de2a6f37dde700adb5ff85c4fd3153da87cb62bff4d05df65a643"
+      "sha256": "af2649bbb0054cc198917d7d97b11ab879c9138e33c6730c136e734cfffdc9bc"
     },
     "route_emitted_cases": {
       "path": "benchmarks/route_recall/emitted_task_cases.json",
       "pattern": null,
-      "sha256": "7dc08b661de752369e851354351b7bef2497c0f8aa33b979d7cba50a2ffc2474"
+      "sha256": "1543e96501bb9f731764a776985fe02d3f3549fabb4c5b7b4b69d81d904026ad"
     },
     "route_emitted_holdout": {
       "path": "benchmarks/route_recall/emitted_task_holdout.json",
       "pattern": null,
-      "sha256": "83c8f0939bfd51008791af2db9f887d5fa10eee6aa138cb3d59915f68cb5cd27"
+      "sha256": "ffaaa2a3285bf80cea7db44be2c1f7b3cf4db0f44ccefdf09795c55d5769c588"
     },
     "schema_baseline": {
       "path": "benchmarks/schema_baseline.json",
       "pattern": null,
-      "sha256": "ba80eeaab81c5a774f005501546c4b63362672532037059f85203e272dabb5d1"
+      "sha256": "7f5d9431b8e8d6c5d12c38c655e5e1f7d511b190ae68989d91e5391e4c057175"
     },
     "token_tasks": {
       "path": "benchmarks/tasks.json",

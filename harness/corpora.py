@@ -41,17 +41,27 @@ CORPORA = {
 }
 
 
+def _content(f: Path) -> bytes:
+    """Bytes with CRLF folded to LF.
+
+    F-16: the manifest was pinned on a box with `core.autocrlf=true`, so every
+    checksum covered CRLF bytes and every corpus MISMATCHED on the first CI run
+    (LF checkout). The corpus is the text, not the checkout's line endings.
+    """
+    return f.read_bytes().replace(b"\r\n", b"\n")
+
+
 def _digest(rel: str, pattern: str | None) -> str:
     p = REPO / rel
     h = hashlib.sha256()
     if pattern is None:
-        h.update(p.read_bytes())
+        h.update(_content(p))
         return h.hexdigest()
     files = sorted(f for f in p.glob(pattern) if f.is_file() and "__pycache__" not in f.parts)
     for f in files:
         h.update(str(f.relative_to(p)).replace("\\", "/").encode())
         h.update(b"\0")
-        h.update(f.read_bytes())
+        h.update(_content(f))
         h.update(b"\0")
     return h.hexdigest()
 
