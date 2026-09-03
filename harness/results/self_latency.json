@@ -1,35 +1,35 @@
 {
   "schema": "jcm-self-latency/v1",
   "n": 20,
-  "date": "2026-09-03T13:59:35",
-  "commit": "762cd7d",
+  "date": "2026-09-03T14:25:55",
+  "commit": "4109cbf",
   "corpus_sha256": "0ea9179144708a0069183ef286919f939c1b7fd286670dfbc4bde3dad15c4414",
   "env": {
     "os": "Windows-11-10.0.26200-SP0",
     "python": "3.13.2",
     "cpus": 24
   },
-  "index.cold_self_seconds": 2.469,
+  "index.cold_self_seconds": 2.516,
   "index.cold_runs": [
-    6.732,
-    2.43,
-    2.469
+    5.568,
+    2.444,
+    2.516
   ],
   "files": 275,
   "symbols": 4055,
-  "repo": "local/corpus-4f57e24f",
-  "index.one_file_reindex_ms": 141.6,
-  "index.one_file_reindex_p95_ms": 154.9,
-  "latency.search_symbols_cold_ms": 396.4,
-  "latency.search_symbols_warm_p95_ms": 9.8,
-  "latency.search_symbols_warm_median_ms": 0.7,
-  "latency.search_text_cold_ms": 255.1,
-  "latency.search_text_warm_p95_ms": 120.2,
-  "latency.search_text_warm_median_ms": 100.6,
+  "repo": "local/corpus-de44a2b3",
+  "index.one_file_reindex_ms": 140.4,
+  "index.one_file_reindex_p95_ms": 150.0,
+  "latency.search_symbols_cold_ms": 361.2,
+  "latency.search_symbols_warm_p95_ms": 10.2,
+  "latency.search_symbols_warm_median_ms": 0.6,
+  "latency.search_text_cold_ms": 220.0,
+  "latency.search_text_warm_p95_ms": 119.0,
+  "latency.search_text_warm_median_ms": 98.2,
   "latency.get_symbol_source_cold_ms": 3.1,
-  "latency.get_symbol_source_warm_p95_ms": 10.8,
+  "latency.get_symbol_source_warm_p95_ms": 13.6,
   "latency.get_symbol_source_warm_median_ms": 1.6,
-  "latency.get_file_outline_cold_ms": 1.8,
+  "latency.get_file_outline_cold_ms": 2.0,
   "latency.get_file_outline_warm_p95_ms": 11.3,
-  "latency.get_file_outline_warm_median_ms": 1.7
+  "latency.get_file_outline_warm_median_ms": 1.5
 }

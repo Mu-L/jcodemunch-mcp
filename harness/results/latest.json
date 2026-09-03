@@ -1,53 +1,53 @@
 {
   "schema": "jcm-harness-result/v1",
-  "date": "2026-09-03T13:59:28",
+  "date": "2026-09-03T14:25:39",
   "env": {
     "os": "Windows-11-10.0.26200-SP0",
     "python": "3.13.2",
     "cpus": 24,
     "runner": "local",
-    "commit": "762cd7d"
+    "commit": "4109cbf"
   },
   "tiers": {
     "bench": {
-      "seconds": 28.16,
+      "seconds": 35.51,
       "ok": true
     }
   },
   "artifacts": {
     "replay_gate": {
       "rc": 0,
-      "seconds": 1.93,
-      "tail": "  \"relevant_count\": 1.0,\n  \"ndcg\": 1.0\n}"
+      "seconds": 1.86,
+      "tail": "  \"recall\": 1.0,\n  \"mrr\": 1.0\n}"
     },
     "route_recall_human": {
       "rc": 0,
-      "seconds": 1.18,
+      "seconds": 1.12,
       "tail": "  relate     n=11  route  81.8%   menu  72.7%\n  shape      n= 8  route 100.0%   menu  75.0%\n  transform  n= 3  route 100.0%   menu 100.0%"
     },
     "route_recall_holdout": {
       "rc": 0,
-      "seconds": 0.94,
+      "seconds": 0.89,
       "tail": "  relate     n= 7  route  57.1%   menu  14.3%\n  shape      n= 8  route  87.5%   menu  25.0%\n  transform  n= 3  route  33.3%   menu   0.0%"
     },
     "route_emitted": {
       "rc": 0,
-      "seconds": 0.73,
+      "seconds": 0.76,
       "tail": "    \"1967c6f1-c155-5c52-a158-82165b3eb5c2\"\n  ]\n}"
     },
     "schema_baseline_live": {
       "rc": 0,
-      "seconds": 0.86,
+      "seconds": 0.88,
       "tail": "  get_parity_map                        480   2.0%\n  find_similar_symbols                  436   1.8%\n  get_context_bundle                    433   1.8%"
     },
     "tier_switch": {
       "rc": 0,
-      "seconds": 0.68,
+      "seconds": 0.7,
       "tail": "   25,000              20 req             346 req              22 req\n   50,000              35 req             519 req              39 req\n  100,000              66 req             864 req              73 req"
     },
     "goldset": {
       "rc": 0,
-      "seconds": 0.49,
+      "seconds": 0.53,
       "tail": "  ast        precision=0.818 recall=1.0 (tp=9 fp=2 fn=0)\n  duck       precision=0.5 recall=1.0 (tp=6 fp=6 fn=0)\n  decorator  precision=0.556 recall=1.0 (tp=5 fp=4 fn=0)"
     },
     "description_smells": {
@@ -58,37 +58,37 @@
     "self_latency": {
       "schema": "jcm-self-latency/v1",
       "n": 20,
-      "date": "2026-09-03T13:59:35",
-      "commit": "762cd7d",
+      "date": "2026-09-03T14:25:55",
+      "commit": "4109cbf",
       "corpus_sha256": "0ea9179144708a0069183ef286919f939c1b7fd286670dfbc4bde3dad15c4414",
       "env": {
         "os": "Windows-11-10.0.26200-SP0",
         "python": "3.13.2",
         "cpus": 24
       },
-      "index.cold_self_seconds": 2.469,
+      "index.cold_self_seconds": 2.516,
       "index.cold_runs": [
-        6.732,
-        2.43,
-        2.469
+        5.568,
+        2.444,
+        2.516
       ],
       "files": 275,
       "symbols": 4055,
-      "repo": "local/corpus-4f57e24f",
-      "index.one_file_reindex_ms": 141.6,
-      "index.one_file_reindex_p95_ms": 154.9,
-      "latency.search_symbols_cold_ms": 396.4,
-      "latency.search_symbols_warm_p95_ms": 9.8,
-      "latency.search_symbols_warm_median_ms": 0.7,
-      "latency.search_text_cold_ms": 255.1,
-      "latency.search_text_warm_p95_ms": 120.2,
-      "latency.search_text_warm_median_ms": 100.6,
+      "repo": "local/corpus-de44a2b3",
+      "index.one_file_reindex_ms": 140.4,
+      "index.one_file_reindex_p95_ms": 150.0,
+      "latency.search_symbols_cold_ms": 361.2,
+      "latency.search_symbols_warm_p95_ms": 10.2,
+      "latency.search_symbols_warm_median_ms": 0.6,
+      "latency.search_text_cold_ms": 220.0,
+      "latency.search_text_warm_p95_ms": 119.0,
+      "latency.search_text_warm_median_ms": 98.2,
       "latency.get_symbol_source_cold_ms": 3.1,
-      "latency.get_symbol_source_warm_p95_ms": 10.8,
+      "latency.get_symbol_source_warm_p95_ms": 13.6,
       "latency.get_symbol_source_warm_median_ms": 1.6,
-      "latency.get_file_outline_cold_ms": 1.8,
+      "latency.get_file_outline_cold_ms": 2.0,
       "latency.get_file_outline_warm_p95_ms": 11.3,
-      "latency.get_file_outline_warm_median_ms": 1.7
+      "latency.get_file_outline_warm_median_ms": 1.5
     },
     "token_benchmark": {
       "skipped": "offline"

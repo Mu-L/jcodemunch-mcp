@@ -16,7 +16,9 @@ and `uv run python -m harness` is the one command that says whether a change mee
 it.** Tiers: `fast` (85 offline files + ruff + Floor checks, 90 s ceiling;
 run before committing), `full` (all of `tests/` + coverage + skip ceiling,
 the PR gate), `bench --offline` (replay, route recall, schema capture,
-self-latency; main + Mondays). `check <id>` prints one Floor's verdict.
+self-latency; main + Mondays). `check <id>` prints one Floor's verdict. `warm` fetches the tiktoken asset outside the
+pytest session; the fast and full tiers do it themselves, and a cold box
+that skips it fails 26 token-count tests under the no-network fixture (F-14).
 ⚠⚠ **A Floor lives ONLY in `harness/thresholds.json`**; a literal restated
 anywhere else fails `tests/test_thresholds_are_the_only_copy.py`. Loosening
 needs a `loosened` block and is announced on every run. ⚠⚠ **Read

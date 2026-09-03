@@ -33,7 +33,9 @@ def _no_network():
         if isinstance(host, str) and host not in ("127.0.0.1", "::1", "localhost", ""):
             raise RuntimeError(
                 f"test attempted a network connection to {host!r}; tests are offline "
-                "(STANDARD N5). Mark it @pytest.mark.network if it must reach out."
+                "(STANDARD N5). Mark it @pytest.mark.network if it must reach out. "
+                "If this is tiktoken fetching its BPE asset on a cold box, run "
+                "`uv run python -m harness warm` once before pytest (FINDINGS F-14)."
             )
         return real_connect(self, address, *a, **kw)
 

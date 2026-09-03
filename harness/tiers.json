@@ -103,7 +103,8 @@
       ],
       "thresholds": [
         "replay.max_relative_drop"
-      ]
+      ],
+      "self_index": true
     },
     {
       "name": "route_recall_human",

@@ -112,6 +112,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          # Fetch the tokenizer asset OUTSIDE the pytest session: conftest
+          # blocks the network, and a fresh runner has no tiktoken cache
+          # (docs/harness/FINDINGS.md F-14).
+          uv run python -m harness warm
           COV=$(uv run python -m harness threshold coverage.min)
           uv run pytest tests/ -n 4 --dist loadfile --tb=short --cov=src --cov-report=term-missing --cov-fail-under="$COV" 2>&1 | tee pytest.log
           if [ "${{ runner.os }}" = "Windows" ]; then SKIP_ID=ci.skips_windows; else SKIP_ID=ci.skips_ubuntu; fi

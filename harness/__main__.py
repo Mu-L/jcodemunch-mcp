@@ -1,4 +1,4 @@
-"""`python -m harness [fast|full|bench|all|check ID [--stamp]|threshold ID|thresholds|corpora]`
+"""`python -m harness [fast|full|bench|all|check ID [--stamp]|threshold ID|thresholds|corpora|warm]`
 
 The single entry point that decides whether a change is acceptable
 (docs/harness/DESIGN.md). Exit code is non-zero on any test failure, any Floor
@@ -65,6 +65,54 @@ def _run(cmd: list[str], *, env: dict | None = None) -> tuple[int, str, float]:
     proc = subprocess.run(cmd, cwd=REPO, env=e, text=True, capture_output=True, encoding="utf-8", errors="replace")
     out = (proc.stdout or "") + (proc.stderr or "")
     return proc.returncode, out, time.perf_counter() - t0
+
+
+TOKENIZER_ASSET = "cl100k_base"
+
+
+def warm_assets() -> bool:
+    """Fetch the tokenizer's BPE asset OUTSIDE the pytest session (F-14).
+
+    tiktoken downloads `cl100k_base` on first use and caches it per box. Under
+    `tests/conftest.py::_no_network` that download raises, so on a fresh runner
+    every test that counts tokens (schema budget, benchmark harness, negative
+    evidence) fails in setup: 4 failed + 22 errors on the first CI run of this
+    tier. A warm box never shows it. Warming here keeps the tests offline
+    without marking a token-count test `network`.
+    """
+    rc, out, secs = _run([PY, "-c", f"import tiktoken; tiktoken.get_encoding({TOKENIZER_ASSET!r})"])
+    print(f"== warm tokenizer asset {TOKENIZER_ASSET}: {'ok' if rc == 0 else 'FAILED'} {secs:.1f}s")
+    if rc != 0:
+        print(out[-1500:])
+    return rc == 0
+
+
+def self_index(store: Path) -> str | None:
+    """Index this repo into a FRESH store and return its repo id (F-15).
+
+    The replay fixture's repo id is a hash of the absolute index path, which
+    differs per box; `run_replay.py --repo/--storage-path` exist for exactly
+    this and `replay.yml` already used them. The first bench run on CI did
+    not and scored mrr 0.0 against a golden 1.0: no index, not a regression.
+    A fresh store per run is also what makes the step deterministic locally.
+    """
+    # Absolute path (a relative one logs a warning to the same stream) and a
+    # sentinel line, because stdout and stderr are merged by _run.
+    code = (
+        "from jcodemunch_mcp.tools.index_folder import index_folder;"
+        f"r = index_folder(path={str(REPO)!r}, use_ai_summaries=False, incremental=False, storage_path={str(store)!r});"
+        "print('REPO_ID=' + r['repo'])"
+    )
+    rc, out, secs = _run([PY, "-c", code])
+    m = re.search(r"^REPO_ID=(\S+)$", out, re.M)
+    rid = m.group(1) if m else ""
+    if rc == 0 and not rid:
+        rc = 1
+    print(f"== self index -> {store}: {'ok ' + rid if rc == 0 else 'FAILED'} {secs:.1f}s")
+    if rc != 0:
+        print(out[-1500:])
+        return None
+    return rid
 
 
 _SUMMARY = re.compile(r"(?:(\d+) passed)?(?:, )?(?:(\d+) skipped)?(?:, )?(?:(\d+) failed)?")
@@ -268,6 +316,8 @@ def tier_fast(result: dict) -> bool:
             print("  MISMATCH", b)
     else:
         print("  all pinned corpora match harness/corpora.json")
+    if not warm_assets():
+        ok = False
     files = TIERS["fast"]
     print(f"== fast tier: {len(files)} files")
     rc, out, secs = _run([PY, "-m", "pytest", *files, "-q", "-p", "no:cacheprovider", *_xdist_args()])
@@ -299,13 +349,14 @@ def tier_fast(result: dict) -> bool:
 def tier_full(result: dict) -> bool:
     t0 = time.perf_counter()
     cov = T.floor("coverage.min")
+    warm_ok = warm_assets()
     print(f"== full tier: tests/ with --cov-fail-under={cov}")
     rc, out, secs = _run([PY, "-m", "pytest", "tests/", "-q", "-p", "no:cacheprovider", *_xdist_args(),
                           "--tb=short", "--cov=src", "--cov-report=term", f"--cov-fail-under={cov}"])
     summ = _pytest_summary(out)
     print("  ", summ["line"])
-    ok = rc == 0
-    if not ok:
+    ok = rc == 0 and warm_ok
+    if rc != 0:
         print(out[-6000:])
     m = re.search(r"^TOTAL\s+\d+\s+\d+\s+(\d+)%", out, re.M)
     cov_obs = int(m.group(1)) if m else None
@@ -332,8 +383,22 @@ def tier_bench(result: dict, *, offline: bool) -> bool:
             print(f"== {step['name']}: SKIPPED (--offline; needs network)")
             arts[step["name"]] = {"skipped": "offline"}
             continue
-        print(f"== {step['name']}: {' '.join(step['cmd'])}")
-        rc, out, secs = _run([PY, *step["cmd"]])
+        cmd = list(step["cmd"])
+        if step.get("self_index"):
+            import shutil
+            import tempfile
+            store = Path(tempfile.mkdtemp(prefix="harness-self-index-"))
+            rid = self_index(store)
+            if rid is None:
+                ok = False
+                arts[step["name"]] = {"rc": 1, "seconds": 0.0, "tail": "self index failed"}
+                shutil.rmtree(store, ignore_errors=True)
+                continue
+            cmd += ["--repo", rid, "--storage-path", str(store)]
+        print(f"== {step['name']}: {' '.join(cmd)}")
+        rc, out, secs = _run([PY, *cmd])
+        if step.get("self_index"):
+            shutil.rmtree(store, ignore_errors=True)
         tail = "\n".join(out.strip().splitlines()[-3:])
         print(f"   rc={rc} {secs:.1f}s\n   " + tail.replace("\n", "\n   "))
         arts[step["name"]] = {"rc": rc, "seconds": round(secs, 2), "tail": tail}
@@ -360,7 +425,7 @@ def write_results(result: dict) -> Path:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m harness")
     ap.add_argument("command", nargs="?", default="all",
-                    choices=["fast", "full", "bench", "all", "check", "threshold", "thresholds", "corpora"])
+                    choices=["fast", "full", "bench", "all", "check", "threshold", "thresholds", "corpora", "warm"])
     ap.add_argument("id", nargs="?")
     ap.add_argument("--stamp", action="store_true", help="check: write the observed value into thresholds.json `measured`")
     ap.add_argument("--offline", action="store_true", help="bench: skip steps that need the network")
@@ -371,6 +436,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.command == "threshold":
         print(T.floor(a.id))
         return 0
+    if a.command == "warm":
+        return 0 if warm_assets() else 1
     if a.command == "thresholds":
         for tid, e in T.load(announce=False).items():
             print(f"{tid:<40} crit {e['criterion']:<3} {e['comparator']} {e['floor']!s:<10} set {e['set_at']['date']} @{e['set_at']['commit']}  measured {e.get('measured') and e['measured'].get('value')}")

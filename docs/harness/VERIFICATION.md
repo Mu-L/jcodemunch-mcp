@@ -88,3 +88,22 @@ log. No harness command reached the network.
 
 The +40 are the new gate tests; the xfail is F-01. No test that passed
 before fails after.
+
+## 7. First run on a fresh runner (after the merge to main, `4109cbf`)
+
+`harness.yml` FAILED both jobs on its first CI run (run 33794704430): the
+fast tier with 4 failed + 22 errors, the bench tier with `replay_gate` at
+mrr 0.0. Neither was a product regression and neither was visible on this
+box (FINDINGS F-14, F-15): a cached tokenizer asset and an existing
+self-index were state the runner did not have. Both reproduced locally by
+removing that state (`TIKTOKEN_CACHE_DIR` pointed at an empty dir; a fresh
+temp store for the replay index) and both pass after the fix:
+
+| tier | cold local run after fix | verdict |
+|---|---|---|
+| fast (empty tokenizer cache) | 1160 passed, 7 skipped, 56.23 s | HARNESS PASS |
+| bench --offline (fresh self-index store) | replay mrr 1.0, all steps rc=0 | HARNESS PASS |
+
+The lesson is the one from Practice 5's `docs/` trap: a green run on the
+box that built the harness proves the harness plus that box's cache. The
+CI verdict on the fixing commit is recorded beside it in git.
