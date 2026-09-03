@@ -14,7 +14,7 @@
     "racket_fixtures": {
       "path": "tests/fixtures/racket",
       "pattern": "**/*",
-      "sha256": "cb3d2447e3976cd8698de7982218e25420a9f548e6a7e82ab61144ee279ed9d6"
+      "sha256": "1f070fa58a519245b123b183c2d99be5e04ad1ae8cb279384d2cdd1bed7df906"
     },
     "racket_oracle": {
       "path": "tests/fixtures/racket_oracle.json",

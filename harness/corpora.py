@@ -57,9 +57,15 @@ def _digest(rel: str, pattern: str | None) -> str:
     if pattern is None:
         h.update(_content(p))
         return h.hexdigest()
-    files = sorted(f for f in p.glob(pattern) if f.is_file() and "__pycache__" not in f.parts)
+    # Sort by the POSIX relative string, byte order: `sorted(Path)` compares
+    # case-insensitively on Windows, so `REGENERATE.md` went last here and
+    # first on the runner and the racket digest differed (F-16, second half).
+    files = sorted(
+        (f for f in p.glob(pattern) if f.is_file() and "__pycache__" not in f.parts),
+        key=lambda f: f.relative_to(p).as_posix().encode(),
+    )
     for f in files:
-        h.update(str(f.relative_to(p)).replace("\\", "/").encode())
+        h.update(f.relative_to(p).as_posix().encode())
         h.update(b"\0")
         h.update(_content(f))
         h.update(b"\0")
