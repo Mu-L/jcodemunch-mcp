@@ -954,6 +954,13 @@ def main():
     parser.add_argument("--out", metavar="FILE", help="write markdown results to FILE")
     parser.add_argument("--json", metavar="FILE", dest="json_out", help="write raw JSON results to FILE")
     parser.add_argument(
+        "--floor",
+        action="store_true",
+        help="exit non-zero when the run violates harness/thresholds.json "
+             "token.grand_ratio_vs_grep or token.per_repo_rise_max (STANDARD criterion 2); "
+             "a DOWNWARD move stays the re-sync warning",
+    )
+    parser.add_argument(
         "--reference",
         nargs="?",
         const=str(REFERENCE_PATH),
@@ -1029,6 +1036,15 @@ def main():
     print()
     md = render_markdown(results, TOKENIZER)
     print(md)
+
+    if args.floor:
+        from token_floor import verdicts as _floor_verdicts
+        _ok, _lines = _floor_verdicts(results, load_reference())
+        for _line in _lines:
+            print(_line)
+        if not _ok:
+            print("token benchmark FLOOR violated (harness/thresholds.json); see lines above", file=sys.stderr)
+            return 1
 
     if args.out:
         Path(args.out).write_text(md, encoding="utf-8")
