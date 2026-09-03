@@ -278,3 +278,8 @@ no-network subset; the full run including oracles and comparators is UNKNOWN.
    authority, and the capture output must not be quoted as the gate value.
 8. The cold `search_text` latency (8.8 s) is 3.4x the cold `search_symbols`
    (2.6 s) on the same index in the same session. Not documented anywhere.
+9. (Post-report, user-supplied) `https://jcodemunch.com/versus.php` describes
+   jCodeMunch as v1.104.1 with 4,228 tests; the tree is 1.108.316 with 9,174
+   collected. Marketing copy, not touched; the page is the source for
+   `NICHE.md` §2a. The companion ChatGPT digest could not be read by fetch
+   (title only: "24 live competitors fully reconciled").

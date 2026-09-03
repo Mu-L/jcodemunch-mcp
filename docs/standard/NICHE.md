@@ -40,6 +40,63 @@ Also inside the tree: `jdocmunch-mcp` and `jdatamunch-mcp` are siblings with a
 declared boundary (suite `CLAUDE.md`, "Ecosystem Boundary"), not alternatives.
 Markdown indexing asks (#454, #571) were declined on that boundary.
 
+### 2a. Alternatives named outside the repo (user-supplied, 2026-09-03)
+
+After Phase 6, jjg pointed at two sources the brief's "work from the repo"
+rule had excluded. They are recorded here as a separate table so the
+repo-derived list above stays distinguishable from marketing-page claims.
+
+- `https://jcodemunch.com/versus.php` (fetched 2026-09-03): 24 products framed
+  as direct competitors and 18 as complementary. ⚠ The page describes
+  jCodeMunch as v1.104.1 with 4,228 tests; the tree is 1.108.316 with 9,174
+  collected. Marketing copy is out of this session's scope; logged in
+  `DISCOVERY.md` §11.
+- `https://chatgpt.com/share/6a994862-...` (daily GitHub-activity digest of the
+  direct competitors): title only, "24 live competitors fully reconciled"; the
+  body renders client-side and could not be read by fetch. UNKNOWN content.
+
+Direct competitors as the versus page names them, with the ONE claim each
+leads with, verbatim from the page (none verified here):
+
+| Product | Lead claim on the page | Axis it competes on |
+|---|---|---|
+| Raw file tools (Read/Grep/Glob/Bash) | jcm ~95% reduction, 58-100x on FastAPI | tokens (the default competitor, same as §2) |
+| mcp-server-filesystem | 13 filesystem ops, no AST | tokens, symbol awareness |
+| RepoMapper | 34+ languages, PageRank token-budgeted map | tokens, breadth |
+| Pharaoh | TS + Python only, $27/mo Pro, Neo4j | breadth, cost, install |
+| GitNexus | 14 languages, 45.8k stars (2026-08-26), PolyForm NC | breadth, licence |
+| Serena | 40+ languages via LSP, Python 3.13, edit tools | breadth, install, edits |
+| Graft (NanoNets) | 22 languages, 6 tools, 33/50 SWE-bench Verified | correctness, surface size |
+| GrapeRoot / Dual-Graph | 30-45% cost reduction, 37.7% fewer turns | tokens |
+| vexp | 34 languages, 73% pass@1 at $0.67/task | correctness, cost |
+| code-review-graph | ~65x median per-question (36x-376x), 30 tools, 30.9k stars | tokens, surface size |
+| cymbal | 20 languages, ~10-40 ms query latency, Go binary | latency, install |
+| Context+ | 23% fewer tokens, 25% fewer tool calls (SWE-bench Verified, 50 of 500) | tokens, correctness |
+| Axon | 43 languages, Docker by default | breadth, install |
+| SocratiCode | 3 languages, KuzuDB | correctness (cross-file resolution) |
+| Octocode | 88% mean retrieval savings (142.8k -> 5.5k over 10 queries) | tokens |
+| Repomix | 50-80% fewer tokens where compression applies | tokens |
+| codebase-memory-mcp | 0.299 MRR | correctness |
+| CodeGraph | 158 tree-sitter grammars, hybrid type resolution for 12 | breadth |
+| SigMap | 34 languages, 96.8% token reduction across 21 repos | tokens |
+| trace-mcp | 16 languages, incremental indexing | freshness |
+| SDL-MCP | symbol-scoped edit tools | edits (out of our niche) |
+| TokenSave | 40-50% reduction, "one call replaces ~42 min" | tokens |
+| LeanCTX | 4-20x via escalation ladder | tokens |
+| LemonCrow | ~30% more from a Claude subscription | tokens |
+
+What this changes in the ranking: nothing in order, three things in emphasis.
+(1) **Token reduction is the axis every rival quotes a number on**, and the
+numbers are not comparable (different baselines, corpora, tokenizers), which is
+why criterion 2's Method pins the corpus SHA, the baseline definition and the
+tokenizer. (2) **Latency is a marketed axis** (cymbal's 10-40 ms) and we have no
+artifact; that raises enforcement item 2's priority, not its position. (3)
+**Language count is a marketed axis** (CodeGraph 158 grammars against our 79),
+which supports keeping breadth at rank 10 only if fidelity per language is
+measured, i.e. it makes item 11 more urgent than a count race. Two rivals
+(Graft, Context+) quote SWE-bench Verified; ours is parked on a 120 GB disk
+requirement (`benchmarks/swebench/PROTOCOL.md`).
+
 ## 3. Axes of competition, ranked
 
 Ranking is by how much each axis plausibly drives adoption AND retention, argued
