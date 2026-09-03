@@ -50,7 +50,7 @@ def _env() -> dict:
 
 def _git(*args: str) -> str:
     try:
-        return subprocess.check_output(["git", *args], cwd=REPO, text=True).strip()
+        return subprocess.check_output(["git", *args], cwd=REPO, text=True, encoding="utf-8", errors="replace").strip()
     except Exception:
         return "unknown"
 

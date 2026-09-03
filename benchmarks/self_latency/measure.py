@@ -41,7 +41,7 @@ QUERIES = ["cache_put", "index_folder", "validate_path", "search_symbols", "Prog
 
 
 def _corpus_digest() -> str:
-    files = subprocess.check_output(["git", "ls-files", "src/"], cwd=REPO, text=True).split()
+    files = subprocess.check_output(["git", "ls-files", "src/"], cwd=REPO, text=True, encoding="utf-8", errors="replace").split()
     h = hashlib.sha256()
     for f in sorted(files):
         p = REPO / f
@@ -63,7 +63,7 @@ def run(n: int) -> dict:
     os.environ.setdefault("JCODEMUNCH_LIVE_JOURNAL", "0")
 
     out: dict = {"schema": "jcm-self-latency/v1", "n": n, "date": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                 "commit": subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip(),
+                 "commit": subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True, encoding="utf-8", errors="replace").strip(),
                  "corpus_sha256": _corpus_digest(),
                  "env": {"os": platform.platform(), "python": platform.python_version(), "cpus": os.cpu_count()}}
 
