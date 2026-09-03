@@ -19,7 +19,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE = REPO_ROOT / "benchmarks" / "schema_baseline.json"
-DRIFT_TOLERANCE = 0.05  # 5%
+from harness import thresholds as _thresholds
+
+DRIFT_TOLERANCE = _thresholds.floor("schema.drift_tolerance")  # harness/thresholds.json is the only copy
 
 try:
     import tiktoken  # noqa: F401
@@ -181,8 +183,9 @@ def test_v2_success_criterion_core_compact_under_4000():
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
     core_compact = baseline.get("core_compact")
     assert core_compact is not None, "baseline missing core_compact"
-    assert core_compact <= 4000, (
-        f"v2.0.0 success criterion requires core + compact_schemas <= 4000 tokens; "
+    ceiling = _thresholds.floor("schema.core_compact_ceiling")
+    assert core_compact <= ceiling, (
+        f"v2.0.0 success criterion requires core + compact_schemas <= {ceiling} tokens; "
         f"current baseline is {core_compact}."
     )
 
@@ -221,8 +224,9 @@ def test_live_core_compact_under_4000_hard_ceiling():
             else:
                 cfg[k] = v
 
-    assert count <= 4000, (
-        f"LIVE core_compact is {count} tokens, over the §10 <=4000 ceiling. Trim a "
+    ceiling = _thresholds.floor("schema.core_compact_ceiling")
+    assert count <= ceiling, (
+        f"LIVE core_compact is {count} tokens, over the §10 <={ceiling} ceiling. Trim a "
         f"core-tier tool description, or strip/demote a param under compact "
         f"(_COMPACT_STRIP_PARAMS / _COMPACT_DEMOTE_ENUM_PARAMS). Do NOT just "
         f"regenerate benchmarks/schema_baseline.json to paper over it."
