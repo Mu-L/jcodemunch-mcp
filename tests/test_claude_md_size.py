@@ -47,7 +47,9 @@ HARNESS_LIMIT = 150_000
 # the answer is NOT another raise -- HARNESS_LIMIT is not ours to move, and at
 # 150k the file stops loading with no warning at all. Rotate a standing section
 # instead, or split the file.
-BUDGET = 140_000
+from harness import thresholds as _thresholds
+
+BUDGET = _thresholds.floor("claude_md.max_chars")  # harness/thresholds.json is the only copy
 
 ARCHIVE = "ISSUE-HISTORY.md"
 
