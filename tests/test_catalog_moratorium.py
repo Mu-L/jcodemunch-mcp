@@ -84,7 +84,9 @@ CATALOG_CEILING = 91
 #: The control subset is the only part of the corpus the fixes did not aim at.
 #: Gating there is not a moved goalpost -- it is the definition of "held-out"
 #: that the previous two versions of this gate both failed to implement.
-EXIT_CONTROL_AT_1 = 55.0
+from harness import thresholds as _thresholds
+
+EXIT_CONTROL_AT_1 = _thresholds.floor("route.control_at1")  # harness/thresholds.json is the only copy
 EXIT_BASELINE_CONTROL_AT_1 = 40.0
 
 #: Measured every run and reported, but NOT the gate: an aggregate over a corpus
