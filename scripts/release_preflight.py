@@ -47,7 +47,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 SLUG = "jgravelle/jcodemunch-mcp"
 OWNER = "jgravelle"
-PR_STATUS_ONLY = {"license/cla"}  # posted to PR heads by a webhook, never to a main commit
+PR_STATUS_ONLY = {
+    "license/cla"
+}  # posted to PR heads by a webhook, never to a main commit
 
 PIN_SITES = (
     "pyproject.toml",
@@ -62,7 +64,15 @@ def _run(cmd: list[str], *, gh: bool = False) -> tuple[int, str]:
     env = dict(os.environ)
     if gh:
         env["GITHUB_TOKEN"] = ""
-    p = subprocess.run(cmd, cwd=REPO, env=env, text=True, capture_output=True, encoding="utf-8", errors="replace")
+    p = subprocess.run(
+        cmd,
+        cwd=REPO,
+        env=env,
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
@@ -81,7 +91,11 @@ def read_pins(root: Path = REPO) -> dict[str, str | None]:
     pins: dict[str, str | None] = {}
     try:
         # No tomllib: the project supports 3.10 (the first CI run of this file failed there).
-        m = re.search(r'^version = "([^"]+)"', (root / "pyproject.toml").read_text(encoding="utf-8"), re.M)
+        m = re.search(
+            r'^version = "([^"]+)"',
+            (root / "pyproject.toml").read_text(encoding="utf-8"),
+            re.M,
+        )
         pins["pyproject.toml"] = m.group(1) if m else None
     except Exception:
         pins["pyproject.toml"] = None
@@ -89,18 +103,24 @@ def read_pins(root: Path = REPO) -> dict[str, str | None]:
         sj = json.loads((root / "server.json").read_text(encoding="utf-8"))
         pins["server.json:version"] = sj.get("version")
         pkgs = sj.get("packages") or []
-        pins["server.json:packages[0].version"] = pkgs[0].get("version") if pkgs else None
+        pins["server.json:packages[0].version"] = (
+            pkgs[0].get("version") if pkgs else None
+        )
     except Exception:
         pins["server.json:version"] = pins["server.json:packages[0].version"] = None
     try:
-        pins[".claude-plugin/plugin.json"] = json.loads((root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")).get("version")
+        pins[".claude-plugin/plugin.json"] = json.loads(
+            (root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
+        ).get("version")
     except Exception:
         pins[".claude-plugin/plugin.json"] = None
     try:
         wn = json.loads((root / "whatsnew.json").read_text(encoding="utf-8"))
         pins["whatsnew.json:current"] = wn.get("current")
         entries = wn.get("entries") or []
-        pins["whatsnew.json:entries[0].version"] = entries[0].get("version") if entries else None
+        pins["whatsnew.json:entries[0].version"] = (
+            entries[0].get("version") if entries else None
+        )
     except Exception:
         pins["whatsnew.json:current"] = pins["whatsnew.json:entries[0].version"] = None
     try:
@@ -118,7 +138,9 @@ def pins_verdict(pins: dict[str, str | None], want: str | None) -> tuple[bool, s
         missing = [k for k, v in pins.items() if v is None]
         return False, f"unreadable pin site(s): {', '.join(missing)}"
     if len(values) != 1:
-        return False, "pin sites disagree: " + ", ".join(f"{k}={v}" for k, v in pins.items())
+        return False, "pin sites disagree: " + ", ".join(
+            f"{k}={v}" for k, v in pins.items()
+        )
     (v,) = values
     if want and v != want:
         return False, f"pins say {v}, --version says {want}"
@@ -133,7 +155,9 @@ def ci_verdict(required: list[str], check_runs: list[dict]) -> tuple[bool, str]:
     """
     by_name: dict[str, list[str]] = {}
     for r in check_runs:
-        by_name.setdefault(r.get("name", ""), []).append(r.get("conclusion") or r.get("status") or "unknown")
+        by_name.setdefault(r.get("name", ""), []).append(
+            r.get("conclusion") or r.get("status") or "unknown"
+        )
     bad = []
     for ctx in required:
         if ctx in PR_STATUS_ONLY:
@@ -152,7 +176,9 @@ def ci_verdict(required: list[str], check_runs: list[dict]) -> tuple[bool, str]:
 
 
 def changelog_has(version: str, text: str) -> bool:
-    return re.search(rf"^##\s*\[?{re.escape(version)}\]?(?=\s|$)", text, re.M) is not None
+    return (
+        re.search(rf"^##\s*\[?{re.escape(version)}\]?(?=\s|$)", text, re.M) is not None
+    )
 
 
 def mergeable_contributor_prs(prs: list[dict]) -> list[str]:
@@ -182,7 +208,10 @@ def check_branch() -> tuple[bool, str]:
     _, head = _run(["git", "rev-parse", "HEAD"])
     _, remote = _run(["git", "rev-parse", "origin/main"])
     if head.strip() != remote.strip():
-        return False, f"HEAD {head.strip()[:7]} != origin/main {remote.strip()[:7]} (push first; CI is read on the pushed commit)"
+        return (
+            False,
+            f"HEAD {head.strip()[:7]} != origin/main {remote.strip()[:7]} (push first; CI is read on the pushed commit)",
+        )
     return True, f"main, clean, pushed ({head.strip()[:7]})"
 
 
@@ -191,7 +220,12 @@ def check_ci() -> tuple[bool, str]:
         prot = _gh_json(f"repos/{SLUG}/branches/main/protection")
         required = list(prot.get("required_status_checks", {}).get("contexts") or [])
         _, head = _run(["git", "rev-parse", "HEAD"])
-        runs = _gh_json(f"repos/{SLUG}/commits/{head.strip()}/check-runs", "--paginate", "--jq", ".check_runs")
+        runs = _gh_json(
+            f"repos/{SLUG}/commits/{head.strip()}/check-runs",
+            "--paginate",
+            "--jq",
+            ".check_runs",
+        )
         flat: list[dict] = []
         for chunk in runs if isinstance(runs, list) else [runs]:
             flat.extend(chunk if isinstance(chunk, list) else [chunk])
@@ -229,12 +263,27 @@ def check_pypi(version: str) -> tuple[bool, str]:
 
 
 def check_prs() -> tuple[bool, str]:
-    rc, out = _run(["gh", "pr", "list", "--state", "open", "--json", "number,author,mergeable,mergeStateStatus"], gh=True)
+    rc, out = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--json",
+            "number,author,mergeable,mergeStateStatus",
+        ],
+        gh=True,
+    )
     if rc != 0:
         return False, "gh pr list failed: " + out.strip()[-200:]
     ready = mergeable_contributor_prs(json.loads(out))
     if ready:
-        return False, "contributor PR(s) MERGEABLE CLEAN merge first (policy 3b): " + ", ".join(ready)
+        return (
+            False,
+            "contributor PR(s) MERGEABLE CLEAN merge first (policy 3b): "
+            + ", ".join(ready),
+        )
     return True, "no contributor PR is waiting to merge first"
 
 
@@ -251,8 +300,12 @@ def check_harness() -> tuple[bool, str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Release pre-flight (read-only).")
-    ap.add_argument("--version", help="the version about to be released; pins must equal it")
-    ap.add_argument("--no-harness", action="store_true", help="skip the fast tier (~50 s)")
+    ap.add_argument(
+        "--version", help="the version about to be released; pins must equal it"
+    )
+    ap.add_argument(
+        "--no-harness", action="store_true", help="skip the fast tier (~50 s)"
+    )
     ap.add_argument("--offline", action="store_true", help="skip the PyPI lookup")
     a = ap.parse_args(argv)
 
@@ -274,8 +327,18 @@ def main(argv: list[str] | None = None) -> int:
     report("pins", pv)
     version = pv[1] if pv[0] else (a.version or pins.get("pyproject.toml") or "")
     if version:
-        text = (REPO / "CHANGELOG.md").read_text(encoding="utf-8") if (REPO / "CHANGELOG.md").exists() else ""
-        report("changelog", (changelog_has(version, text), f"heading for {version} {'present' if changelog_has(version, text) else 'MISSING'}"))
+        text = (
+            (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
+            if (REPO / "CHANGELOG.md").exists()
+            else ""
+        )
+        report(
+            "changelog",
+            (
+                changelog_has(version, text),
+                f"heading for {version} {'present' if changelog_has(version, text) else 'MISSING'}",
+            ),
+        )
         report("tag", check_tag(version))
         report("pypi", None if a.offline else check_pypi(version))
     else:

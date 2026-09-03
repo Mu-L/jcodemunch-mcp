@@ -35,7 +35,10 @@ CORPORA = {
     "route_queries": ("benchmarks/route_recall/queries.json", None),
     "route_holdout": ("benchmarks/route_recall/holdout.json", None),
     "route_emitted_cases": ("benchmarks/route_recall/emitted_task_cases.json", None),
-    "route_emitted_holdout": ("benchmarks/route_recall/emitted_task_holdout.json", None),
+    "route_emitted_holdout": (
+        "benchmarks/route_recall/emitted_task_holdout.json",
+        None,
+    ),
     "schema_baseline": ("benchmarks/schema_baseline.json", None),
     "token_tasks": ("benchmarks/tasks.json", None),
 }
@@ -83,7 +86,10 @@ def _external_pins() -> dict:
 def compute() -> dict:
     return {
         "schema": "jcm-harness-corpora/v1",
-        "corpora": {name: {"path": rel, "pattern": pat, "sha256": _digest(rel, pat)} for name, (rel, pat) in CORPORA.items()},
+        "corpora": {
+            name: {"path": rel, "pattern": pat, "sha256": _digest(rel, pat)}
+            for name, (rel, pat) in CORPORA.items()
+        },
         "external_pins": _external_pins(),
     }
 
@@ -103,7 +109,11 @@ def verify() -> list[str]:
         if got is None:
             bad.append(f"{name}: no longer defined in harness/corpora.py")
         elif got["sha256"] != entry["sha256"]:
-            bad.append(f"{name} ({entry['path']}): sha256 {got['sha256'][:12]} != pinned {entry['sha256'][:12]}")
+            bad.append(
+                f"{name} ({entry['path']}): sha256 {got['sha256'][:12]} != pinned {entry['sha256'][:12]}"
+            )
     if have["external_pins"] != want.get("external_pins"):
-        bad.append(f"external_pins moved: {want.get('external_pins')} -> {have['external_pins']}")
+        bad.append(
+            f"external_pins moved: {want.get('external_pins')} -> {have['external_pins']}"
+        )
     return bad

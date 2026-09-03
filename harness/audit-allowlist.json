@@ -1,0 +1,5 @@
+{
+  "schema": "jcm-harness-audit-allowlist/v1",
+  "note": "Each entry: id (advisory), reason, expires (YYYY-MM-DD). An expired entry counts again. Prefer bumping the dependency.",
+  "allow": []
+}

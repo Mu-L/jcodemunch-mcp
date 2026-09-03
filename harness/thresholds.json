@@ -630,6 +630,42 @@
       "enforced_by": [
         "harness/__main__.py"
       ]
+    },
+    {
+      "id": "types.error_max",
+      "criterion": "N3",
+      "metric": "pyright 1.1.405 error count over src/",
+      "comparator": "<=",
+      "floor": 369,
+      "unit": "errors",
+      "set_at": {
+        "commit": "086ab97",
+        "date": "2026-09-03",
+        "reason": "STANDARD N3 types half, ENFORCEMENT-PLAN item 10. First measurement: 369 errors, 9 warnings, 277 files. A RATCHET: the floor may only fall, and it falls by re-measuring (`python -m harness check types.error_max --stamp`) after a fix, never by editing"
+      },
+      "measured": null,
+      "history": [],
+      "enforced_by": [
+        ".github/workflows/pr-gate.yml"
+      ]
+    },
+    {
+      "id": "deps.vuln_max",
+      "criterion": "8",
+      "metric": "pip-audit advisories in the runtime dependency set, minus unexpired allowlist entries",
+      "comparator": "<=",
+      "floor": 0,
+      "unit": "advisories",
+      "set_at": {
+        "commit": "086ab97",
+        "date": "2026-09-03",
+        "reason": "STANDARD criterion 8, ENFORCEMENT-PLAN item 8. pip-audit reports no severity, so every advisory counts (DESIGN said high/critical; that grade is not available from OSV through pip-audit -- docs/cicd/FINDINGS.md). First measurement found click 8.3.1 PYSEC-2026-2132; click was bumped to 8.5.0 in the same change rather than allowlisted"
+      },
+      "measured": null,
+      "history": [],
+      "enforced_by": [
+        ".github/workflows/pr-gate.yml"
+      ]
     }
   ]
 }
