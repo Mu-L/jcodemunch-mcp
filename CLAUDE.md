@@ -33,7 +33,10 @@ recomputed by each block's Method line and stamped with commit and date.
 ⚠ **Required status checks on `main` (2026-09-03): `license/cla`, `lint`,
 `Retrieval-quality gate`, `Harness fast tier` and all 8 `test (os, py)` legs.**
 A renamed job name silently stops being required; the protection query in
-policy 3d lists what is enforced. Open findings: `docs/harness/FINDINGS.md`.
+policy 3d lists what is enforced, and **`uv run python scripts/release_preflight.py`
+is the release gate**: it reads those contexts against HEAD's check-runs and
+fails on a missing run, so a rename shows up there before it ships on red.
+Run it after the push in release step 3, before anything irreversible. Open findings: `docs/harness/FINDINGS.md`.
 
 ## Key Files
 
