@@ -87,8 +87,12 @@ jobs:
           CODE_INDEX_PATH: ${{ runner.temp }}/bench-index
         run: |
           set -euo pipefail
+          # --floor: exit non-zero when the run violates harness/thresholds.json
+          # token.grand_ratio_vs_grep / token.per_repo_rise_max (STANDARD s2).
+          # A DOWNWARD move stays the warning printed by the compare step.
           uv run python benchmarks/harness/run_benchmark.py \
             --verify-determinism \
+            --floor \
             --json "${RUNNER_TEMP}/benchmark.json" \
             --out "${RUNNER_TEMP}/benchmark.md"
 
