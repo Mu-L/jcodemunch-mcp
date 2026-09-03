@@ -462,6 +462,156 @@
         ".github/workflows/test.yml",
         "harness/__main__.py"
       ]
+    },
+    {
+      "id": "index.cold_self_seconds",
+      "criterion": "3",
+      "metric": "cold index_folder of a copy of src/ (275 files, 4,055 symbols), median of 3 fresh-subprocess runs (benchmarks/self_latency/measure.py, self corpus)",
+      "comparator": "<=",
+      "floor": 5.2,
+      "target": 2.6,
+      "unit": "seconds",
+      "set_at": {
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "reason": "DESIGN s5 rule: floor = 2x the median of three consecutive runs on one box at one commit; runs [2.545, 2.589, 2.662]; spread 0.1 seconds. Box: Windows-11-10.0.26200-SP0, 24 CPUs. Tighten only after a CI runner has produced its own three runs."
+      },
+      "measured": {
+        "value": 2.589,
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "env": "Windows-11-10.0.26200-SP0"
+      },
+      "history": [],
+      "enforced_by": [
+        "benchmarks/self_latency/measure.py",
+        "harness/__main__.py"
+      ]
+    },
+    {
+      "id": "index.one_file_reindex_ms",
+      "criterion": "3",
+      "metric": "index_file after appending one line to storage/token_tracker.py, median of 20 (benchmarks/self_latency/measure.py, self corpus)",
+      "comparator": "<=",
+      "floor": 284,
+      "target": 142,
+      "unit": "ms",
+      "set_at": {
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "reason": "DESIGN s5 rule: floor = 2x the median of three consecutive runs on one box at one commit; runs [144.0, 141.7, 141.2]; spread 2.8 ms. Box: Windows-11-10.0.26200-SP0, 24 CPUs. Tighten only after a CI runner has produced its own three runs."
+      },
+      "measured": {
+        "value": 141.7,
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "env": "Windows-11-10.0.26200-SP0"
+      },
+      "history": [],
+      "enforced_by": [
+        "benchmarks/self_latency/measure.py",
+        "harness/__main__.py"
+      ]
+    },
+    {
+      "id": "latency.search_symbols_warm_p95_ms",
+      "criterion": "5",
+      "metric": "search_symbols warm p95 over 20 calls, 5 fixed queries (benchmarks/self_latency/measure.py, self corpus)",
+      "comparator": "<=",
+      "floor": 23,
+      "target": 12,
+      "unit": "ms",
+      "set_at": {
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "reason": "DESIGN s5 rule: floor = 2x the median of three consecutive runs on one box at one commit; runs [10.3, 11.2, 13.0]; spread 2.7 ms. Box: Windows-11-10.0.26200-SP0, 24 CPUs. Tighten only after a CI runner has produced its own three runs."
+      },
+      "measured": {
+        "value": 11.2,
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "env": "Windows-11-10.0.26200-SP0"
+      },
+      "history": [],
+      "enforced_by": [
+        "benchmarks/self_latency/measure.py",
+        "harness/__main__.py"
+      ]
+    },
+    {
+      "id": "latency.search_text_warm_p95_ms",
+      "criterion": "5",
+      "metric": "search_text warm p95 over 20 calls (benchmarks/self_latency/measure.py, self corpus)",
+      "comparator": "<=",
+      "floor": 271,
+      "target": 136,
+      "unit": "ms",
+      "set_at": {
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "reason": "DESIGN s5 rule: floor = 2x the median of three consecutive runs on one box at one commit; runs [135.3, 135.3, 134.9]; spread 0.4 ms. Box: Windows-11-10.0.26200-SP0, 24 CPUs. Tighten only after a CI runner has produced its own three runs."
+      },
+      "measured": {
+        "value": 135.3,
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "env": "Windows-11-10.0.26200-SP0"
+      },
+      "history": [],
+      "enforced_by": [
+        "benchmarks/self_latency/measure.py",
+        "harness/__main__.py"
+      ]
+    },
+    {
+      "id": "latency.get_symbol_source_warm_p95_ms",
+      "criterion": "5",
+      "metric": "get_symbol_source warm p95 over 20 calls (benchmarks/self_latency/measure.py, self corpus)",
+      "comparator": "<=",
+      "floor": 27,
+      "target": 14,
+      "unit": "ms",
+      "set_at": {
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "reason": "DESIGN s5 rule: floor = 2x the median of three consecutive runs on one box at one commit; runs [11.9, 13.1, 14.0]; spread 2.1 ms. Box: Windows-11-10.0.26200-SP0, 24 CPUs. Tighten only after a CI runner has produced its own three runs."
+      },
+      "measured": {
+        "value": 13.1,
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "env": "Windows-11-10.0.26200-SP0"
+      },
+      "history": [],
+      "enforced_by": [
+        "benchmarks/self_latency/measure.py",
+        "harness/__main__.py"
+      ]
+    },
+    {
+      "id": "latency.get_file_outline_warm_p95_ms",
+      "criterion": "5",
+      "metric": "get_file_outline warm p95 over 20 calls (benchmarks/self_latency/measure.py, self corpus)",
+      "comparator": "<=",
+      "floor": 28,
+      "target": 14,
+      "unit": "ms",
+      "set_at": {
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "reason": "DESIGN s5 rule: floor = 2x the median of three consecutive runs on one box at one commit; runs [14.9, 13.9, 12.4]; spread 2.5 ms. Box: Windows-11-10.0.26200-SP0, 24 CPUs. Tighten only after a CI runner has produced its own three runs."
+      },
+      "measured": {
+        "value": 13.9,
+        "commit": "35f7bec",
+        "date": "2026-09-03",
+        "env": "Windows-11-10.0.26200-SP0"
+      },
+      "history": [],
+      "enforced_by": [
+        "benchmarks/self_latency/measure.py",
+        "harness/__main__.py"
+      ]
     }
   ]
 }
