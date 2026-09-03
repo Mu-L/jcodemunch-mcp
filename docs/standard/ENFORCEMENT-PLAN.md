@@ -6,7 +6,7 @@
 |---|---|
 | 1 | DONE: `run_benchmark.py --floor`, `benchmark.yml` fails on an upward move; `tests/test_token_benchmark_floor.py` |
 | 2 | DONE: `benchmarks/self_latency/measure.py`, six thresholds at 2x the median of three runs, bench tier |
-| 3 | NOT DONE: branch protection is an admin setting (not changeable from a branch); the release pre-flight script is not written |
+| 3 | PARTIAL: required status checks on `main` set 2026-09-03 (12 contexts: `license/cla`, `lint`, `Retrieval-quality gate`, `Harness fast tier`, the 8 `test (os, py)` legs; `strict` and `enforce_admins` stay false). The bench tier is NOT required: it runs on push to main only and would block every PR. The release pre-flight script is not written |
 | 4 | DONE: `tests/test_standard_invariants.py` (+ `tests/test_retirement_ledger.py`, `tests/test_thresholds_are_the_only_copy.py`) |
 | 5 | NOT DONE: post-publish handshake job |
 | 6 | NOT DONE: `ruff check tests/` still 292; not touched (tests are the fossil record and a mass auto-fix would rewrite 274 files in one commit) |

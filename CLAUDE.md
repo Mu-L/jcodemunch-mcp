@@ -30,7 +30,10 @@ entry naming the lesson and the replacement assertion**, or
 design.** ⚠⚠ **Never copy a figure** from the standard, the archaeology or
 here: tool counts, ratios, token weights, latencies and test totals are
 recomputed by each block's Method line and stamped with commit and date.
-Open findings: `docs/harness/FINDINGS.md`.
+⚠ **Required status checks on `main` (2026-09-03): `license/cla`, `lint`,
+`Retrieval-quality gate`, `Harness fast tier` and all 8 `test (os, py)` legs.**
+A renamed job name silently stops being required; the protection query in
+policy 3d lists what is enforced. Open findings: `docs/harness/FINDINGS.md`.
 
 ## Key Files
 
