@@ -1,0 +1,5 @@
+{
+  "schema": "jcm-harness-retired/v1",
+  "note": "A test file listed in docs/harness/ARCHAEOLOGY.md may be deleted only with an entry here: path, lesson, replacement (file::test_name that now carries the lesson), commit, date. tests/test_retirement_ledger.py enforces it. Empty on 2026-09-03: the archaeology found nothing to retire.",
+  "retired": []
+}
