@@ -94,7 +94,7 @@ If you publish results against this corpus, open an issue or PR and we'll link t
   (`.github/workflows/replay.yml`): every push to `main` and every PR
   indexes the repo and runs
   `run_replay.py --fixture … --repo <indexed-id>
-  --baseline-file results/self_v1_75_0-golden.json --gate 0.02`, which
+  --baseline-file results/self_v1_75_0-golden.json --gate $(python -m harness threshold replay.max_relative_drop)`, which
   exits non-zero if any aggregate metric drops more than 2% (relative)
   below the committed golden baseline. This is the regression gate that
   lets ranking-affecting changes (fusion weights, BM25 normalization,

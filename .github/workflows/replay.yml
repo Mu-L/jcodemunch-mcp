@@ -43,4 +43,4 @@ jobs:
             --repo "${REPO_ID}" \
             --storage-path "${STORE}" \
             --baseline-file benchmarks/replay/results/self_v1_75_0-golden.json \
-            --gate 0.02
+            --gate "$(uv run python -m harness threshold replay.max_relative_drop)"

@@ -668,7 +668,7 @@ class TestProducerRegistration:
     #
     # The budget is guarded where it is measured: `tests/test_schema_budget.py`
     # holds the 5% drift ceiling against a live `_build_tools_list()` and the
-    # §10 <=4000 hard ceiling recomputed from the live build, which is the check
+    # §10 hard ceiling (harness/thresholds.json schema.core_compact_ceiling) recomputed from the live build, which is the check
     # that catches a breach BEFORE the baseline is regenerated. The intent this
     # test carried — a param on four core tools must not spend the core budget —
     # is asserted structurally by its sibling above, which fails if `receipt`

@@ -9,7 +9,7 @@ Usage:
     # With a baseline gate (fails on >2% regression in any metric)
     PYTHONPATH=src python benchmarks/replay/run_replay.py \\
         --fixture benchmarks/replay/fixtures/self_v1_75_0.json \\
-        --baseline 1.75.0 --gate 0.02
+        --baseline 1.75.0 --gate $(python -m harness threshold replay.max_relative_drop)
 """
 
 from __future__ import annotations
@@ -150,13 +150,24 @@ def main() -> int:
         help="Compare against an explicit committed baseline JSON (version-neutral, "
              "for a stable CI gate); takes precedence over --baseline.",
     )
-    parser.add_argument("--gate", type=float, default=0.02, help="Allowed relative regression (default 2%%)")
+    parser.add_argument(
+        "--gate",
+        type=float,
+        default=None,
+        help="max relative drop of any aggregate metric before failing; default is "
+             "harness/thresholds.json replay.max_relative_drop (the only copy)",
+    )
     parser.add_argument(
         "--write-result",
         action="store_true",
         help="Persist the result JSON to benchmarks/replay/results/.",
     )
     args = parser.parse_args()
+    if args.gate is None:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from harness import thresholds as _thresholds
+        args.gate = float(_thresholds.floor("replay.max_relative_drop"))
 
     fixture_path = Path(args.fixture).resolve()
     result = run_fixture(

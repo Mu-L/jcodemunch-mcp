@@ -245,7 +245,7 @@ computes per-query and aggregate metrics, and optionally writes
 `benchmarks/replay/results/{fixture}-v{VERSION}.json`.
 
 A regression gate (`--baseline-file results/self_v1_75_0-golden.json
---gate 0.02`, or the version-pinned `--baseline X.Y.Z`) fails the run if
+--gate <harness/thresholds.json: replay.max_relative_drop>`, or the version-pinned `--baseline X.Y.Z`) fails the run if
 any aggregate metric drops by more than 2% vs the baseline. The shipped
 `self_v1_75_0` fixture is locked at 1.0 nDCG/MRR/Recall. This gate is
 wired into CI as the `Replay` workflow (`.github/workflows/replay.yml`),
