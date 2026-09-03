@@ -83,7 +83,7 @@ log. No harness command reached the network.
 | | passed | skipped | failed | xfailed | total | wall |
 |---|---|---|---|---|---|---|
 | before (`f68a728`) | 9,155 | 19 | 0 | 0 | 9,174 | 188.43 s |
-| after build (`db12157`) | 9,193 | 19 | 1 (F-12's cause, fixed next commit) | 1 | 9,214 | 141.79 s |
+| after build (`db12157`) | 9,193 | 19 | 1 (subprocess-encoding guard on the new harness file, fixed in 20cd077) | 1 | 9,214 | 141.79 s |
 | final (`74e1859`+docs) | 9194 | 19 | 0 | 1 | 9,214 | 146.99 s |
 
 The +40 are the new gate tests; the xfail is F-01. No test that passed
