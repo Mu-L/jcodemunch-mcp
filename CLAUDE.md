@@ -9,6 +9,19 @@
 - **Python:** >=3.10
 - **Tool count:** 91 visible in `full` / 94 in catalog (front door hidden; counts verified 2026-07-30 from `jcodemunch-mcp surface`, which is the only place to get them — do NOT hand-type this; +1 v1.108.111 `get_parity_map`, +1 v1.108.112 `get_decorator_census`, +1 v1.108.113 `get_architecture_metrics`); `tool_surface=counter` exposes a 3-tool front door (`order`/`menu`/`route`) instead
 
+## The Standard (2026-09-03)
+
+**`docs/standard/STANDARD.md` is the authority on what "good" means here.** It
+holds one criterion block per ranked axis (metric, method, current, floor,
+target, status, gap), the **Definition of Regression** (13 blocking rules) and
+the **Definition of Done** (9 artifacts a PR needs). `NICHE.md` ranks the axes,
+`DISCOVERY.md` records how each number was measured, `ENFORCEMENT-PLAN.md` is
+the ordered work to gate what is not gated yet. ⚠ **Every Floor is a value the
+tree clears with margin; conservative by design.** ⚠⚠ **Never copy a figure
+from those files or from here** -- tool counts, benchmark ratios, token weights
+and test totals are recomputed by the command in each block's Method line, then
+written with date and commit. Quote the artifact or the test, never the prose.
+
 ## Key Files
 
 ⚠⚠ **This section is the INVARIANTS, not the module map.** The descriptive
