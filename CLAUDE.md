@@ -12,7 +12,7 @@
 ## The Standard and the Harness (2026-09-03)
 
 **`docs/standard/STANDARD.md` is the authority on what "good" means here,
-and `python -m harness` is the one command that says whether a change meets
+and `uv run python -m harness` is the one command that says whether a change meets
 it.** Tiers: `fast` (85 offline files + ruff + Floor checks, 90 s ceiling;
 run before committing), `full` (all of `tests/` + coverage + skip ceiling,
 the PR gate), `bench --offline` (replay, route recall, schema capture,
