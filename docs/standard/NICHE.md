@@ -2,7 +2,7 @@
 
 Written 2026-09-03 at commit `63a621d` (v1.108.316). Every claim here traces to a
 file in this repository or a measurement recorded in `DISCOVERY.md`. Nothing was
-looked up outside the repo.
+looked up outside the repo except the two user-supplied sources in §2a.
 
 ## 1. The job, from the caller's side
 
