@@ -86,8 +86,8 @@ CATALOG_CEILING = 91
 #: that the previous two versions of this gate both failed to implement.
 from harness import thresholds as _thresholds
 
-EXIT_CONTROL_AT_1 = _thresholds.floor("route.control_at1")  # harness/thresholds.json is the only copy
-EXIT_BASELINE_CONTROL_AT_1 = 40.0
+EXIT_CONTROL_AT_1 = _thresholds.target("route.control_at1")  # the EXIT bar; harness/thresholds.json is the only copy
+EXIT_BASELINE_CONTROL_AT_1 = _thresholds.floor("route.control_at1")  # the regression floor
 
 #: Measured every run and reported, but NOT the gate: an aggregate over a corpus
 #: partly fitted to the fix cannot certify anything.
