@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.316] - 2026-09-02 - A display preference edited the data it was displaying
+
 ### Fixed - the result cache handed out the object it was holding (#572, #570)
 
 Reported by @rknighton, twice: #570 for the crash and #572 for the cause, with a
