@@ -375,7 +375,7 @@ def get_blast_radius(
     cached = result_cache_get("get_blast_radius", repo_key, specific_key)
     if cached is not None:
         result = dict(cached)
-        result["_meta"] = {**cached["_meta"],
+        result["_meta"] = {**cached.get("_meta", {}),
                            "timing_ms": round((time.perf_counter() - start) * 1000, 1),
                            "cache_hit": True}
         return _attach_scip_to_blast(result, store, owner, name)

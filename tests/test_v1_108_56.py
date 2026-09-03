@@ -186,6 +186,45 @@ class TestSearchSymbolsCacheMeta:
         assert "timing_ms" in second["_meta"]
 
 
+class TestBlastRadiusCacheMeta:
+    def _seed(self, tmp_path: Path):
+        (tmp_path / "owner.py").write_text(
+            "def target_symbol():\n    return 1\n"
+        )
+        (tmp_path / "consumer.py").write_text(
+            "from owner import target_symbol\n\n"
+            "def consume():\n    return target_symbol()\n"
+        )
+        store_path = str(tmp_path / "idx")
+        res = index_folder(
+            path=str(tmp_path), use_ai_summaries=False,
+            storage_path=store_path, incremental=False, identity_mode="local",
+        )
+        return res["repo"], store_path
+
+    def test_cache_hit_without_meta_synthesizes_envelope(self, tmp_path):
+        from jcodemunch_mcp.tools import get_blast_radius as blast
+
+        repo, store_path = self._seed(tmp_path)
+        kwargs = dict(
+            repo=repo,
+            symbol="target_symbol",
+            storage_path=store_path,
+        )
+        first = blast.get_blast_radius(**kwargs)
+        assert "error" not in first, first
+
+        # The dispatcher strips metadata from the returned dictionary in place.
+        # That dictionary is also the cached value, so the next call must tolerate
+        # an entry that no longer contains _meta.
+        first.pop("_meta", None)
+
+        second = blast.get_blast_radius(**kwargs)
+        assert "error" not in second, second
+        assert second["_meta"]["cache_hit"] is True
+        assert "timing_ms" in second["_meta"]
+
+
 class TestDispatcherKeyError:
     def test_internal_keyerror_is_not_reported_as_missing_argument(self, tmp_path, monkeypatch):
         from jcodemunch_mcp.server import call_tool
