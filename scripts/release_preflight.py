@@ -40,7 +40,6 @@ import os
 import re
 import subprocess
 import sys
-import tomllib
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -81,7 +80,9 @@ def read_pins(root: Path = REPO) -> dict[str, str | None]:
     """Every pin site's version, None where the site could not be read."""
     pins: dict[str, str | None] = {}
     try:
-        pins["pyproject.toml"] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+        # No tomllib: the project supports 3.10 (the first CI run of this file failed there).
+        m = re.search(r'^version = "([^"]+)"', (root / "pyproject.toml").read_text(encoding="utf-8"), re.M)
+        pins["pyproject.toml"] = m.group(1) if m else None
     except Exception:
         pins["pyproject.toml"] = None
     try:
