@@ -298,6 +298,55 @@ def check_harness() -> tuple[bool, str]:
     return rc == 0, "; ".join(tail[-3:]) or f"rc={rc}"
 
 
+def pins_only(a) -> int:
+    """Definition of Done 1-2 on a PR (DESIGN stage 5)."""
+    lines: list[str] = []
+    ok = True
+    pins = read_pins()
+    good, msg = pins_verdict(pins, None)
+    lines.append(f"pins {'agree: ' + msg if good else 'FAIL: ' + msg}")
+    ok = ok and good
+    rc, base_py = _run(["git", "show", f"{a.base_ref}:pyproject.toml"])
+    m = re.search(r'^version = "([^"]+)"', base_py, re.M) if rc == 0 else None
+    base_version = m.group(1) if m else None
+    lines.append(f"base version {base_version}, head version {pins.get('pyproject.toml')}")
+    labels = {x.strip() for x in a.labels.split(",") if x.strip()}
+    moved = good and base_version is not None and base_version != msg
+    if moved:
+        version = msg
+        text = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
+        if not changelog_has(version, text):
+            ok = False
+            lines.append(f"FAIL: pins moved to {version} but CHANGELOG.md has no `## [{version}]` heading")
+        else:
+            lines.append(f"CHANGELOG.md has a heading for {version}")
+        try:
+            wn = json.loads((REPO / "whatsnew.json").read_text(encoding="utf-8"))
+            if wn.get("current") != version or not any(e.get("version") == version for e in wn.get("entries", [])):
+                ok = False
+                lines.append(f"FAIL: whatsnew.json does not carry {version} as current with an entry")
+        except Exception as e:
+            ok = False
+            lines.append(f"FAIL: whatsnew.json unreadable: {e}")
+        rc, tags = _run(["git", "ls-remote", "--tags", "origin", f"v{version}"])
+        if tags.strip():
+            ok = False
+            lines.append(f"FAIL: tag v{version} already exists on origin")
+    elif "release" in labels:
+        ok = False
+        lines.append("FAIL: PR is labeled `release` but the version pins did not move")
+    else:
+        lines.append("pins unchanged; not a release PR")
+    for ln in lines:
+        print(ln)
+    if a.summary:
+        with open(a.summary, "a", encoding="utf-8") as fh:
+            fh.write(f"## done: version pins: {'PASS' if ok else 'FAIL'}\n\n" + "\n".join(f"- {ln}" for ln in lines) + "\n")
+    if not ok:
+        print("::error title=version pins::see the check summary (Definition of Done 1-2)")
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Release pre-flight (read-only).")
     ap.add_argument(
@@ -307,7 +356,13 @@ def main(argv: list[str] | None = None) -> int:
         "--no-harness", action="store_true", help="skip the fast tier (~50 s)"
     )
     ap.add_argument("--offline", action="store_true", help="skip the PyPI lookup")
+    ap.add_argument("--pins-only", action="store_true", help="PR gate mode: pins agree; if they moved vs --base-ref, CHANGELOG and whatsnew carry the version; the `release` label requires a move")
+    ap.add_argument("--base-ref", default="origin/main")
+    ap.add_argument("--labels", default="", help="comma-separated PR labels (with --pins-only)")
+    ap.add_argument("--summary", help="append the verdict lines to this Markdown file")
     a = ap.parse_args(argv)
+    if a.pins_only:
+        return pins_only(a)
 
     ok = True
 
