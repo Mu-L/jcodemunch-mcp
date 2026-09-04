@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 model: claude-opus-5
 job: inbound-fix
 policy_sha256: 097d1b9463d643ade134dab89ce84189089ac327627cc30af551125fa185cf52
@@ -28,7 +28,8 @@ action costs the maintainer's trust in every job.
 The command is the whole process; do not improvise around it. These bounds
 apply on top of its own steps (docs/workflows/DESIGN.md section 2.2):
 
-1. The branch is `inbound/fix-$ISSUE-<slug>` from `origin/main`.
+1. The branch is `inbound/fix-$ISSUE-<slug>` from `origin/main`, created
+   with `git checkout -b`.
 2. The failing test is committed ALONE, before any change under `src/`,
    in its own `git add <test files> && git commit` line (POLICY section 3).
    Its target is one it owns: nothing under the runner home, nothing under
@@ -40,12 +41,14 @@ apply on top of its own steps (docs/workflows/DESIGN.md section 2.2):
    reproduced`; say so in ISSUE.md.
 4. If `/fix-issue` refuses at any step, stop there. Do not guess a fix. Do
    not loosen, skip, or delete a test to get green.
-5. Open the PR with `gh pr create --draft --label agent-authored
-   --body-file <scratchpad path>`. The body follows the template in
-   docs/inbound/DESIGN.md section 7, every heading present and in order.
-   A separate job promotes the draft; you never do.
-6. Never edit a path on the list below. Never push to `main`. Never
-   comment on the issue.
+5. Stop after the command's step 8. Write the PR body to
+   `$RUNNER_TEMP/pr-body.md` (every heading of docs/inbound/DESIGN.md
+   section 7, in order, and the line `Closes #$ISSUE`) and the one-line
+   title to `$RUNNER_TEMP/pr-title.txt`. You do NOT push and you do NOT
+   open the PR: a separate job with no model verifies your commits and
+   does both, as a draft, and a third job promotes it.
+6. Never edit a path on the list below. Never push. Never comment on the
+   issue.
 
 <!-- BEGIN policy:never-touch -->
 .github/workflows/**        .github/dependabot.yml      .github/CODEOWNERS

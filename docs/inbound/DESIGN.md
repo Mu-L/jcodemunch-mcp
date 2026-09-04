@@ -143,6 +143,28 @@ the fix run, and calls `gh pr ready` only when all three are green
 `agent:incomplete` and leaves the draft. It never edits the PR body and
 never re-runs anything.
 
+**As built (2026-09-04, item 6).** Three jobs, so the model never holds
+a token that can write. `preflight` (no model): the kill switch, the
+budget, `fix_preflight.py` (the labeler, `INBOUND_AUTOFIX`, the blocking
+labels, the author's account age and prior activity, a merged revert
+newer than the last human `agent-fix`), then the App token for exactly
+one write, `agent:in-progress`. `fix` (the model; `GITHUB_TOKEN`
+read-only; `id-token: write` for the action's own handshake; the push URL
+of `origin` is set to `no_push`): runs `/fix-issue` in a non-bare
+checkout of `main`, commits on a local `inbound/fix-<n>-<slug>` branch,
+writes the PR body to `$RUNNER_TEMP/pr-body.md`, and stops after the
+command's step 8; the hand-over (a `git bundle` of `origin/main..HEAD`,
+the body, the evidence directory, the model outcome) is an artifact.
+`publish` (no model, no API key): `fix_publish.py` verifies the bundle
+sits on top of `origin/main`, the branch name, every commit's paths
+against the never-touch list and the version pin, the test-before-src
+order, the template headings and `Closes #<n>`; on exit 0 only, the App
+pushes the branch and opens the DRAFT with `--label agent-authored`; on
+anything else the issue gets `needs-human`. `agent:in-progress` is
+removed by the publish job's `always()` step either way. The prompt is
+version 2 (no push, no PR from the model). `inbound-fix-promote.yml`
+writes with the App token too, so every write in the layer is the App's.
+
 ## 4. Dependency PR evaluation
 
 | | |

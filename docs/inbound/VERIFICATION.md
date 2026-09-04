@@ -81,7 +81,16 @@ Unit and structural half; the end-to-end half (an App-authored PR through the ch
 
 ## 6. Fix attempt and promotion (item 6)
 
-PENDING.
+Unit and structural half; the end-to-end half (a real `agent-fix` label through the three jobs, the self-check and promotion) needs the App, the API key and `INBOUND_AUTOFIX` absent (1.10) and is in section 7.
+
+| property | how exercised | result | evidence |
+|---|---|---|---|
+| 6.1 the pre-flight declines before anything runs | `fix_preflight.decide` over a human label on a clean issue; a bot label with `INBOUND_AUTOFIX` unset, set with an established author, a 10-day author, UNKNOWN age and activity; each blocking label with a human label; a revert merged after the last human label, before it, and with no human label at all | proceeds; declines naming the variable; proceeds; declines on age; declines twice (UNKNOWN blocks); declines on each label; declines / proceeds / declines | `tests/test_inbound_fix_gates.py` |
+| 6.2 the publish gate decides from the hand-over alone | `fix_publish.decide` over a clean hand-over; five wrong branch shapes; src before the test commit; a never-touch path in any commit; the version pin; a body missing `## Audit`; a body closing the wrong issue | publishes once; every other case named | same file |
+| 6.3 the bundle is read for real | a `git init` repo with `main`, a branch of two commits (tests then src), bundled; then `main` moved on | two commits oldest first with their files, the gate publishes; after `main` moves the bundle is "not on top of main" and no commit is listed | same file |
+| 6.4 the model job holds no write scope and cannot push | `tests/test_inbound_workflows.py`: the `fix` job's permissions are read plus `id-token`, its action uses `GITHUB_TOKEN`, no App token in the job; the allow-list names no `git push`, no `gh pr`, no bare `git *`; `git remote set-url --push origin no_push` is a step | as specified | same file |
+| 6.5 every write is the App's and follows a kill-switch read | `preflight` labels with the App after the switch; `publish` re-reads the switch before minting the App token and before the push; `promote` reads the switch before `gh pr ready` | as specified | same file |
+| 6.6 review round 1 (item 6) | PENDING | | |
 
 ## 7. Adversarial (Phase 5)
 

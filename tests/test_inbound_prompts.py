@@ -92,10 +92,13 @@ def test_a_version_bump_lets_the_edit_render(tmp_path):
     work = tmp_path / "prompts"
     shutil.copytree(PROMPTS, work)
     p = work / "fix.md"
+    import re
+
+    current = int(re.search(r"^version: (\d+)$", p.read_text(encoding="utf-8"), re.M).group(1))
     t = (
         p.read_text(encoding="utf-8")
         .replace("# Task:", "# Task (edited):", 1)
-        .replace("version: 1", "version: 2", 1)
+        .replace(f"version: {current}", f"version: {current + 1}", 1)
     )
     p.write_text(t, encoding="utf-8")
     assert rp.write(POLICY, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
@@ -104,7 +107,7 @@ def test_a_version_bump_lets_the_edit_render(tmp_path):
         json.loads((work / "VERSIONS.json").read_text(encoding="utf-8"))["fix"][
             "version"
         ]
-        == 2
+        == current + 1
     )
 
 
