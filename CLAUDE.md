@@ -12,30 +12,24 @@
 ## CI/CD: the harness's judgment on every change (2026-09-04)
 
 **`docs/cicd/DESIGN.md` is the pipeline; `docs/cicd/RUNBOOK.md` is what a
-human does.** `pr-gate.yml` runs `python -m harness fast|full|check <id>`
-in five stages and every job is a REQUIRED check on `main` by name:
-`fast: harness fast tier`, `fast: format`, `fast: types`, `fast: dependency
-audit`, `fast: secret scan`, `full: test (<os>, <py>)` x8, `package: install
-and handshake (<os>)` x2, `bench: harness bench tier`, `bench: token
-benchmark`, `done: changelog`, `done: version pins`, `done: tool surface
-documented`, plus `license/cla`. `main.yml` re-runs the full and online bench
-tiers after a merge and OPENS a `regression` issue per failing Floor;
-`nightly.yml` does the same across the matrix with fresh corpora (`drift`);
-`security.yml` is CodeQL. ⚠⚠ **Read a failed check from its SUMMARY**: one
-line per verdict, `<id> crit <c> floor <cmp v> observed <o> FAIL`, and the
-same as an annotation; a pytest or ruff failure lists the ids. ⚠⚠ **No
-threshold lives in a workflow** -- `tests/test_thresholds_are_the_only_copy.py`
-and `tests/test_workflows_pinned.py` fail on a restated Floor, an action
-not pinned to a 40-hex SHA, or `continue-on-error` outside a job named
-`(informational)`. ⚠⚠ **Publishing is `release.yml`, dispatched with a
-version, never run locally and never tag-driven by hand**: a hand-pushed
-`v*` tag runs the pre-flight and fails it. Trusted publishing (OIDC) on
-environments `testpypi`/`pypi`; `dry_run` defaults true until the first real
-publish is separately approved (RUNBOOK §1, §5). ⚠ `enforce_admins` is ON
-and `strict` is ON: nobody pushes to `main`, a stale branch updates before
-it merges, and the emergency path is RUNBOOK §6 with a `bypass` issue.
-⚠ A required check is matched by NAME; renaming a job is a protection
-change (RUNBOOK §8). Open findings: `docs/cicd/FINDINGS.md`.
+human does.** `pr-gate.yml` runs `python -m harness fast|full|check <id>` in
+five stages; every job is a REQUIRED check on `main` BY NAME (`fast: *`,
+`full: test (<os>, <py>)` x8, `package: install and handshake (<os>)` x2,
+`bench: *`, `done: *`, `license/cla`; the list is one `gh api` call, RUNBOOK
+§8, and renaming a job is a protection change). `main.yml` re-runs full +
+online bench after a merge and OPENS a `regression` issue per failing Floor;
+`nightly.yml` does the matrix with fresh corpora (`drift`); `security.yml`
+is CodeQL. ⚠⚠ **Read a failed check from its SUMMARY**: one verdict line
+`<id> crit <c> floor <cmp v> observed <o> FAIL`, also as an annotation; a
+pytest or ruff failure lists the ids. ⚠⚠ **No threshold lives in a
+workflow**; `tests/test_workflows_pinned.py` also fails an action not pinned
+to a 40-hex SHA or `continue-on-error` outside a job named `(informational)`.
+⚠⚠ **Publishing is `release.yml`, dispatched with a version, never local,
+never a hand-pushed tag** (the tag path runs the pre-flight and fails it);
+trusted publishing on environments `testpypi`/`pypi`, `dry_run` true until
+the first real publish is approved (RUNBOOK §1, §5). ⚠ `enforce_admins` and
+`strict` are ON; the emergency path is RUNBOOK §6 with a `bypass` issue.
+Findings: `docs/cicd/FINDINGS.md`.
 
 ## The Standard and the Harness (2026-09-03)
 
