@@ -1,11 +1,17 @@
 {
-  "current": "1.108.316",
+  "current": "1.108.317",
   "entries": [
+    {
+      "version": "1.108.317",
+      "date": "2026-09-04",
+      "title": "CI runs the harness on every change; publishing is a dispatched workflow",
+      "summary": "The eight workflows are five: a staged PR gate whose every job is a required check on main by name, a merge-to-main witness that opens a regression issue per failing Floor, a nightly drift run, CodeQL, and a dispatch-only release workflow with trusted publishing, Test PyPI first, clean-venv smoke on both OSes and a post-publish handshake. Tied search_symbols scores now rank by symbol id on every platform; the token benchmark reference is captured on CI; two new Floors (pyright ratchet, pip-audit zero); SECURITY.md gains a reporting policy. The first release cut through the pipeline."
+    },
     {
       "version": "1.108.316",
       "date": "2026-09-02",
       "title": "A display preference edited the data it was displaying",
-      "summary": "Reported by @rknighton, twice: #570 for the crash and #572 for the cause, with a standard-library reproduction that builds its own repo and needs no fixtures. `cache_put` stored the caller's dict and `cache_get` returned that same dict, so the dispatcher's metadata step \u2014 a DISPLAY preference \u2014 reached into the session"
+      "summary": "Reported by @rknighton, twice: #570 for the crash and #572 for the cause, with a standard-library reproduction that builds its own repo and needs no fixtures. `cache_put` stored the caller's dict and `cache_get` returned that same dict, so the dispatcher's metadata step — a DISPLAY preference — reached into the session"
     },
     {
       "version": "1.108.315",
