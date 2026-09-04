@@ -179,3 +179,57 @@ gh api repos/jgravelle/jcodemunch-mcp/branches/main/protection --jq .required_st
 
 `scripts/release_preflight.py` reads that list and fails on a missing run,
 so a drift shows up at the next release at the latest.
+
+## 9. The inbound layer (headless issue and PR work)
+
+`docs/inbound/POLICY.md` is the contract; `docs/inbound/DESIGN.md` is
+each job. This section is the human's part.
+
+**Turn it on or off.** The repository variable `INBOUND_ENABLED` is the
+one switch. Only the exact string `true` is on.
+
+```
+gh variable set INBOUND_ENABLED --body true
+gh variable set INBOUND_ENABLED --body false
+```
+
+Every job reads it at its first step and again before its first write, so
+a flip stops the layer within one step. Deleting `ANTHROPIC_API_KEY` is
+the coarse stop and is not reversible without the key.
+
+**Approve a drafted reply.** Triage and dependency evaluation never post
+prose. A draft is a file under `drafts/` on the `inbound-ledger` branch
+with `approved: false` in its front matter. To post it, edit the file on
+that branch and set `approved: true` in a commit of your own; the next
+sweep (daily, 06:30 UTC) posts it verbatim as the App and moves the file to
+`drafts/posted/`. An App-authored approval never posts. Editing the body
+before approving is fine; it posts the edited text and resets that
+category's graduation streak (POLICY 9).
+
+**Ask for a fix.** Apply `agent-fix` to an issue. The pre-flight declines
+unless a human applied the label (`INBOUND_AUTOFIX` stays absent), the
+issue carries none of `agent:reverted`, `agent:in-progress`,
+`inbound:security`, and no merged revert names it since your label. The
+result is a DRAFT PR on `inbound/fix-<n>-*` labelled `agent-authored`, or
+`needs-human` on the issue with the reason in the run's audit record. The
+draft becomes ready only when the PR gate, the `selfcheck` check and the
+reviewer verdict are all green; otherwise it carries `agent:incomplete`.
+Merging is yours.
+
+**Read the digest.** One issue per ISO week, `inbound digest <week>`,
+labelled `inbound:digest`, Mondays 06:45 UTC. Every number in it is
+computed by `.github/inbound/digest.py` from the ledger branch; the model
+wrote at most the opening paragraph. `needs-human` items older than 7 days
+are listed there; each is a decision only you can make.
+
+**Something looks wrong.** Flip the switch off, then read the run's audit
+record (`inbound-audit-<run id>` artifact, or `ledger/<YYYY-MM>.jsonl` on
+`inbound-ledger` after the next sweep). A record with `outcome: failed`
+names the step. A security item is named by number only, everywhere.
+
+**Before the first run (once).** FINDINGS IN-3, IN-4, IN-6, IN-8: create
+the App `jcodemunch-inbound`, store `INBOUND_APP_ID`,
+`INBOUND_APP_PRIVATE_KEY` and `ANTHROPIC_API_KEY` as repository secrets,
+add the App to the CLA allowlist, enable private vulnerability reporting,
+and add the ruleset that confines the App to `inbound/**` and
+`inbound-ledger`. `docs/inbound/VERIFICATION.md` row 1.10 tracks it.

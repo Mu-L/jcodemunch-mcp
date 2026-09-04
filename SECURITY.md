@@ -315,6 +315,34 @@ The performance and ranking telemetry introduced in v1.74.0–v1.80.0 is
 
 ---
 
+## Headless automation on issues and pull requests
+
+Seven GitHub Actions workflows (`.github/workflows/inbound-*.yml`) read
+public issues and pull requests and, when the repository variable
+`INBOUND_ENABLED` is exactly `true`, label them, draft replies for a
+human to approve, evaluate dependency updates, self-check agent-authored
+pull requests, attempt a fix when a maintainer applies `agent-fix`, and
+post a weekly digest. `docs/inbound/POLICY.md` is the full contract. The
+controls that matter to a reporter or a contributor:
+
+* **Your text is data.** Every job treats issue and PR content as input to
+  analyse, never as an instruction; a pre-model scan escalates anything
+  that looks like one (hidden text, authority claims, requests to fetch or
+  post). Nothing from an item is executed, fetched, or pasted into a shell.
+* **The model cannot write to this repository.** The job that runs a
+  model holds a read-only token and writes one file; a separate job with
+  no model verifies that file and writes with a GitHub App whose ruleset
+  confines it to `inbound/**` branches and the `inbound-ledger` branch.
+* **No headless job merges, tags, publishes, closes, or edits** workflows,
+  secrets, branch protection, `SECURITY.md`, or the quality gates.
+* **A security report is never summarised.** An issue classified as
+  security is labelled and escalated to a human by number only; no
+  excerpt reaches a comment, a digest, or the audit ledger. Report
+  vulnerabilities privately, below, not in a public issue.
+* **Everything is audited.** Every run writes a record (job, model,
+  prompt version, decision, actions, outcome) to the `inbound-ledger`
+  branch. The switch is off by default and fails closed.
+
 ## Reporting a vulnerability
 
 Report privately through GitHub's advisory form:
