@@ -119,7 +119,9 @@ def roll(artifacts_dir: Path, ledger_dir: Path) -> int:
                     try:
                         seen[month].add(json.loads(line).get("run_id"))
                     except json.JSONDecodeError:
-                        pass
+                        # a malformed ledger line holds no run_id to dedupe on;
+                        # the digest counts and discloses it (digest.py)
+                        continue
         if rec.get("run_id") in seen[month]:
             continue
         with target.open("a", encoding="utf-8") as fh:

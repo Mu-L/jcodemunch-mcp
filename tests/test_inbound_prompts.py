@@ -101,7 +101,9 @@ def test_a_version_bump_lets_the_edit_render(tmp_path):
         .replace(f"version: {current}", f"version: {current + 1}", 1)
     )
     p.write_text(t, encoding="utf-8")
-    assert rp.write(POLICY, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
+    # the write is the act under test, so it is not inside the assert (CodeQL py/side-effect-in-assert)
+    written = rp.write(POLICY, sorted(work.glob("*.md")), work / "VERSIONS.json")
+    assert written == []
     assert rp.check(POLICY, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
     assert (
         json.loads((work / "VERSIONS.json").read_text(encoding="utf-8"))["fix"][
@@ -124,7 +126,8 @@ def test_a_policy_change_rerenders_every_prompt_without_a_bump(tmp_path):
         ),
         encoding="utf-8",
     )
-    assert rp.write(policy, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
+    written = rp.write(policy, sorted(work.glob("*.md")), work / "VERSIONS.json")
+    assert written == []
     assert rp.check(policy, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
     assert "every single word" in (work / "triage.md").read_text(encoding="utf-8")
 
