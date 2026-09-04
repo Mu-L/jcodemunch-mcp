@@ -387,7 +387,9 @@ def test_no_pipe_hides_a_gate_exit_status(path: Path):
             # join `\`-continued lines first: the first draft of this test
             # matched per physical line and stayed green with the pipe back
             for line in (s.get("run") or "").replace("\\\n", " ").splitlines():
-                if re.search(r"\.github/inbound/\w+\.py.*\|\s*tee\b", line):
+                # the class, not the instance (round 2, note 2): any pipe
+                # after a gate hides its status, `tee` was only the one seen
+                if re.search(r"\.github/inbound/\w+\.py[^|]*\|(?!\|)", line):
                     bad.append((name, line.strip()[:80]))
     assert not bad, bad
 
@@ -404,6 +406,18 @@ def test_the_fix_model_job_cannot_push_to_origin():
     assert no_push and model and no_push[0] < model[0], (no_push, model)
     for s in steps:
         assert (s.get("with") or {}).get("persist-credentials", False) is False, s.get("uses")
+
+
+def test_promote_matches_the_app_login_exactly_and_binds_the_verdict_to_the_head_sha():
+    """Item-6 review round 2, note 1: the two round-1 fixes in the promote
+    job live in inline Python; this pins their text so a one-line
+    regression (a substring `test(...)`, a verdict read without the SHA
+    compare) goes red."""
+    doc = _wf(WF / "inbound-fix-promote.yml")
+    runs = "\n".join(s.get("run") or "" for s in _steps(_jobs(doc)["promote"]))
+    assert 'test("jcodemunch' not in runs, "substring login match"
+    assert "os.environ['APP_LOGIN']" in runs and ".replace('app/', '')" in runs
+    assert "head-sha.txt" in runs and 'os.environ["HEAD_SHA"]' in runs and "stale" in runs
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
