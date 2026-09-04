@@ -189,8 +189,15 @@ been measured (AUDIT §2.3) and a truncated measurement is worse than none.
 ## 6. Scheduled sweep and weekly digest
 
 **Sweep**, `.github/workflows/inbound-sweep.yml`, daily 06:30 UTC and
-`workflow_dispatch`; `contents: write` (ledger branch only, by ruleset),
-`issues: write`, `pull-requests: write`; App token; no model.
+`workflow_dispatch`; `GITHUB_TOKEN` is `contents: read`, `actions: read`
+only; every write (the ledger push, the approved-draft comment) uses the App
+token, which the ruleset confines to `inbound-ledger`; no model. (Amended
+2026-09-04, item-3 review: the first draft gave `GITHUB_TOKEN` write scope
+the job never used.) The artifact collection admits only artifacts whose
+producing run is this repository's, on `main`, from a schedule, dispatch,
+issue, or `workflow_run` event: a fork PR's own workflow file can upload an
+artifact under any name, and POLICY 4.1 applies to the ledger as much as to
+a comment.
 
 1. Kill switch.
 2. Roll every `inbound-audit-*` artifact since the last ledger line into

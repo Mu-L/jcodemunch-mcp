@@ -7,10 +7,13 @@ invokes:  ledger.roll; `gh issue comment` for an approved draft (the one
           write); git on the ledger checkout
 produces: ledger/<YYYY-MM>.jsonl appended; drafts/posted/*; a JSON
           summary for the digest; `streaks.json`
-refuses:  to post a draft whose `approved:` is not literally `true`, whose
-          approving commit was authored by the App, or whose body no longer
-          matches its `original` block without `edited: true` being set (it
-          posts the edited text but resets the streak); to post twice
+refuses:  to post a draft whose `approved:` is not literally `true` or whose
+          approving commit was authored by the App; to count a post toward
+          graduation when the body no longer matches its `original` block
+          (it posts the edited text and resets the streak); to post twice;
+          to overwrite a draft already in `drafts/` or `drafts/posted/`
+          when re-ingesting artifacts (a human's approval survives the
+          next sweep); to let one malformed draft abort the others
 """
 
 from __future__ import annotations
@@ -130,11 +133,15 @@ def post_approved(
     for p in sorted(drafts.glob("*.md")):
         try:
             d = parse_draft(p.read_text(encoding="utf-8"))
-        except ValueError as e:
-            results.append({"file": p.name, "action": "hold", "reason": str(e)})
+            human, who = approver_is_human(p, ledger_dir, app_login)
+            verdict = decide(d, human)
+        except (ValueError, KeyError, OSError) as e:
+            # One malformed draft holds itself, never the others (item-3
+            # review, finding 4).
+            results.append(
+                {"file": p.name, "action": "hold", "reason": f"{type(e).__name__}: {e}"}
+            )
             continue
-        human, who = approver_is_human(p, ledger_dir, app_login)
-        verdict = decide(d, human)
         verdict["file"] = p.name
         verdict["approver"] = who
         if verdict["action"] == "post":
@@ -153,6 +160,28 @@ def post_approved(
             newline="\n",
         )
     return results
+
+
+def ingest_drafts(artifacts_dir: Path, ledger_dir: Path) -> dict:
+    """Copy `draft-*` artifact files into `drafts/` ONLY when no file of that
+    name exists in `drafts/` or `drafts/posted/`. The artifact window is two
+    days, so the same artifact is seen by two sweeps; re-copying it would
+    revert a human's `approved: true` or re-create a posted draft (item-3
+    review, finding 1)."""
+    drafts = Path(ledger_dir) / "drafts"
+    posted = drafts / "posted"
+    drafts.mkdir(parents=True, exist_ok=True)
+    posted.mkdir(parents=True, exist_ok=True)
+    added, skipped = [], []
+    for src in sorted(Path(artifacts_dir).rglob("*.md")):
+        if "draft-" not in "/".join(src.relative_to(artifacts_dir).parts[:1]):
+            continue
+        if (drafts / src.name).exists() or (posted / src.name).exists():
+            skipped.append(src.name)
+            continue
+        (drafts / src.name).write_bytes(src.read_bytes())
+        added.append(src.name)
+    return {"added": added, "skipped_existing": skipped}
 
 
 def stale_needs_human(repo: str, days: int = 7) -> list[int]:
@@ -197,11 +226,13 @@ def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ledger import roll
 
+    ingested = ingest_drafts(args.artifacts_dir, args.ledger_dir)
     added = roll(args.artifacts_dir, args.ledger_dir / "ledger")
     posted = post_approved(args.ledger_dir, args.repo, args.app_login, args.apply)
     stale = stale_needs_human(args.repo)
     summary = {
         "ledger_rows_added": added,
+        "drafts_ingested": ingested,
         "drafts": posted,
         "stale_needs_human": stale,
         "ran_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),

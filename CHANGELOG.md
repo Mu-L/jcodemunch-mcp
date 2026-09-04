@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added - the inbound layer: headless triage of issues and PRs, off by default
+
+`docs/inbound/` (AUDIT, POLICY, DESIGN, FINDINGS, VERIFICATION) and the
+jobs under `.github/workflows/inbound-*.yml` let Claude Code, running from
+GitHub Actions, label and draft responses to inbound issues, evaluate
+Dependabot PRs, and attempt a fix on an issue a maintainer labels
+`agent-fix`, so the human's role narrows to reviewing PRs. Every job reads
+one repository variable, `INBOUND_ENABLED`, and only the exact string
+`true` turns anything on; the variable is absent, so nothing runs until a
+human sets it after Phase 5 verification. Nothing headless merges, tags,
+publishes, closes, deletes, edits another account's text, or touches the
+standard, the thresholds, ARCHAEOLOGY, the workflows, or `.claude/`;
+`tests/test_inbound_workflows.py` asserts the structural half over every
+workflow file and the self-check enforces the never-touch list on every
+agent-authored PR. The App that writes on the jobs' behalf holds Contents,
+Issues and Pull requests only, and no job that runs a model holds any write
+scope. Details, per job, in `docs/inbound/DESIGN.md`.
+
 ### Changed - the sdist no longer carries `.github/`
 
 Workflows, the Dependabot config and, from this release, the inbound

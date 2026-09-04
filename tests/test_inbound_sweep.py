@@ -47,7 +47,6 @@ def _draft(
         text = text.replace("approved: false", f"approved: {approved}", 1)
     if edit is not None:
         # edit the shown body only; the original block stays
-        head, rest = text.split("---\n", 2)[1:], None
         text = text.replace(
             body + "\n\n<!-- original -->", edit + "\n\n<!-- original -->", 1
         )
@@ -177,3 +176,52 @@ def test_post_approved_moves_the_file_and_never_posts_twice(tmp_path, monkeypatc
     )
     r2 = sweep.post_approved(led, "o/r", "app[bot]", apply=True)
     assert [x["action"] for x in r2] == ["hold"] and len(posted) == 1
+
+
+def test_ingest_never_overwrites_a_draft_a_human_touched(tmp_path):
+    """Item-3 review, finding 1: the artifact window is two days, so the
+    same artifact reaches two sweeps; re-copying it would revert
+    `approved: true` or re-create a posted draft."""
+    art = tmp_path / "artifacts" / "draft-1-7"
+    art.mkdir(parents=True)
+    (art / "7-r1.md").write_text(
+        "---\nissue: 7\ncategory: question\napproved: false\n---\nA.\n",
+        encoding="utf-8",
+    )
+    led = tmp_path / "led"
+    first = sweep.ingest_drafts(tmp_path / "artifacts", led)
+    assert first == {"added": ["7-r1.md"], "skipped_existing": []}
+    target = led / "drafts" / "7-r1.md"
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("approved: false", "approved: true"),
+        encoding="utf-8",
+    )
+    second = sweep.ingest_drafts(tmp_path / "artifacts", led)
+    assert second == {"added": [], "skipped_existing": ["7-r1.md"]}
+    assert "approved: true" in target.read_text(encoding="utf-8")
+    target.rename(led / "drafts" / "posted" / "7-r1.md")
+    third = sweep.ingest_drafts(tmp_path / "artifacts", led)
+    assert third["added"] == [] and not (led / "drafts" / "7-r1.md").exists()
+
+
+def test_ingest_reads_only_draft_artifacts(tmp_path):
+    other = tmp_path / "artifacts" / "inbound-audit-9"
+    other.mkdir(parents=True)
+    (other / "note.md").write_text("not a draft", encoding="utf-8")
+    assert sweep.ingest_drafts(tmp_path / "artifacts", tmp_path / "led")["added"] == []
+
+
+def test_one_malformed_draft_holds_itself_only(tmp_path, monkeypatch):
+    led = tmp_path / "led"
+    (led / "drafts").mkdir(parents=True)
+    (led / "drafts" / "bad.md").write_text(
+        "---\napproved: true\n---\nno issue key\n", encoding="utf-8"
+    )
+    _draft(led, 8, "Answer eight.", approved="true")
+    monkeypatch.setattr(sweep, "approver_is_human", lambda *a, **k: (True, "jgravelle"))
+    posted = []
+    monkeypatch.setattr(sweep, "_gh", lambda args, repo: posted.append(args))
+    r = sweep.post_approved(led, "o/r", "app[bot]", apply=True)
+    by = {x["file"]: x for x in r}
+    assert by["bad.md"]["action"] == "hold" and "KeyError" in by["bad.md"]["reason"]
+    assert by["8-r1.md"]["action"] == "post" and len(posted) == 1
