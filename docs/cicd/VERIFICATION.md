@@ -84,4 +84,56 @@ appends its verdict table to the step summary. Quoted above.
 - Release dry run dispatched with `version=1.108.316 dry_run=true` from
   `main`: see the run link below.
 
-(Entries below are appended by the session that performs them.)
+### 6.1 What actually happened
+
+- Merges: #575 (stages 1-3) and #583 (nightly + security, whose branch was
+  stacked on the stage 4-5 and main-workflow branches, so #579 and #582
+  landed with it and were closed without a separate merge); then branch
+  protection; then #585 (retire the five old workflows: the first PR to
+  pass with `enforce_admins` and `strict` on, 25 checks, CLEAN) and #584
+  (release workflow), which needed `update-branch` twice under `strict`,
+  three CodeQL review threads answered (C-10) and one CLA webhook redelivery
+  (C-12) before it read CLEAN. No `--admin` merge was used at any point.
+- Protection (`gh api .../branches/main/protection`): 21 required
+  contexts (`license/cla` + the 20 PR-gate job names), `strict: true`,
+  `enforce_admins: true`, `required_conversation_resolution: true`,
+  `allow_force_pushes: false`, `allow_deletions: false`. Repo:
+  `allow_auto_merge: true`, `delete_branch_on_merge: true`. Environments
+  `testpypi` and `pypi` (protected branches only; `pypi` has a 5-minute
+  wait timer).
+- Direct push to `main`, attempted from a one-line commit on a probe branch:
+
+  ```
+  remote: error: GH006: Protected branch update failed for refs/heads/main.
+  remote: - 21 of 21 required status checks are expected.
+   ! [remote rejected] HEAD -> main (protected branch hook declined)
+  ```
+
+- `main.yml` ran green on every merge commit (f497e2f, 06e7d5e, 6c1e485):
+  full witness + online bench, artifacts uploaded, no regression issue.
+- Release dry run from `main` (run 33826479351, `version=1.108.316
+  dry_run=true`): pre-flight, build, test pypi (listed, not uploaded), smoke
+  from the built wheel on ubuntu and windows (`HANDSHAKE PASS`, fixture
+  indexed, tool count 90 == pre-flight 90), tag (printed, not created),
+  pypi SKIPPED by the `dry_run` condition, post-publish smoke on both OSes,
+  github release (notes rendered from the CHANGELOG block, sigstore signing
+  ran), mcp registry (`mcp-publisher login github-oidc` succeeded on the
+  runner; `validate` ran; nothing published). The pre-flight table showed
+  `tag` and `pypi` as FAIL-not-blocking (1.108.316 exists, as expected for
+  a dry run of a released version) and `ci` as FAIL-not-blocking for the
+  reason recorded as C-13, fixed in the follow-up PR and re-proven there.
+
+### 6.2 Runtime against the DESIGN budget
+
+| event | budget | measured |
+|---|---|---|
+| PR, stage 1 failure | ~2 min | 1-2 min (lint probe: 1m07s to FAIL) |
+| PR, all stages, wall | ~15 min | 25-30 min under queue pressure from 10 concurrent PRs; the long pole is the windows full-tier legs at 8-10 min each, then packaging and bench behind them |
+| Merge to main | ~12 min | 6-8 min (`main.yml`) |
+| Release dry run | ~8 min | 7 min |
+| Nightly | ~20 min | not yet run (04:00Z) |
+
+The PR budget is revised to ~25 min wall when windows legs are queued; the
+runner-minute estimate (~95) held. Two levers exist if that matters: stage
+3-5 already start after the ubuntu 3.12 leg, and the windows matrix could
+drop to two Python versions on PRs and keep four on the nightly.
