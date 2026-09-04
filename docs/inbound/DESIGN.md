@@ -223,7 +223,7 @@ calls. `tests/test_inbound_workflows.py` asserts each of these guards
 | secrets | none |
 | model | none |
 | invokes | `.github/inbound/selfcheck.py` on the PR's commit list and file list via the API and `refs/inbound/pr-head` (no checkout of the head at root; the test commit is cherry-picked into a worktree under the runner temp) |
-| checks | (a) no touched path matches the never-touch list rendered from POLICY §4.4; (b) the first commit that touches `tests/` precedes every commit that touches `src/`, that first commit's tests fail on `main` (it cherry-picks the test commit onto a `main` worktree and runs the touched test files, expecting exit 1 and nothing else), and those test files are byte-identical at the PR head (a rewritten reproduction is named); (c) the PR body carries every §7 template heading in order; (d) `Closes #<n>` names an issue that carries `agent-fix` or `inbound:bug-candidate`; (e) the head branch matches `inbound/fix-*`; (f) the PR author is the App |
+| checks | (a) no touched path matches the never-touch list rendered from POLICY §4.4; (b) the first commit that touches `tests/` precedes every commit that touches `src/`, that first commit's tests fail on `main` (it cherry-picks the test commit onto a `main` worktree and runs the touched test files, expecting exit 1 and nothing else), and every path that test commit touched, fixtures included, is byte-identical at the PR head (a rewritten reproduction is named); (c) the PR body carries every §7 template heading in order; (d) `Closes #<n>` names an issue that carries `agent-fix` or `inbound:bug-candidate`; (e) the head branch matches `inbound/fix-*`; (f) the PR author is the App |
 | writes | one check run, pass or fail, with each failed clause named |
 | budgets | 15 min |
 | escalation | a failed check; the promote job (§3) reads it and keeps the PR a draft |
@@ -239,10 +239,13 @@ test is `main` either way and a second `uv sync` per worktree is a second
 environment to keep honest. Only pytest exit 1 counts as red: 2, 4 and 5
 (interrupted, usage, nothing collected) are not a reproduction. The PR
 author check accepts the App's login with or without `[bot]` and the
-`app/` prefix `gh` renders. Clause (b) also proves the red run's test
-files are the ones the PR head carries (`test_files_rewritten_after`),
+`app/` prefix `gh` renders. Clause (b) also proves every path the test commit touched, fixtures
+included, is the one the PR head carries (`test_files_rewritten_after`),
 because `assert False` committed first and the real test written in the
-fix commit would otherwise satisfy it (item-5 review, finding 1). The
+fix commit would otherwise satisfy it (item-5 review, finding 1), and a
+test that reads a fixture is rewritten by rewriting the fixture (round 2,
+finding 2). The pytest command is `_pytest_cmd()`, replaced by the test
+suite with its own interpreter so the red run is exercised end to end. The
 read-only `GITHUB_TOKEN` is scoped to the one step that reads the PR, not
 the job, so the step that executes the PR's test files holds no token.
 

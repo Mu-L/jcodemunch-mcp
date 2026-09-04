@@ -108,6 +108,12 @@ def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, encoding="utf-8", timeout=900)
 
 
+def _pytest_cmd() -> list[str]:
+    """The main checkout's environment; a test replaces this with the
+    interpreter it is running under."""
+    return ["uv", "run", "--no-sync", "pytest"]
+
+
 def red_from_returncode(rc: int) -> bool:
     """Exit 1 is "tests failed", the reproduction. 0 is green (or every
     test skipped), 2 is interrupted (a collection error, a module-level
@@ -118,11 +124,15 @@ def red_from_returncode(rc: int) -> bool:
     return rc == 1
 
 
-def test_files_rewritten_after(test_sha: str, files: list[str], head_ref: str, cwd: Path = ROOT) -> list[str]:
-    """The tests/*.py the red run executed must be byte-identical at the
+def test_files_rewritten_after(test_sha: str, files: list[str], head_ref: str, cwd: Path | None = None) -> list[str]:
+    """Every path the test commit touched must be byte-identical at the
     PR head, or the red run certified a file the PR does not ship
     (item-5 review, finding 1: `assert False` as the reproduction, then
-    the real test rewritten in the fix commit)."""
+    the real test rewritten in the fix commit; round 2: a fixture
+    rewritten instead of the test). `cwd` is resolved at CALL time: a
+    default bound at import would pin the repository this module was
+    loaded from, which the end-to-end test found the hard way."""
+    cwd = cwd or ROOT
     rewritten = []
     for f in files:
         at_test = run(["git", "show", f"{test_sha}:{f}"], cwd)
@@ -141,19 +151,24 @@ def test_commit_is_red_on_main(test_sha: str, base_ref: str, worktree: Path, hea
         cp = run(["git", "cherry-pick", "--no-commit", test_sha], worktree)
         if cp.returncode != 0:
             return False, f"cherry-pick failed: {cp.stderr.strip()[:300]}"
-        files = [f for f in run(["git", "diff", "--cached", "--name-only"], worktree).stdout.split() if f.startswith("tests/") and f.endswith(".py")]
+        touched = run(["git", "diff", "--cached", "--name-only"], worktree).stdout.split()
+        files = [f for f in touched if f.startswith("tests/") and f.endswith(".py")]
         if not files:
             return False, "the test commit adds no tests/*.py"
         if head_ref:
-            rewritten = test_files_rewritten_after(test_sha, files, head_ref)
+            # EVERY path the test commit touched must be identical at the
+            # head, fixtures included: a reproduction that reads
+            # tests/fixtures/f.txt is rewritten by rewriting the fixture
+            # (item-5 review round 2, finding 2).
+            rewritten = test_files_rewritten_after(test_sha, touched, head_ref)
             if rewritten:
-                return False, f"test files rewritten after the test commit: {rewritten}"
+                return False, f"files of the test commit rewritten after it: {rewritten}"
         # The main checkout's environment runs the worktree's test files: the
         # package under test is `main` either way (the worktree is `main`
         # plus a commit that touches only tests/), and a fresh `uv sync` per
         # worktree would be a second environment to keep honest.
         res = run(
-            ["uv", "run", "--no-sync", "pytest", "-q", "-p", "no:xdist",
+            [*_pytest_cmd(), "-q", "-p", "no:xdist",
              "--rootdir", str(worktree), *[str(worktree / f) for f in files]],
             ROOT,
         )
