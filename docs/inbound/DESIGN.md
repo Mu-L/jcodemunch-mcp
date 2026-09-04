@@ -308,7 +308,7 @@ a comment.
    the budget declined it) is named in the digest.
 
 **Digest**, `.github/workflows/inbound-digest.yml`, Mondays 06:45 UTC after
-the sweep; `issues: write`, `contents: read`; `claude-sonnet-5`,
+the sweep; `GITHUB_TOKEN` read-only, the issue written by the App (as built; the first draft said `issues: write`); `claude-sonnet-5`,
 `--max-turns 8`, only to render prose from the ledger rows the job hands
 it; the numbers in the digest are computed by `.github/inbound/digest.py`
 and pasted, never asked of the model. It opens or updates ONE issue titled

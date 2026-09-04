@@ -78,10 +78,11 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/sweep"
           # the newest successful run of OUR sweep workflow file on main; the artifact is that run's own
-          RUN=$(gh api "repos/$REPO/actions/workflows/inbound-sweep.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id' 2>/dev/null || true)
-          if [ -n "$RUN" ]; then
-            ID=$(gh api "repos/$REPO/actions/runs/$RUN/artifacts" --jq ".artifacts[] | select(.name == \"inbound-audit-$RUN\") | .id" | head -1)
-            if [ -n "$ID" ]; then
+          # `.[0].id` on an empty list is the string `null` (review round 1, finding 3)
+          RUN=$(gh api "repos/$REPO/actions/workflows/inbound-sweep.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id // empty' 2>/dev/null || true)
+          if [ -n "$RUN" ] && [ "$RUN" != "null" ]; then
+            ID=$(gh api "repos/$REPO/actions/runs/$RUN/artifacts" --jq "[.artifacts[] | select(.name == \"inbound-audit-$RUN\") | .id] | first // empty" 2>/dev/null || true)
+            if [ -n "$ID" ] && [ "$ID" != "null" ]; then
               gh api "repos/$REPO/actions/artifacts/$ID/zip" > "$RUNNER_TEMP/sweep/a.zip" && \
                 python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/sweep/a.zip" "$RUNNER_TEMP/sweep/x" || true
             fi
@@ -152,7 +153,7 @@ jobs:
       - name: re-read the kill switch before the model runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO"
+        run: python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"
       - name: one paragraph (model; read-only token; the prose file is its only write)
         id: model
         uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
@@ -207,11 +208,17 @@ jobs:
         with:
           name: digest-numbers-${{ github.run_id }}
           path: ${{ runner.temp }}/digest/
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
-        if: always()
-        with:
-          name: digest-prose-${{ github.run_id }}
-          path: ${{ runner.temp }}/prose/
+      - name: the paragraph, if the prose job produced one (absent is a digest without it; review round 1, note 6)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/prose"
+          ID=$(gh api "repos/$REPO/actions/runs/$GITHUB_RUN_ID/artifacts" --jq "[.artifacts[] | select(.name == \"digest-prose-$GITHUB_RUN_ID\") | .id] | first // empty" 2>/dev/null || true)
+          if [ -n "$ID" ] && [ "$ID" != "null" ]; then
+            gh api "repos/$REPO/actions/artifacts/$ID/zip" > "$RUNNER_TEMP/prose.zip" && \
+              python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/prose.zip" "$RUNNER_TEMP/prose" || true
+          fi
+          ls "$RUNNER_TEMP/prose" || true
       - name: the body (the paragraph is admitted only if every digit in it is in the JSON)
         id: body
         run: |
@@ -221,7 +228,7 @@ jobs:
       - name: "re-read the kill switch before the write (GITHUB_TOKEN, because the App has no Variables scope)"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO"
+        run: python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"
       - name: App token (DESIGN D2; this job only)
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
@@ -247,6 +254,10 @@ jobs:
           NUMBER: ${{ steps.issue.outputs.number }}
           ACTION: ${{ steps.issue.outputs.action }}
         run: |
+          # A decline at the re-read above already wrote a `skipped` record
+          # with the state it read (review round 1, finding 2); this step
+          # writes the record for a run that reached the write.
+          if [ -f "$RUNNER_TEMP/audit/record.json" ]; then cat "$RUNNER_TEMP/audit/record.json"; exit 0; fi
           python - <<'PY'
           import json, os, pathlib, subprocess
           tmp = pathlib.Path(os.environ["RUNNER_TEMP"])

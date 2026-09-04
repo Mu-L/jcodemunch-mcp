@@ -94,11 +94,32 @@ def test_pending_drafts_lists_only_unapproved(tmp_path):
 
 
 def test_prose_is_admitted_only_when_its_numbers_are_in_the_json():
-    numbers = {"records": 5, "cost_by_day_usd": {"2026-09-03": 12.5}}
-    assert dg.prose_admissible("Five items, 5 records, 12.5 USD on 2026-09-03.", numbers)[0] is True
-    ok, why = dg.prose_admissible("There were 7 records.", numbers)
-    assert ok is False and "7" in why
-    assert dg.prose_admissible("x" * 1300, numbers)[0] is False
+    """Review round 1, finding 1: the first gate tested each digit-run as
+    a SUBSTRING of the dumped JSON, so `45` passed via a run id and `3` via
+    a date, and number words were never examined. The JSON here carries
+    the fields that leaked (`window`, `title`, a run URL, `recorded_at`)."""
+    numbers = {
+        "records": 5, "cost_by_day_usd": {"2026-09-03": 12.5}, "week": "2026-W36", "title": "inbound digest 2026-W36",
+        "window": ["2026-08-31", "2026-09-07"],
+        "escalated": [{"job": "inbound-triage", "item": "2", "run": "https://github.com/o/r/actions/runs/17890123456"}],
+        "kill_switch_flips": [{"at": "2026-09-02T11:00:00+00:00", "from": "true", "to": "false"}],
+        "stale_needs_human": None, "runs_with_no_cost_recorded": 0,
+    }
+    assert dg.prose_admissible("5 records, 12.5 USD on 2026-09-03, week 2026-W36, item 2 escalated.", numbers)[0] is True
+    for bad, tok in [("There were 7 records.", "7"), ("45 items.", "45"), ("3 escalated.", "3"), ("31 records.", "31"),
+                     ("On 2026-09-02 one flip.", "2026-09-02"), ("890 runs.", "890")]:
+        ok, why = dg.prose_admissible(bad, numbers)
+        assert ok is False and tok in why, (bad, why)
+    for words in ("Five items were handled.", "A dozen escalations.", "None failed.", "Twelve items, four escalated."):
+        ok, why = dg.prose_admissible(words, numbers)
+        assert ok is False and "words" in why, (words, why)
+    assert dg.prose_admissible("5 " * 700, numbers)[0] is False
+
+
+def test_scalar_tokens_come_from_values_and_keys_never_from_substrings():
+    toks = dg._scalar_tokens({"a": 5, "b": 12.5, "c": 3.0, "d": "100", "e": {"2026-09-03": 1}, "f": "https://x/17890123456", "g": "2026-09-02T11:00:00+00:00", "h": True, "i": None})
+    assert {"5", "12.5", "3.0", "3", "100", "2026-09-03", "1"} <= toks
+    assert "17890123456" not in toks and "2026-09-02" not in toks and "True" not in toks
 
 
 def test_render_has_every_section_and_says_not_recorded_rather_than_zero():
@@ -136,8 +157,10 @@ def test_main_end_to_end_json_and_markdown(tmp_path, capsys):
     assert j["title"] == "inbound digest 2026-W36" and j["records"] == 2
     assert out.read_text(encoding="utf-8").startswith("# inbound digest 2026-W36")
     # render-only from the JSON, with a paragraph that invents a number
-    nums = tmp_path / "numbers.json"; nums.write_text(json.dumps(j), encoding="utf-8")
-    prose = tmp_path / "prose.md"; prose.write_text("There were 99 records.", encoding="utf-8")
+    nums = tmp_path / "numbers.json"
+    nums.write_text(json.dumps(j), encoding="utf-8")
+    prose = tmp_path / "prose.md"
+    prose.write_text("There were 99 records.", encoding="utf-8")
     out2 = tmp_path / "body2.md"
     rc = dg.main(["--ledger-root", str(tmp_path), "--repo", "o/r", "--render-only", "--numbers", str(nums), "--prose", str(prose), "--markdown", str(out2)])
     assert rc == 0 and "99" not in out2.read_text(encoding="utf-8")

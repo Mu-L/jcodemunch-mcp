@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 model: claude-sonnet-5
 job: inbound-digest
 policy_sha256: 097d1b9463d643ade134dab89ce84189089ac327627cc30af551125fa185cf52
@@ -33,8 +33,10 @@ that JSON itself. You write ONE opening paragraph and nothing else.
    tool: what the week looked like, in the maintainer's terms (how many
    items were handled, how many need a human, whether any job failed or
    the switch flipped).
-2. Every number you use must appear verbatim in the JSON. The workflow
-   drops the paragraph if it carries a number the JSON does not.
+2. Every number you use must appear verbatim in the JSON, in DIGITS:
+   never spell a number in words ("five", "a dozen", "none"). The
+   workflow drops the paragraph if it carries a number the JSON does not
+   or a number in words.
 3. Name an item by number and category only; never quote an item's text;
    never name a security item beyond its number.
 4. No recommendations, no headings, no lists, no summary of the sections

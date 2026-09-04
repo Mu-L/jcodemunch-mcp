@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -204,17 +205,62 @@ def render(week: str, s: dict, repo: str, ledger_branch_url: str, prose: str | N
     return "\n".join(L) + "\n"
 
 
+_NUMBER_WORDS = re.compile(
+    r"\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|"
+    r"sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|"
+    r"thousand|dozen|half|twice|once|none|no)\b",
+    re.I,
+)
+_NUMERIC_TOKEN = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}-W\d{2}|\d+(?:\.\d+)?")
+PROSE_MAX_CHARS = 1200
+
+
+def _scalar_tokens(obj) -> set[str]:
+    """Every number in the JSON as the token a paragraph would carry: an
+    int or float scalar, a numeric or date-shaped string scalar, and a
+    numeric or date-shaped dict KEY (`cost_by_day_usd` is keyed by date).
+    A run URL or a `recorded_at` timestamp contributes NOTHING: a digit-run
+    that is merely a substring of one is not a number the code computed
+    (review round 1, finding 1: `45` passed via a run id, `3` via a
+    date)."""
+    out: set[str] = set()
+    if isinstance(obj, bool) or obj is None:
+        return out
+    if isinstance(obj, (int, float)):
+        out.add(str(obj))
+        if isinstance(obj, float) and obj == int(obj):
+            out.add(str(int(obj)))
+        return out
+    if isinstance(obj, str):
+        if _NUMERIC_TOKEN.fullmatch(obj):
+            out.add(obj)
+        return out
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(k, str) and _NUMERIC_TOKEN.fullmatch(k):
+                out.add(k)
+            out |= _scalar_tokens(v)
+        return out
+    if isinstance(obj, (list, tuple)):
+        for v in obj:
+            out |= _scalar_tokens(v)
+    return out
+
+
 def prose_admissible(prose: str, numbers: dict) -> tuple[bool, str]:
-    """The model's paragraph is admitted only when every digit-run in it
-    appears somewhere in the JSON it was given; a number the JSON does not
-    carry is a number the model invented."""
-    import re
-    blob = json.dumps(numbers)
-    for n in set(re.findall(r"\d+(?:\.\d+)?", prose)):
-        if n not in blob:
+    """The model's paragraph is admitted only when every numeric token in
+    it (a whole number, a decimal, a date, an ISO week) is a scalar value
+    or key of the JSON it was given, and it spells no number in words; a
+    number the JSON does not carry is a number the model invented."""
+    allowed = _scalar_tokens(numbers)
+    for n in sorted(set(_NUMERIC_TOKEN.findall(prose))):
+        if n not in allowed:
             return False, f"paragraph carries {n}, which the numbers do not"
-    if len(prose.strip()) > 1200:
-        return False, "paragraph over 1200 characters"
+    m = _NUMBER_WORDS.search(prose)
+    if m:
+        return False, f"paragraph spells a number in words ({m.group(0)!r}); digits only"
+    if len(prose.strip()) > PROSE_MAX_CHARS:
+        return False, f"paragraph over {PROSE_MAX_CHARS} characters"
     return True, "admitted"
 
 
