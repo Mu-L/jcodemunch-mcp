@@ -58,8 +58,16 @@ jobs:
         if: steps.kill.outputs.go == 'true'
         id: inputs
         run: |
-          PR=$(gh pr list -R "$REPO" --head "$HEAD_BRANCH" --state open --json number,author,isDraft,labels \
-               --jq '.[] | select(.author.login | test("jcodemunch-inbound")) | .number' | head -1)
+          # Exact login, never a substring: HEAD_BRANCH is PR-controlled in a
+          # workflow_run context (review round 1, finding 3).
+          PR=$(gh pr list -R "$REPO" --head "$HEAD_BRANCH" --state open --json number,author | python -c "
+          import json, os, sys
+          app = os.environ['APP_LOGIN']
+          ok = (app, app.replace('[bot]', ''))
+          for pr in json.load(sys.stdin):
+              if (pr.get('author') or {}).get('login', '').replace('app/', '') in ok:
+                  print(pr['number']); break
+          ")
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
           [ -z "$PR" ] && { echo "no open App PR on $HEAD_BRANCH" ; exit 0; }
           SELF=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs" --jq '.check_runs[] | select(.name == "selfcheck") | .conclusion' | head -1)
@@ -77,7 +85,16 @@ jobs:
           p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ev" / "review.md"
           t = p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
           m = re.search(r"^## Verdict\s*\n\s*(APPROVE|REQUEST CHANGES|BLOCK)", t, re.M)
-          print(m.group(1) if m else "missing")
+          # The verdict is about ONE tree: the hand-over's head must be the
+          # SHA being promoted (review round 1, finding 4).
+          sha_file = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ev" / "head-sha.txt"
+          sha = sha_file.read_text(encoding="utf-8").strip() if sha_file.exists() else ""
+          if not m:
+              print("missing")
+          elif sha != os.environ["HEAD_SHA"]:
+              print(f"stale (evidence is for {sha[:7] or 'no sha'}, the PR head is {os.environ['HEAD_SHA'][:7]})")
+          else:
+              print(m.group(1))
           PY
           )
           fi

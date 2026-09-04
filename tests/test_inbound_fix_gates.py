@@ -110,6 +110,36 @@ def test_the_body_needs_every_heading_and_the_closes_line():
     assert any("Closes #12" in x for x in r)
 
 
+def test_a_merge_or_root_commit_is_refused_and_the_range_is_checked(tmp_path, monkeypatch):
+    """Item-6 review, finding 2 (reproduced by the reviewer): an orphan
+    commit adding `.github/workflows/evil.yml`, merged onto the branch,
+    listed NO files per commit and the tip carried the file. Refused by
+    parent count; and `decide(range_files=...)` catches the path even if
+    the shape check were bypassed."""
+    import subprocess
+    repo = tmp_path / "r"
+    repo.mkdir()
+    def run(*a, cwd=repo):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@x", *a], cwd=cwd, check=True, capture_output=True, text=True)
+    run("init", "-q", "-b", "main"); (repo / "README").write_text("x\n"); run("add", "-A"); run("commit", "-q", "-m", "base")
+    run("checkout", "-q", "-b", "inbound/fix-12-c")
+    (repo / "tests").mkdir(); (repo / "tests" / "test_x.py").write_text("def test_x(): assert 0\n", encoding="utf-8")
+    run("add", "-A"); run("commit", "-q", "-m", "red")
+    run("checkout", "-q", "--orphan", "evil"); run("rm", "-rfq", "."); (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "evil.yml").write_text("on: push\n", encoding="utf-8"); run("add", "-A"); run("commit", "-q", "-m", "evil")
+    run("checkout", "-q", "inbound/fix-12-c"); run("merge", "-q", "--allow-unrelated-histories", "--no-edit", "evil")
+    monkeypatch.setattr(pub, "ROOT", repo)
+    bundle = tmp_path / "fix.bundle"
+    run("bundle", "create", str(bundle), "main..inbound/fix-12-c")
+    head, commits, err = pub.bundle_commits(bundle, "main")
+    assert err and "parents" in err and commits == [], (err, commits)
+    assert ".github/workflows/evil.yml" in pub.range_files("main", head)
+    # the range guard alone, with the per-commit lists showing nothing
+    reasons = pub.decide("inbound/fix-12-c", 12, [{"sha": "a" * 40, "files": ["tests/test_x.py"]}], "", GOOD_BODY, PATTERNS, HEADINGS,
+                         range_files=[".github/workflows/evil.yml", "tests/test_x.py"])
+    assert any("never-touch" in r and "evil.yml" in r for r in reasons), reasons
+
+
 def test_bundle_commits_reads_a_real_bundle_on_top_of_main(tmp_path, monkeypatch):
     """A repo with `main`, a branch of two commits, bundled; the gate lists
     them oldest first with their files, and refuses a bundle whose branch

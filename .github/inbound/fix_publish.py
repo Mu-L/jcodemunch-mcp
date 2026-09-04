@@ -62,22 +62,43 @@ def bundle_commits(bundle: Path, base_ref: str) -> tuple[str | None, list[dict],
     base = _git(["rev-parse", base_ref]).stdout.strip()
     if mb != base:
         return head, [], f"the branch is not on top of {base_ref} (merge-base {mb[:7]}, base {base[:7]})"
-    shas = _git(["rev-list", "--reverse", f"{base_ref}..{head}"]).stdout.split()
+    # `--parents`: a merge commit (two parents) or a root commit (none)
+    # lists NO files under `diff-tree` without `-m`/`--root`, so a
+    # never-touch path could ride in on one (review round 1, finding 2;
+    # reproduced with an orphan commit merged onto the branch). Refused by
+    # shape; `range_files` below is the second guard.
+    lines = _git(["rev-list", "--reverse", "--parents", f"{base_ref}..{head}"]).stdout.splitlines()
     commits = []
-    for s in shas:
+    for line in lines:
+        parts = line.split()
+        if not parts:
+            continue
+        s, parents = parts[0], parts[1:]
+        if len(parents) != 1:
+            return head, [], f"commit {s[:7]} has {len(parents)} parents; every commit must have exactly one"
         files = _git(["diff-tree", "--no-commit-id", "--name-only", "-r", s]).stdout.split()
         commits.append({"sha": s, "files": files})
     return head, commits, None
 
 
-def decide(branch: str, issue: int, commits: list[dict], diff: str, body: str, patterns: list[str], headings: list[str]) -> list[str]:
-    """Pure. Every reason is a refusal; an empty list publishes."""
+def range_files(base_ref: str, head: str) -> list[str]:
+    """Every path that differs between the base and the head, whatever the
+    commits say: the per-commit list can be fooled by commit shape, the
+    range cannot."""
+    return _git(["diff", "--name-only", f"{base_ref}..{head}"]).stdout.split()
+
+
+def decide(branch: str, issue: int, commits: list[dict], diff: str, body: str, patterns: list[str], headings: list[str],
+           range_files: list[str] | None = None) -> list[str]:
+    """Pure. Every reason is a refusal; an empty list publishes.
+    `range_files` is `git diff --name-only base..head`; it is unioned with
+    the per-commit lists for the never-touch check (finding 2)."""
     reasons = []
     if not re.match(rf"^inbound/fix-{issue}-[a-z0-9][a-z0-9-]*$", branch or ""):
         reasons.append(f"branch {branch!r} is not inbound/fix-{issue}-<slug>")
     if not commits:
         reasons.append("no commits on top of main")
-    files = sorted({f for c in commits for f in c["files"]})
+    files = sorted({f for c in commits for f in c["files"]} | set(range_files or []))
     hits = touches_never_touch(files, patterns)
     if hits:
         reasons.append(f"never-touch: {hits}")
@@ -107,9 +128,10 @@ def main(argv: list[str] | None = None) -> int:
     head, commits, err = (None, [], "no bundle file") if not args.bundle.exists() else bundle_commits(args.bundle, args.base_ref)
     reasons = [err] if err else []
     diff = _git(["diff", f"{args.base_ref}..{head}", "--", "pyproject.toml"]).stdout if head and not err else ""
+    rng = range_files(args.base_ref, head) if head and not err else []
     reasons += decide(branch, args.issue, commits, diff,  body,
                       never_touch_patterns(POLICY.read_text(encoding="utf-8")),
-                      template_headings(DESIGN.read_text(encoding="utf-8")))
+                      template_headings(DESIGN.read_text(encoding="utf-8")), range_files=rng)
     res = {"ok": not reasons, "reasons": reasons, "branch": branch, "head": head, "commits": [c["sha"] for c in commits]}
     text = json.dumps(res, sort_keys=True)
     print(text)

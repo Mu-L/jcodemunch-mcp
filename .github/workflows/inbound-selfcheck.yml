@@ -69,7 +69,9 @@ jobs:
         run: |
           uv run python .github/inbound/selfcheck.py --pr-json "$RUNNER_TEMP/pr.json" --diff "$RUNNER_TEMP/pr.diff" \
             --commits "$RUNNER_TEMP/commits.json" --issue-labels "$(cat "$RUNNER_TEMP/issue-labels.txt")" \
-            --base-ref origin/main --head-ref refs/inbound/pr-head --worktree "$RUNNER_TEMP/selfcheck-wt" | tee "$RUNNER_TEMP/selfcheck.json"
+            --base-ref origin/main --head-ref refs/inbound/pr-head --worktree "$RUNNER_TEMP/selfcheck-wt" > "$RUNNER_TEMP/selfcheck.json" || rc=$?
+          # `| tee` would have made this check run's conclusion tee's (item-6 review, finding 1)
+          cat "$RUNNER_TEMP/selfcheck.json"; exit "${rc:-0}"
 
       - name: audit record
         if: always()

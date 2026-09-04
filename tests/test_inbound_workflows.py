@@ -299,10 +299,14 @@ def test_label_triggered_jobs_name_the_label_and_the_branch_prefix(path: Path):
     and nothing else; a `labeled` trigger without both guards would run
     for any label anyone with triage can apply."""
     doc = _wf(path)
+    first = next(iter(_jobs(doc).values()))
+    issues = _triggers(doc).get("issues")
+    if isinstance(issues, dict) and "labeled" in (issues.get("types") or []):
+        # item-6 review, note 9: the fix starts from ONE issue label
+        assert re.search(r"github\.event\.label\.name == '[\w:-]+'", str(first.get("if", ""))), (path.name, first.get("if"))
     pr = _triggers(doc).get("pull_request")
     if not isinstance(pr, dict) or "labeled" not in (pr.get("types") or []):
         return
-    first = next(iter(_jobs(doc).values()))
     cond = str(first.get("if", ""))
     by_label_event = re.search(r"github\.event\.label\.name == '[\w:-]+'", cond)
     by_label_set = re.search(r"contains\(github\.event\.pull_request\.labels\.\*\.name, '[\w:-]+'\)", cond)
@@ -370,6 +374,36 @@ def test_the_model_allow_list_carries_no_posting_verb(path: Path):
                 allow,
             ), (path.name, name, allow)
             assert "Bash(git *)" not in allow, (path.name, name, "a bare git wildcard admits push")
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_no_pipe_hides_a_gate_exit_status(path: Path):
+    """Item-6 review, finding 1: `python gate.py | tee f; rc=$?` records
+    tee's status, so every decline the gate computed was ignored. A
+    `.github/inbound/*.py` invocation is never the left side of a pipe."""
+    bad = []
+    for name, job in _jobs(_wf(path)).items():
+        for s in _steps(job):
+            # join `\`-continued lines first: the first draft of this test
+            # matched per physical line and stayed green with the pipe back
+            for line in (s.get("run") or "").replace("\\\n", " ").splitlines():
+                if re.search(r"\.github/inbound/\w+\.py.*\|\s*tee\b", line):
+                    bad.append((name, line.strip()[:80]))
+    assert not bad, bad
+
+
+def test_the_fix_model_job_cannot_push_to_origin():
+    """VERIFICATION 6.4: the `no_push` URL rewrite is a step of the model
+    job and precedes the action (item-6 review, finding 5: the row claimed
+    this test before it existed)."""
+    doc = _wf(WF / "inbound-fix.yml")
+    fix = _jobs(doc)["fix"]
+    steps = _steps(fix)
+    no_push = [i for i, s in enumerate(steps) if "git remote set-url --push origin no_push" in (s.get("run") or "")]
+    model = [i for i, s in enumerate(steps) if "claude-code-action" in (s.get("uses") or "")]
+    assert no_push and model and no_push[0] < model[0], (no_push, model)
+    for s in steps:
+        assert (s.get("with") or {}).get("persist-credentials", False) is False, s.get("uses")
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)

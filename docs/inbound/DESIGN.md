@@ -121,15 +121,15 @@ turns it into `bug-reproducible` or `bug-unreproducible`. Until
 |---|---|
 | workflow | `.github/workflows/inbound-fix.yml` |
 | trigger | `issues: [labeled]` where the label is `agent-fix` (actor is a maintainer with write, so the action's check passes); later, when `INBOUND_AUTOFIX` is `true`, the triage runner may also apply `agent-fix` and the same trigger fires with the App as actor (`allowed_bots` names the App login only) |
-| permissions | `contents: write`, `pull-requests: write`, `issues: write`, `id-token: write` |
+| permissions | `GITHUB_TOKEN` read-only in every job (`id-token: write` in the model job for the action's handshake); the branch push, the draft PR and every label are the App token's, in the two jobs with no model (amended 2026-09-04, as built) |
 | secrets | `ANTHROPIC_API_KEY`; App id and key. No PyPI, no registry, no environment. |
 | model | `claude-opus-5`, `--max-turns 60` |
 | pre-flight (no model) | kill switch; `INBOUND_AUTOFIX` unless the labeler is a human; budget counts (3 fix runs today, 1 concurrent via `concurrency: inbound-fix`, at most 3 open `agent-authored` PRs); the issue carries none of `agent:reverted`, `agent:in-progress`, `inbound:security`; the author's account is at least 90 days old and has one prior comment, issue or PR here, OR the `agent-fix` labeler is a human; the issue was not the subject of a merged `Revert "..."` PR since the last human `agent-fix` (timeline API, D-rollback §9). Any failure: `skipped` record naming the reason, label untouched, exit 0. |
 | reads | a fresh checkout of `main` at the workspace root (never the issue's content as code); the issue via `gh issue view`; the hooks and commands of layer 4 from that checkout (non-`--bare`: POLICY D5 depends on `.claude/` loading) |
 | invokes | prompt `prompts/fix.md` = the preamble + `/fix-issue <n>` + the never-touch list. The command's own steps run: ISSUE.md, branch `inbound/fix-<n>-<slug>`, the reproduction (POLICY §3: the failing test is committed alone, first), archaeology, the fix, CHANGELOG, fast tier via the commit hook, `run_full.py`, checklist, reviewer subagent, PR body to the scratchpad |
-| writes | label `agent:in-progress` at start and its removal at end; branch `inbound/fix-<n>-*`; a PR (`--body-file`, template §7, `Closes #<n>`, label `agent-authored`): opened as DRAFT always. Uploads `evidence/*` and the review verdict as artifacts. |
+| writes | label `agent:in-progress` at start and its removal at end; branch `inbound/fix-<n>-*` (pushed by the publish job from the model's bundle, after `fix_publish.py` passes); a PR (`--body-file`, template §7, `Closes #<n>`, label `agent-authored`): opened as DRAFT always. Uploads the hand-over (bundle, body, `evidence/*`, the review verdict, the head SHA) as one artifact. |
 | budgets | 60 min; 60 turns; 25 USD (a run over the ceiling is `failed`); the reproduction step alone is bounded by `/fix-issue`'s own `--continue-on-collection-errors` run and a 15-minute step timeout |
-| escalation | `REFUSED: not reproduced` from the command: label `inbound:bug-unreproducible`, draft the request for information, `needs-human`, no branch pushed. `BLOCK` from the reviewer: delete the local branch, push nothing, `needs-human`, record the reasons. Any other failure: `needs-human`, the partial branch pushed only if it contains the failing-test commit (so the human has the reproduction), PR stays draft with `agent:incomplete`. |
+| escalation | `REFUSED: not reproduced` from the command: label `inbound:bug-unreproducible`, draft the request for information, `needs-human`, no branch pushed. `BLOCK` from the reviewer: delete the local branch, push nothing, `needs-human`, record the reasons. Any other failure, and any refusal by the publish gate: `needs-human`, nothing pushed (the hand-over artifact holds the reproduction for 90 days; a partial branch is not pushed, as built). |
 | kill switch | pre-flight, before the push, and before `gh pr create` |
 
 **Promotion from draft to ready is a separate, model-free job**:
@@ -161,9 +161,17 @@ against the never-touch list and the version pin, the test-before-src
 order, the template headings and `Closes #<n>`; on exit 0 only, the App
 pushes the branch and opens the DRAFT with `--label agent-authored`; on
 anything else the issue gets `needs-human`. `agent:in-progress` is
-removed by the publish job's `always()` step either way. The prompt is
-version 2 (no push, no PR from the model). `inbound-fix-promote.yml`
-writes with the App token too, so every write in the layer is the App's.
+removed by the publish job's `always()` step on every path but one: if
+the kill switch flips off between the pre-flight and the publish job's
+re-read, no App token is minted, so the label stays until a human looks
+(the run is red and the record says `skipped`); that is the switch doing
+its job. The prompt is version 2 (no push, no PR from the model).
+`inbound-fix-promote.yml` writes with the App token too, so every write
+in the layer is the App's. After review round 1: the gate refuses any
+commit with other than one parent and checks the base-to-head range as
+well as the per-commit lists (a merge or root commit lists no files);
+the promote job matches the App login exactly and accepts a verdict only
+when the hand-over's head SHA is the PR head being promoted.
 
 ## 4. Dependency PR evaluation
 

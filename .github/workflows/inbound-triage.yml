@@ -208,7 +208,8 @@ jobs:
           OWNER="${REPO%%/*}"
           python .github/inbound/apply_triage.py "$RUNNER_TEMP/result/triage-$ISSUE.json" \
             --author "$AUTHOR" --owner "$OWNER" --repo "$REPO" \
-            --drafts-dir "$RUNNER_TEMP/drafts" --run-id "$GITHUB_RUN_ID" --apply | tee "$RUNNER_TEMP/plan.json"
+            --drafts-dir "$RUNNER_TEMP/drafts" --run-id "$GITHUB_RUN_ID" --apply > "$RUNNER_TEMP/plan.json" || rc=$?
+          cat "$RUNNER_TEMP/plan.json"; exit "${rc:-0}"
 
       - name: audit record
         if: always()

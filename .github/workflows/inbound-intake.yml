@@ -81,7 +81,8 @@ jobs:
           LABELS=$(gh issue view "$ISSUE" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
           python .github/inbound/intake_plan.py "$RUNNER_TEMP/item/scan.json" \
             --event "$EVENT" --action "$ACTION" --actor "$ACTOR" --author "$AUTHOR" --labels "$LABELS" \
-            | tee "$RUNNER_TEMP/item/plan.json"
+            > "$RUNNER_TEMP/item/plan.json" || rc=$?
+          cat "$RUNNER_TEMP/item/plan.json"; [ "${rc:-0}" = "0" ] || exit "$rc"
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           p = json.load(open(os.environ["RUNNER_TEMP"] + "/item/plan.json", encoding="utf-8"))
