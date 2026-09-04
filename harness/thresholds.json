@@ -630,6 +630,61 @@
       "enforced_by": [
         "harness/__main__.py"
       ]
+    },
+    {
+      "id": "types.error_max",
+      "criterion": "N3",
+      "metric": "pyright 1.1.405 error count over src/",
+      "comparator": "<=",
+      "floor": 369,
+      "unit": "errors",
+      "set_at": {
+        "commit": "086ab97",
+        "date": "2026-09-03",
+        "reason": "STANDARD N3 types half, ENFORCEMENT-PLAN item 10. First measurement: 369 errors, 9 warnings, 277 files. A RATCHET: the floor may only fall, and it falls by re-measuring (`python -m harness check types.error_max --stamp`) after a fix, never by editing"
+      },
+      "measured": null,
+      "history": [],
+      "enforced_by": [
+        ".github/workflows/pr-gate.yml"
+      ]
+    },
+    {
+      "id": "deps.vuln_max",
+      "criterion": "8",
+      "metric": "pip-audit advisories in the runtime dependency set, minus unexpired allowlist entries",
+      "comparator": "<=",
+      "floor": 0,
+      "unit": "advisories",
+      "set_at": {
+        "commit": "086ab97",
+        "date": "2026-09-03",
+        "reason": "STANDARD criterion 8, ENFORCEMENT-PLAN item 8. pip-audit reports no severity, so every advisory counts (DESIGN said high/critical; that grade is not available from OSV through pip-audit -- docs/cicd/FINDINGS.md). First measurement found click 8.3.1 PYSEC-2026-2132; click was bumped to 8.5.0 in the same change rather than allowlisted"
+      },
+      "measured": null,
+      "history": [],
+      "enforced_by": [
+        ".github/workflows/pr-gate.yml"
+      ]
+    },
+    {
+      "id": "suite.full_seconds_ci_windows",
+      "criterion": "N1",
+      "metric": "full-tier pytest wall seconds on a GitHub-hosted windows runner (GITHUB_ACTIONS set and sys.platform win32)",
+      "comparator": "<=",
+      "floor": 1033,
+      "unit": "seconds",
+      "set_at": {
+        "commit": "5157b28",
+        "date": "2026-09-04",
+        "reason": "STANDARD N1. A NEW platform-scoped Floor, not a loosening: `suite.full_seconds` (360) was set at 2x this box's median and still governs every non-CI run and the ubuntu legs. The first four windows legs of the PR gate measured 478.7 / 483.55 / 549.12 / 553.55 s on one commit (PR #578, run 33818929448); median 516.3, x2 = 1033 (tolerance rule in docs/harness/DESIGN.md). Tightens only after three more CI runs"
+      },
+      "measured": null,
+      "history": [],
+      "enforced_by": [
+        "harness/__main__.py",
+        ".github/workflows/pr-gate.yml"
+      ]
     }
   ]
 }

@@ -29,7 +29,15 @@ _COMPARATORS = {
     ">": operator.gt,
 }
 
-_REQUIRED = ("id", "criterion", "metric", "comparator", "floor", "set_at", "enforced_by")
+_REQUIRED = (
+    "id",
+    "criterion",
+    "metric",
+    "comparator",
+    "floor",
+    "set_at",
+    "enforced_by",
+)
 
 
 class ThresholdError(ValueError):
@@ -41,7 +49,9 @@ def _validate(entry: dict[str, Any]) -> None:
     if missing:
         raise ThresholdError(f"threshold {entry.get('id')!r} lacks {missing}")
     if entry["comparator"] not in _COMPARATORS:
-        raise ThresholdError(f"threshold {entry['id']!r}: unknown comparator {entry['comparator']!r}")
+        raise ThresholdError(
+            f"threshold {entry['id']!r}: unknown comparator {entry['comparator']!r}"
+        )
     for k in ("commit", "date", "reason"):
         if k not in entry["set_at"]:
             raise ThresholdError(f"threshold {entry['id']!r}: set_at lacks {k!r}")
@@ -65,7 +75,9 @@ def _is_looser(comparator: str, new: Any, old: Any) -> bool:
     return False
 
 
-def load(path: Path | None = None, *, announce: bool = True) -> dict[str, dict[str, Any]]:
+def load(
+    path: Path | None = None, *, announce: bool = True
+) -> dict[str, dict[str, Any]]:
     """Return {id: entry}. Prints every loosened entry to stderr when `announce`."""
     p = path or THRESHOLDS_PATH
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -90,7 +102,9 @@ def get(id: str) -> dict[str, Any]:
     try:
         return entries[id]
     except KeyError:
-        raise ThresholdError(f"no threshold named {id!r} in {THRESHOLDS_PATH}") from None
+        raise ThresholdError(
+            f"no threshold named {id!r} in {THRESHOLDS_PATH}"
+        ) from None
 
 
 def floor(id: str) -> Any:

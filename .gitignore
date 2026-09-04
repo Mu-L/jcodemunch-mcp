@@ -89,6 +89,7 @@ docs/*
 # standard is machine-local and cannot be enforced by CI.
 !docs/standard/
 !docs/harness/
+!docs/cicd/
 # ...except a spec CLAUDE.md binds a live rule to. `prd-extraction-fingerprint`
 # is cited by the PARSER_GENERATION comment as the thing that ends the
 # manual-bump obligation, so a contributor who is bound by that rule has to be
