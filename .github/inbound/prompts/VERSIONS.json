@@ -1,10 +1,10 @@
 {
   "depeval": {
-    "body_sha256": "8bbcbf7b98128dcbacd09d7c0c49b2feee2a1f3de626d04812c1f78d939b116d",
+    "body_sha256": "cdc86e99de6be8ca3e62afdf565e50d15b294ca15d41954b1266e53ce446bf45",
     "model": "claude-sonnet-5",
     "policy_sha256": "097d1b9463d643ade134dab89ce84189089ac327627cc30af551125fa185cf52",
-    "sha256": "e577951cd7aae30f834c4156801e28877527f094caba762627da3a7263d4b1a9",
-    "version": 1
+    "sha256": "38b1e4c835d793690f412f66818fd77de24aae1ed1e83da67d642d765b8b8568",
+    "version": 2
   },
   "digest": {
     "body_sha256": "237952511e7de2f2da74197c7509a3f48bd9f77cfc92f9088120c86ea1815679",

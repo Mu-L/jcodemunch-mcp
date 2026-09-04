@@ -270,3 +270,112 @@ def test_model_action_is_pinned_and_given_the_prompts_model(path: Path):
         assert fm["model"] in text, (
             f"{path.name}: prompt {m.group(1)} pins {fm['model']} but the workflow does not pass it"
         )
+
+
+# ---- item-4 review, finding 4: the guards the design promises, asserted ----
+
+SAME_REPO_GUARD = "github.event.pull_request.head.repo.full_name == github.repository"
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_every_pull_request_job_carries_the_same_repo_guard(path: Path):
+    """DESIGN section 9: a `pull_request` job runs only for a same-repo
+    branch, whether or not it holds a write permission (the bench job has
+    none and executes the merge ref's build hooks)."""
+    doc = _wf(path)
+    if "pull_request" not in _triggers(doc):
+        return
+    for name, job in _jobs(doc).items():
+        cond = str(job.get("if", "")) if job.get("if") is not None else ""
+        assert SAME_REPO_GUARD in cond or (
+            name != next(iter(_jobs(doc)))
+            and re.search(r"needs\.\w+\.outputs\.\w+ == 'true'", cond)
+        ), f"{path.name}:{name}: a pull_request job without the same-repo guard (or a needs: gate on a guarded job)"
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_label_triggered_jobs_name_the_label_and_the_branch_prefix(path: Path):
+    """The bench starts from `agent:bench-pending` on a `dependabot/` head
+    and nothing else; a `labeled` trigger without both guards would run
+    for any label anyone with triage can apply."""
+    doc = _wf(path)
+    pr = _triggers(doc).get("pull_request")
+    if not isinstance(pr, dict) or "labeled" not in (pr.get("types") or []):
+        return
+    first = next(iter(_jobs(doc).values()))
+    cond = str(first.get("if", ""))
+    assert re.search(r"github\.event\.label\.name == '[\w:-]+'", cond), (path.name, cond)
+    assert "startsWith(github.event.pull_request.head.ref, '" in cond, (path.name, cond)
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_workflow_run_jobs_restrict_the_upstream_actor_or_branch(path: Path):
+    """DESIGN section 9: a `workflow_run` job names the upstream actor
+    (Dependabot) or the branch prefix (`inbound/fix-`) and the upstream
+    event, so a fork PR's gate run cannot reach it."""
+    doc = _wf(path)
+    if "workflow_run" not in _triggers(doc):
+        return
+    first_name, first = next(iter(_jobs(doc).items()))
+    cond = str(first.get("if", ""))
+    assert "github.event.workflow_run.event == 'pull_request'" in cond, (path.name, first_name, cond)
+    assert (
+        "github.event.workflow_run.actor.login == 'dependabot[bot]'" in cond
+        or "startsWith(github.event.workflow_run.head_branch, 'inbound/fix-')" in cond
+    ), (path.name, first_name, cond)
+    if "dependabot" in cond:
+        assert "startsWith(github.event.workflow_run.head_branch, 'dependabot/')" in cond, (path.name, cond)
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_pr_code_is_never_checked_out_at_the_workspace_root(path: Path):
+    """Item-4 review, finding 5: `refuses: to check out the PR head at the
+    workspace root` was asserted only over `actions/checkout` steps. A
+    `run:` line can do the same with `git checkout`; the only admitted
+    form is a worktree under the runner temp."""
+    doc = _wf(path)
+    bad = []
+    for name, job in _jobs(doc).items():
+        for s in _steps(job):
+            run = s.get("run") or ""
+            for line in run.splitlines():
+                if re.search(r"git\s+(checkout|switch)\b", line) and re.search(r"refs/(pull|inbound)|pr-(merge|head)", line):
+                    bad.append((name, line.strip()))
+                if re.search(r"git\s+worktree\s+add", line) and "$RUNNER_TEMP" not in line and "runner.temp" not in line:
+                    bad.append((name, line.strip()))
+                if re.search(r"git\s+fetch\b.*refs/pull/", line) and not re.search(r":refs/inbound/", line):
+                    bad.append((name, line.strip()))
+    assert not bad, bad
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_the_model_allow_list_carries_no_posting_verb(path: Path):
+    """Item-4 review, note 7: the model job's read-only token is defence in
+    depth; the allow-list itself must not name a write."""
+    doc = _wf(path)
+    for name, job in _jobs(doc).items():
+        for s in _steps(job):
+            if "claude-code-action" not in (s.get("uses") or ""):
+                continue
+            args = (s.get("with") or {}).get("claude_args", "")
+            allow = args.split("--allowedTools", 1)[1].split("--disallowedTools", 1)[0] if "--allowedTools" in args else ""
+            assert not re.search(
+                r"gh (pr|issue|release|workflow|variable|secret) (edit|comment|create|ready|merge|review|close|run|set|delete)|git push",
+                allow,
+            ), (path.name, name, allow)
+            assert "Bash(git *)" not in allow, (path.name, name, "a bare git wildcard admits push")
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_a_job_that_executes_pr_code_holds_no_app_token(path: Path):
+    """Item-4 review, finding 5: the bench executes the merge ref's build
+    hooks and harness; the App token is minted in a job that runs nothing
+    from the PR."""
+    doc = _wf(path)
+    for name, job in _jobs(doc).items():
+        runs = " ".join((s.get("run") or "") for s in _steps(job))
+        executes_pr = bool(re.search(r"refs/(pull|inbound)/|pr-(merge|head|tree)", runs)) and bool(
+            re.search(r"uv (sync|run)|pytest|harness", runs)
+        )
+        mints = any("create-github-app-token" in (s.get("uses") or "") for s in _steps(job))
+        assert not (executes_pr and mints), f"{path.name}:{name}: executes PR code and mints the App token in one job"

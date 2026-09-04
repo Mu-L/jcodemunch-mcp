@@ -170,27 +170,48 @@ minutes; posts the per-row table under the sticky comment and swaps
 is the one budget the policy exempts, because a grammar update has never
 been measured (AUDIT §2.3) and a truncated measurement is worse than none.
 
-**As built (2026-09-04, item 4).** The evaluation is two jobs, the shape
-item 2's review settled on: `classify` (model; `GITHUB_TOKEN` read-only,
-`contents: read`, `pull-requests: read`, `actions: read`, `id-token:
-write`; no App token; the result JSON is its only write, kept as an
-artifact) and `apply` (no model, no API key; the App token; `apply_depeval.py`
-reads the result, the no-model kind from `depkind.py`, the gate conclusion
-and the Floor table, and applies exactly one outcome label and the one
-sticky comment). The workflow-level permission block is therefore
-`pull-requests: read`, not `write`: the App writes. The Floor table is read
-by code in `apply`, never taken from the model's JSON, so `floors_hold` in
-the model's output is informational.
+**As built (2026-09-04, item 4; amended after review round 1).** The
+evaluation is two jobs, the shape item 2's review settled on: `classify`
+(model; `GITHUB_TOKEN` read-only, `contents: read`, `pull-requests: read`,
+`actions: read`, `id-token: write`; no App token; the result JSON is its
+only write, kept as an artifact) and `apply` (no model, no API key; the
+App token; `apply_depeval.py` reads the result, the no-model kind from
+`depkind.py`, the gate conclusion and the Floor verdicts, and applies
+exactly one outcome label and the one sticky comment). The workflow-level
+permission block is therefore `pull-requests: read`, not `write`: the App
+writes.
 
-The full-corpus bench is NOT dispatched with `gh workflow run` (the App has
-no Actions scope, and D2 does not add one). `apply` labels the PR
-`agent:bench-pending`, and `inbound-bench-full.yml` triggers on that
-`pull_request: labeled` event, guarded by same-repo, `dependabot/` head,
-and the label name; a human applying the same label is the manual re-run
-path. Its `GITHUB_TOKEN` is read-only; the appended table and the label
-swap use the App token. `gh api` rejects `-R`, so `apply_depeval._gh`
-omits it for API calls (the first draft passed it and would have failed on
-every comment lookup).
+**The Floor table comes from the gate's job log.** The PR gate writes its
+summaries to `$GITHUB_STEP_SUMMARY` and uploads only the dist and the
+bench results (FINDINGS IN-14), so both jobs fetch `gh run view --log` for
+the gate run and `apply_depeval.floors_hold` parses the harness's verdict
+lines from it; `floors_hold` in the model's JSON is informational and
+never read for the label.
+
+**`depkind.py` inspects the diff, not the file names.** A `pyproject.toml`
+change is admitted only when every added line sits in a dependency table
+of the head text and every removed line sat in one of the base text (the
+`[project]` `dependencies` array, `[project.optional-dependencies*]`,
+`[dependency-groups]`, `[build-system]`); a workflow change only when
+every changed line is a 40-hex `uses:` pin. A removed package is `major`
+(POLICY rule 2 does not name removals; a human reads them).
+
+**The assessment is a draft.** For `major` and `grammar-or-parser` the
+model's paragraph is written in the triage draft format to a `draft-*`
+artifact for the sweep; the sticky comment carries our numbers, the
+reviewer's reasons and a line saying a draft awaits approval. Nothing the
+model wrote is posted.
+
+**The full-corpus bench is started by a label, and is two jobs.** `apply`
+labels the PR `agent:bench-pending`; `inbound-bench-full.yml` triggers on
+that `pull_request: labeled` event (same-repo, `dependabot/` head, the
+label name, all in the job `if:`). Its `bench` job is read-only and holds
+no App token, because it executes the merge ref's build hooks and harness
+in a worktree under the runner temp; its `apply` job, which runs nothing
+from the PR, mints the App token for the appended table and the label
+swap. `gh api` rejects `-R`, so `apply_depeval._gh` omits it for API
+calls. `tests/test_inbound_workflows.py` asserts each of these guards
+(VERIFICATION 4.7), not only the checkout ones.
 
 ## 5. Agent PR self-check
 

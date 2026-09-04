@@ -1,10 +1,13 @@
 # purpose:  the full-corpus benchmark for a grammar or parser bump, the one
 #           job the policy exempts from the runtime ceiling (POLICY section
 #           2; DESIGN section 4): two fresh runs, main and the PR's merge
-#           ref, one table per Floor row
+#           ref, one table per Floor row. Two jobs: bench (no model, no App
+#           token, read-only; it EXECUTES the merge ref's build hooks and
+#           harness, so nothing that can write is minted in its process)
+#           and apply (no model; the App token; the table and the label)
 # invokes:  killswitch.py, budget.py, `uv run python -m harness bench` on
-#           both trees (no model), bench_table.py, apply_depeval.py
-#           --append-table, ledger.py
+#           both trees, bench_table.py, apply_depeval.py --append-table,
+#           ledger.py
 # produces: the per-row table appended under the sticky comment;
 #           agent:bench-pending swapped for agent:needs-human-review
 # refuses:  to apply agent:ready-to-merge; to check out the PR head at the
@@ -37,6 +40,13 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'dependabot/')
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+      ok: ${{ steps.pr.outputs.ok }}
     env:
       REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
@@ -84,11 +94,12 @@ jobs:
         run: |
           uv sync --locked --group dev --extra watch
           uv run python -m harness warm
-          uv run python -m harness bench --summary "$RUNNER_TEMP/bench_main.md" || true
-          cp harness/results/latest.json "$RUNNER_TEMP/latest_main.json" 2>/dev/null || true
+          mkdir -p "$RUNNER_TEMP/out"
+          uv run python -m harness bench --summary "$RUNNER_TEMP/out/bench_main.md" || true
+          cp harness/results/latest.json "$RUNNER_TEMP/out/latest_main.json" 2>/dev/null || true
           git checkout -q -- harness/results 2>/dev/null || true
 
-      - name: the PR's merge ref, in a worktree (never the workspace root)
+      - name: the PR's merge ref, in a worktree under the runner temp (never the workspace root)
         if: steps.gate.outputs.go == 'true' && steps.pr.outputs.ok == 'true'
         run: |
           git fetch -q origin "refs/pull/$PR/merge:refs/inbound/pr-merge"
@@ -96,24 +107,63 @@ jobs:
           cd "$RUNNER_TEMP/pr-tree"
           uv sync --locked --group dev --extra watch
           uv run python -m harness warm
-          uv run python -m harness bench --summary "$RUNNER_TEMP/bench_pr.md" || true
-          cp harness/results/latest.json "$RUNNER_TEMP/latest_pr.json" 2>/dev/null || true
+          uv run python -m harness bench --summary "$RUNNER_TEMP/out/bench_pr.md" || true
+          cp harness/results/latest.json "$RUNNER_TEMP/out/latest_pr.json" 2>/dev/null || true
 
       - name: one table, per row (F-13, never per total)
         if: steps.gate.outputs.go == 'true' && steps.pr.outputs.ok == 'true'
         run: |
-          uv run python .github/inbound/bench_table.py --base "$RUNNER_TEMP/latest_main.json" --head "$RUNNER_TEMP/latest_pr.json" \
-            --base-summary "$RUNNER_TEMP/bench_main.md" --head-summary "$RUNNER_TEMP/bench_pr.md" > "$RUNNER_TEMP/table.md"
-          cat "$RUNNER_TEMP/table.md"
+          uv run python .github/inbound/bench_table.py --base "$RUNNER_TEMP/out/latest_main.json" --head "$RUNNER_TEMP/out/latest_pr.json" \
+            --base-summary "$RUNNER_TEMP/out/bench_main.md" --head-summary "$RUNNER_TEMP/out/bench_pr.md" > "$RUNNER_TEMP/out/table.md"
+          cat "$RUNNER_TEMP/out/table.md"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always() && steps.gate.outputs.go == 'true' && steps.pr.outputs.ok == 'true'
+        with:
+          name: inbound-bench-${{ github.run_id }}
+          path: ${{ runner.temp }}/out/
+          retention-days: 90
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-bench
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+          if-no-files-found: ignore
+
+  apply:
+    # The write job: no model; nothing from the PR is executed here; the
+    # App token for the appended table and the label swap.
+    needs: bench
+    if: always() && needs.bench.outputs.go == 'true' && needs.bench.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    env:
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        with:
+          name: inbound-bench-${{ github.run_id }}
+          path: ${{ runner.temp }}/out/
 
       - name: "re-read the kill switch before the write (GITHUB_TOKEN, because the App has no Variables scope)"
-        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python .github/inbound/killswitch.py --repo "$REPO"
 
-      - name: App token (DESIGN D2; the two writes below)
-        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.ok == 'true'
+      - name: App token (DESIGN D2; this job only)
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
@@ -121,12 +171,12 @@ jobs:
           private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
 
       - name: append under the sticky comment; swap bench-pending for needs-human-review
-        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.ok == 'true'
         id: act
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          python .github/inbound/apply_depeval.py --append-table "$RUNNER_TEMP/table.md" --pr "$PR" --repo "$REPO" --apply
+          test -s "$RUNNER_TEMP/out/table.md"
+          python .github/inbound/apply_depeval.py --append-table "$RUNNER_TEMP/out/table.md" --pr "$PR" --repo "$REPO" --apply
           gh pr edit "$PR" -R "$REPO" --add-label "agent:needs-human-review" --remove-label "agent:bench-pending"
           echo "done=true" >> "$GITHUB_OUTPUT"
 
@@ -134,13 +184,8 @@ jobs:
         if: always()
         env:
           DONE: ${{ steps.act.outputs.done }}
-          GO: ${{ steps.gate.outputs.go }}
-          OK: ${{ steps.pr.outputs.ok }}
         run: |
-          if [ -f "$RUNNER_TEMP/audit/record.json" ]; then exit 0; fi
-          if [ "$DONE" = "true" ]; then OUTCOME=acted; DECISION="table appended; agent:needs-human-review"; \
-          elif [ "$OK" != "true" ]; then OUTCOME=skipped; DECISION="not a Dependabot PR carrying agent:bench-pending"; \
-          else OUTCOME=failed; DECISION="bench or write step failed"; fi
+          if [ "$DONE" = "true" ]; then OUTCOME=acted; DECISION="table appended; agent:needs-human-review"; else OUTCOME=failed; DECISION="bench table missing or the write failed"; fi
           python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
             --field job=inbound-bench-full --field item="$PR" --field outcome="$OUTCOME" --field decision="$DECISION" \
             --field kill_switch_state=true --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null \
@@ -151,13 +196,3 @@ jobs:
           name: inbound-audit-${{ github.run_id }}
           path: ${{ runner.temp }}/audit/
           retention-days: 90
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
-        if: always()
-        with:
-          name: inbound-bench-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/bench_*.md
-            ${{ runner.temp }}/latest_*.json
-            ${{ runner.temp }}/table.md
-          retention-days: 90
-          if-no-files-found: ignore
