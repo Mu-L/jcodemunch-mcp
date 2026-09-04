@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Changed - CI runs the harness on every change; publishing is a dispatched workflow
+
+The eight workflows are five: `pr-gate.yml` (five staged jobs, every one a
+required check on `main` by name), `main.yml` (full witness + online bench
+after a merge, a `regression` issue per failing Floor, a weekly results PR),
+`nightly.yml` (the matrix with fresh corpora, `drift` issues),
+`security.yml` (CodeQL) and `release.yml` (dispatch with a version: pre-flight,
+build once, Test PyPI, clean-venv smoke on both OSes, tag, PyPI via trusted
+publishing, post-publish smoke with the tool count recomputed, GitHub release
+from the CHANGELOG block, MCP registry; `dry_run` defaults true). `test.yml`,
+`replay.yml`, `harness.yml`, `handshake.yml` and `sign-release.yml` are
+retired into those. Two new Floors: `types.error_max` (pyright ratchet) and
+`deps.vuln_max` (pip-audit, zero; `click` bumped for PYSEC-2026-2132), plus a
+platform-scoped `suite.full_seconds_ci_windows`. `enforce_admins` and
+`strict` are on; the emergency path is `docs/cicd/RUNBOOK.md` §6.
+`SECURITY.md` gains a reporting policy. Design, audit, findings and the
+verification of every probe: `docs/cicd/`.
+
 ### Fixed - tied `search_symbols` scores ranked by the order the disk was walked
 
 The bounded ranking heap broke equal scores by encounter order, which is
@@ -14,7 +32,8 @@ moved. `tests/test_search_symbols_tie_order.py` reverses the index order and
 expects the same answer, and it is red against the old key.
 
 ⚠ The investigation found two more contributors, each documented rather than
-papered over. A CRLF checkout serves `
+papered over. A CRLF checkout serves `
+
 ` inside every fetched symbol
 (+603 tokens on the same pins), so `benchmarks/REPRODUCING.md` now says clone
 LF. And `_meta.total_tokens_saved` is read from `~/.code-index/_savings.json`

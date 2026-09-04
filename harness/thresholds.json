@@ -134,8 +134,7 @@
         "--gate\\s+0\\.02\\b"
       ],
       "enforced_by": [
-        "benchmarks/replay/run_replay.py",
-        ".github/workflows/replay.yml"
+        "harness/__main__.py"
       ]
     },
     {
@@ -333,7 +332,6 @@
         "fail-under=74\\b"
       ],
       "enforced_by": [
-        ".github/workflows/test.yml",
         "harness/__main__.py"
       ]
     },
@@ -421,7 +419,7 @@
       "measured": null,
       "history": [],
       "enforced_by": [
-        ".github/workflows/test.yml",
+        ".github/workflows/pr-gate.yml",
         "tests/test_standard_invariants.py::test_ci_timeout_matches_threshold"
       ]
     },
@@ -440,7 +438,7 @@
       "measured": null,
       "history": [],
       "enforced_by": [
-        ".github/workflows/test.yml",
+        ".github/workflows/pr-gate.yml",
         "harness/__main__.py"
       ]
     },
@@ -459,7 +457,7 @@
       "measured": null,
       "history": [],
       "enforced_by": [
-        ".github/workflows/test.yml",
+        ".github/workflows/pr-gate.yml",
         "harness/__main__.py"
       ]
     },

@@ -375,8 +375,9 @@ def _m_goldset_recall() -> float:
 
 
 def _m_ci_timeout() -> int:
-    text = (REPO / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
-    m = re.search(r"^\s*timeout-minutes:\s*(\d+)", text, re.M)
+    text = (REPO / ".github" / "workflows" / "pr-gate.yml").read_text(encoding="utf-8")
+    # The FULL job's ceiling, not the first job's: the block after `  full:`.
+    m = re.search(r"^  full:\n(?:.*\n)*?\s+timeout-minutes:\s*(\d+)", text, re.M)
     return int(m.group(1)) if m else 10**6
 
 
@@ -484,15 +485,15 @@ MEASURERS = {
 # Thresholds whose verdict is carried by a test or harness exit code rather than
 # a value the runner can read on its own.
 DELEGATED = {
-    "replay.max_relative_drop": "benchmarks/replay/run_replay.py --gate (bench tier) / .github/workflows/replay.yml",
+    "replay.max_relative_drop": "benchmarks/replay/run_replay.py --gate (bench tier; pr-gate.yml stage 4)",
     "schema.drift_tolerance": "tests/test_schema_budget.py (fast tier)",
     "token.grand_ratio_vs_grep": "benchmarks/harness/run_benchmark.py --floor (bench tier, network)",
     "token.per_repo_rise_max": "benchmarks/harness/run_benchmark.py --floor (bench tier, network)",
     "coverage.min": "pytest --cov-fail-under (full tier)",
     "suite.fast_seconds": "this runner, fast tier wall clock",
     "suite.full_seconds": "this runner, full tier wall clock",
-    "ci.skips_ubuntu": "this runner / test.yml, pytest summary",
-    "ci.skips_windows": "this runner / test.yml, pytest summary",
+    "ci.skips_ubuntu": "this runner / pr-gate.yml full tier, pytest summary",
+    "ci.skips_windows": "this runner / pr-gate.yml full tier, pytest summary",
     "suite.full_seconds_ci_windows": "harness full tier on a GitHub windows runner",
     "suite.fast_skips_max": "harness fast tier, pytest summary",
 }
