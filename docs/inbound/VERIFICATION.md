@@ -1,0 +1,46 @@
+# VERIFICATION — every headless job and control, exercised (2026-09-04)
+
+One row per property, with the evidence a reader can re-run. Phase 5's
+adversarial rows are appended as each job ships; a row marked PENDING
+names the PR that will fill it. Run links are added when the run exists on
+GitHub; a local run cites its command and its last line.
+
+## 1. Plumbing (DESIGN section 11, item 1)
+
+| property | how exercised | result | evidence |
+|---|---|---|---|
+| 1.1 kill switch fails closed | `killswitch.enabled()` over `None`, `""`, `True`, `TRUE`, `1`, `yes`, `on`, ` true`, `true\n`; a `gh` failure; a missing variable writing a `skipped` record | every non-`"true"` value is OFF; the record carries `outcome: skipped` and the raw state | `tests/test_inbound_plumbing.py` (kill switch block), `uv run pytest tests/test_inbound_plumbing.py -q`: 31 passed with the build test |
+| 1.2 budgets decline before a run | `budget.evaluate` at each ceiling (3rd fix run, 3rd open agent PR, 60 USD, 20th triage, 4th depeval); an unknown job; a manual dispatch; an over-ceiling run counted double in `cost_today` | each declines with the reason named; manual lifts nothing | same file, budgets block; the table is asserted against POLICY section 7's text so the two cannot drift silently |
+| 1.3 audit record shape | `make_record` yields every POLICY 6.1 field; rejects an unknown field, an unknown outcome, and a security record carrying evidence text | as specified | same file, ledger block |
+| 1.4 ledger roll | three artifacts with one duplicate run_id across two months, rolled twice; a record missing a field | 3 appended then 0; two month files; the bad record skipped | same file |
+| 1.5 scan reads hidden text | security terms inside an HTML comment, split by zero-width characters, in full-width letters, in `<details>`, as a GHSA id; seven injection phrasings (fake `system:` line, code block, HTML comment, authority claim, post-to-URL, `curl | sh`, "new policy"); a plain bug report | every hidden form found; the plain report trips nothing | `tests/test_inbound_scan.py`: 54 passed across the three files. ⚠ The first draft of the workflow-tamper pattern missed "Disable the pr-gate workflow" because a name sat between verb and noun; widened to allow four words (a ratchet that passed against the reintroduced defect would have hidden this, so the failing case stays in the file) |
+| 1.6 prompts are generated, versioned, sha-recorded | `render_prompts.py --check` on the four prompts; a one-byte preamble edit; an edit without a version bump; the same edit with a bump; every workflow-named prompt exists | check clean; the byte edit fails; the unbumped edit is refused by `--write` and flagged by `--check`; the bumped edit renders and VERSIONS.json records version 2 | `tests/test_inbound_prompts.py` |
+| 1.7 sdist ships none of it | `.github/` added to the sdist exclude list; asserted by `test_sdist_excludes_the_github_directory`; `tests/test_build.py` still green | as specified | IN-10 |
+| 1.8 labels exist | `gh label create --force` for `qa`, `needs-human`, `agent-authored`, `agent-fix`, 13 `inbound:*`, 7 `agent:*` | 24 created, 0 failed; `gh label list` counts 22 with the two prefixes | IN-1 fixed by the `qa` label |
+| 1.9 ledger branch exists | orphan branch `inbound-ledger` with `README.md`, `ledger/`, `drafts/`, `drafts/posted/`, pushed | `55c6b6e` on origin | `git ls-remote --heads origin inbound-ledger` |
+| 1.10 App, secrets, variable, ruleset, CLA allowlist, private reporting | human steps (FINDINGS IN-3, IN-4, IN-6, IN-8) | PENDING: nothing in items 2 to 7 runs until these exist; the kill switch is absent, which is OFF | handed over with the plumbing PR |
+
+## 2. Intake and triage (item 2)
+
+PENDING (item 2 PR).
+
+## 3. Sweep and digest (items 3, 7)
+
+PENDING.
+
+## 4. Dependency evaluation (item 4)
+
+PENDING.
+
+## 5. Self-check (item 5)
+
+PENDING.
+
+## 6. Fix attempt and promotion (item 6)
+
+PENDING.
+
+## 7. Adversarial (Phase 5)
+
+PENDING; the scan rows in 1.5 are the unit-level half of the injection
+tests, not the end-to-end half.

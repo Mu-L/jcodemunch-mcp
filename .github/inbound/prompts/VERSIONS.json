@@ -1,0 +1,26 @@
+{
+  "depeval": {
+    "model": "claude-sonnet-5",
+    "policy_sha256": "909e19699631f87c905dcb54187f62b6ca6f310e6ae72efa1138c25401fb44c6",
+    "sha256": "6a58dde21c7f1af920b1e4abaca0a5b47da2562becae2d74bf1d19e49e846248",
+    "version": 1
+  },
+  "digest": {
+    "model": "claude-sonnet-5",
+    "policy_sha256": "909e19699631f87c905dcb54187f62b6ca6f310e6ae72efa1138c25401fb44c6",
+    "sha256": "b4ee22e0ae3ee871dfd9a3aca79619a6b44b99d97a17a59b9253f9106b789bb2",
+    "version": 1
+  },
+  "fix": {
+    "model": "claude-opus-5",
+    "policy_sha256": "909e19699631f87c905dcb54187f62b6ca6f310e6ae72efa1138c25401fb44c6",
+    "sha256": "e8f852c11566d7cc4c5637fb15b095de1ed19783cbdae2462df752c85c6f729f",
+    "version": 1
+  },
+  "triage": {
+    "model": "claude-sonnet-5",
+    "policy_sha256": "909e19699631f87c905dcb54187f62b6ca6f310e6ae72efa1138c25401fb44c6",
+    "sha256": "5bfacf0ca47d5636aa0d80619adff1bfd0616e550ba377531caeaf11d8ab2650",
+    "version": 1
+  }
+}
