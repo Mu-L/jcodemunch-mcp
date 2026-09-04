@@ -30,6 +30,19 @@ VERSIONS = PROMPTS / "VERSIONS.json"
 BEGIN = "<!-- BEGIN policy:{name} -->"
 END = "<!-- END policy:{name} -->"
 
+CRLF = "\r\n"
+LF = "\n"
+
+
+def _read(p: Path) -> str:
+    """Newline-normalised: a CRLF checkout must read like the LF tree it was
+    rendered from, or the check fails on Windows and passes on CI."""
+    return p.read_text(encoding="utf-8").replace(CRLF, LF)
+
+
+def sha_of(text: str) -> str:
+    return hashlib.sha256(text.replace(CRLF, LF).encode("utf-8")).hexdigest()
+
 
 def _fenced_block_after(text: str, heading: str) -> str:
     """The first ``` fenced block after ``heading``, without the fences."""
@@ -48,7 +61,7 @@ def policy_blocks(policy_text: str) -> dict[str, str]:
 
 
 def policy_sha(policy_text: str) -> str:
-    return hashlib.sha256(policy_text.encode("utf-8")).hexdigest()
+    return sha_of(policy_text)
 
 
 def render(prompt_text: str, blocks: dict[str, str], psha: str) -> str:
@@ -81,12 +94,12 @@ def front_matter(prompt_text: str) -> dict:
     return fm
 
 
-def sha_of(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def prompt_files() -> list[Path]:
     return sorted(p for p in PROMPTS.glob("*.md"))
+
+
+def _versions(path: Path) -> dict:
+    return json.loads(_read(path)) if path.exists() else {}
 
 
 def check(
@@ -94,16 +107,12 @@ def check(
     prompts: list[Path] | None = None,
     versions_path: Path = VERSIONS,
 ) -> list[str]:
-    ptext = policy_path.read_text(encoding="utf-8")
+    ptext = _read(policy_path)
     blocks, psha = policy_blocks(ptext), policy_sha(ptext)
-    versions = (
-        json.loads(versions_path.read_text(encoding="utf-8"))
-        if versions_path.exists()
-        else {}
-    )
+    versions = _versions(versions_path)
     problems = []
     for p in prompts or prompt_files():
-        text = p.read_text(encoding="utf-8")
+        text = _read(p)
         try:
             fm = front_matter(text)
         except ValueError as e:
@@ -131,16 +140,12 @@ def write(
     prompts: list[Path] | None = None,
     versions_path: Path = VERSIONS,
 ) -> list[str]:
-    ptext = policy_path.read_text(encoding="utf-8")
+    ptext = _read(policy_path)
     blocks, psha = policy_blocks(ptext), policy_sha(ptext)
-    versions = (
-        json.loads(versions_path.read_text(encoding="utf-8"))
-        if versions_path.exists()
-        else {}
-    )
+    versions = _versions(versions_path)
     refused = []
     for p in prompts or prompt_files():
-        text = p.read_text(encoding="utf-8")
+        text = _read(p)
         fm = front_matter(text)
         new = render(text, blocks, psha)
         rec = versions.get(p.stem, {})
@@ -153,7 +158,7 @@ def write(
                 f"{p.name}: content changed but version is still {fm['version']}; bump `version:` first"
             )
             continue
-        p.write_text(new, encoding="utf-8")
+        p.write_text(new, encoding="utf-8", newline=LF)
         versions[p.stem] = {
             "version": int(fm["version"]),
             "model": fm["model"],
@@ -161,7 +166,9 @@ def write(
             "policy_sha256": psha,
         }
     versions_path.write_text(
-        json.dumps(versions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(versions, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline=LF,
     )
     return refused
 
