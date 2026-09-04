@@ -162,7 +162,12 @@ docs/standard/STANDARD.md   docs/inbound/POLICY.md      docs/inbound/DESIGN.md
 harness/thresholds.json     harness/retired.json        docs/harness/ARCHAEOLOGY.md
 SECURITY.md                 LICENSE                     CONTRIBUTING.md
 pyproject.toml [project].version   server.json   .claude-plugin/plugin.json   whatsnew.json
+.github/inbound/**          .github/ISSUE_TEMPLATE/**
 ```
+
+(Amended 2026-09-04 by DESIGN §10: the last line, the prompt and helper
+directory and the issue templates, was added when the design placed the
+prompts there.)
 
 plus repository settings, secrets, variables, environments, labels other
 than the `inbound:*`/`agent:*`/`needs-human` set, and any branch but the
@@ -173,11 +178,17 @@ any path here fails the self-check whatever the review said.
 ### 4.5 No code from the item runs outside the sandbox
 
 The only place inbound-derived input is exercised is inside the harness on
-a GitHub-hosted runner with no repository secrets in its environment, no
-`ANTHROPIC_API_KEY` (the model call happens in a separate job from the test
-run, DESIGN §3), and network limited to the pinned package indexes. A fork
-PR's code is never checked out into the workspace root of a job that holds
-a write token (AUDIT §3.4).
+a GitHub-hosted runner. The model runner executes the agent's own tests as
+`/fix-issue` requires; the AUTHORITATIVE run for a verdict is the PR gate
+on the pushed branch, whose jobs hold no secrets and a read-only token
+(DESIGN D3). A fork PR's code is never checked out into the workspace root
+of a job that holds a write token (AUDIT §3.4). Hosted runners cannot
+restrict egress; DESIGN §9 names the compensating controls rather than
+claiming a sandbox that does not exist.
+
+(Amended 2026-09-04 by DESIGN §10: the first draft promised the model call
+and the test run in separate jobs, which the workflow layer's commit hook
+makes impossible without weakening it.)
 
 ## 5. Confidence and escalation
 
