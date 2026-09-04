@@ -14,6 +14,9 @@
 # Stage 2 (correctness): harness full tier on 2 OS x 4 Python.    ~12 min wall
 # Stage 3 (packaging): build wheel+sdist, install into a clean venv, real stdio
 #           handshake, index a fixture repo, two tool calls.       ~3 min/OS
+# Retired into this file 2026-09-04: test.yml, replay.yml, harness.yml (fast job;
+#           the bench job is main.yml). handshake.yml and sign-release.yml live in
+#           release.yml.
 # Stage 4 (benchmark gate): bench tier offline + token benchmark on cached
 #           pinned corpora; one PR comment with base vs PR.         ~3 min
 # Stage 5 (definition of done): changelog line, version pins, tool surface
@@ -182,10 +185,13 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then B="${RUNNER_TEMP}/pkg/Scripts"; EXE="$B/jcodemunch-mcp.exe"; else B="${RUNNER_TEMP}/pkg/bin"; EXE="$B/jcodemunch-mcp"; fi
           uv pip install --python "${RUNNER_TEMP}/pkg" dist/*.whl   # the venv DIR: "$B/python" has no .exe on windows and uv will not find it
           "$B/python" -c "import jcodemunch_mcp, sys; print('import ok', jcodemunch_mcp.__file__)"
-          "$EXE" surface | head -5
+          "$EXE" surface | head -5 || { echo "::error title=package (wheel, ${{ matrix.os }})::the console script cannot start: $("$EXE" surface 2>&1 | tail -1 | cut -c1-300)"; exit 1; }
+          set +e
           "$B/python" scripts/handshake.py --expect-version "$V" --command "$EXE" \
             --fixture tests/fixtures/pkg_smoke --expect-languages python,typescript,javascript,go 2>&1 | tee "${RUNNER_TEMP}/handshake.log"
-          { echo "## package (wheel, ${{ matrix.os }})"; echo; echo '```'; grep -E "HANDSHAKE|FAIL|tool_count|first_hit" "${RUNNER_TEMP}/handshake.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          rc=${PIPESTATUS[0]}; set -e
+          { echo "## package (wheel, ${{ matrix.os }})"; echo; echo '```'; grep -E "HANDSHAKE|FAIL|tool_count|first_hit|Error" "${RUNNER_TEMP}/handshake.log" | tail -6; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" != 0 ]; then echo "::error title=package (wheel, ${{ matrix.os }})::$(grep -E 'FAIL|Error' "${RUNNER_TEMP}/handshake.log" | tail -1 | cut -c1-300)"; exit "$rc"; fi
       - name: Install the SDIST into a second clean venv and probe it (ubuntu only)
         if: matrix.os == 'ubuntu-latest'
         shell: bash

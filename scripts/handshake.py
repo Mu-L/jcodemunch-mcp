@@ -8,7 +8,7 @@ is `"unknown"` under `PYTHONPATH=src`, so every test in this suite and every
 CI leg runs from source and cannot see what the published artifact puts on
 the wire. The 1.108.293 handshake was done by hand once and never since.
 This script is meant to run from a FRESH venv holding only
-`jcodemunch-mcp==X.Y.Z` from PyPI (see .github/workflows/handshake.yml); it
+`jcodemunch-mcp==X.Y.Z` from PyPI (see .github/workflows/release.yml post-publish, and pr-gate.yml stage 3); it
 imports nothing from the repository and refuses if the server it spawns is
 being served out of a source tree.
 

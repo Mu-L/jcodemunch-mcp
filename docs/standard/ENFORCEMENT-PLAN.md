@@ -8,7 +8,7 @@
 | 2 | DONE: `benchmarks/self_latency/measure.py`, six thresholds at 2x the median of three runs, bench tier |
 | 3 | PARTIAL: required status checks on `main` set 2026-09-03 (12 contexts: `license/cla`, `lint`, `Retrieval-quality gate`, `Harness fast tier`, the 8 `test (os, py)` legs; `strict` and `enforce_admins` stay false). The bench tier is NOT required: it runs on push to main only and would block every PR. `scripts/release_preflight.py` written 2026-09-03: reads the required contexts and HEAD's check-runs, and refuses on a missing or unfinished run, a lagging pin site, an existing tag or PyPI version, or a MERGEABLE CLEAN contributor PR; `tests/test_release_preflight.py` covers each refusal |
 | 4 | DONE: `tests/test_standard_invariants.py` (+ `tests/test_retirement_ledger.py`, `tests/test_thresholds_are_the_only_copy.py`) |
-| 5 | DONE 2026-09-03: `.github/workflows/handshake.yml` (on `release: published` or dispatch with a version; ubuntu + windows; polls PyPI up to 10 min; fresh `uv venv` + `uv pip install jcodemunch-mcp==X`) runs `scripts/handshake.py`, a real stdio `initialize` that fails unless `serverInfo.version == X`, `instructions` is non-empty and `list_tools` is non-empty. Verified locally against the published 1.108.316 (PASS) and against a wrong expectation (FAIL) |
+| 5 | DONE 2026-09-03, folded into `release.yml` post-publish 2026-09-04: `.github/workflows/handshake.yml` (on `release: published` or dispatch with a version; ubuntu + windows; polls PyPI up to 10 min; fresh `uv venv` + `uv pip install jcodemunch-mcp==X`) runs `scripts/handshake.py`, a real stdio `initialize` that fails unless `serverInfo.version == X`, `instructions` is non-empty and `list_tools` is non-empty. Verified locally against the published 1.108.316 (PASS) and against a wrong expectation (FAIL) |
 | 6 | NOT DONE: `ruff check tests/` still 292; not touched (tests are the fossil record and a mass auto-fix would rewrite 274 files in one commit) |
 | 7 | DONE: `tests/conftest.py::_no_network` |
 | 8 | NOT DONE: dependency audit step |
@@ -20,7 +20,7 @@
 | 14 | NOT DONE: larger replay set |
 | 15 | PARTIAL: `cache_stability` is EXCLUDED from every tier with the reason (FINDINGS F-06); corpus not pinned |
 | 16 | DONE: `tests/test_config_docs_reverse_parity.py` (12 keys in INTERNAL_KEYS, FINDINGS F-03) |
-| 17 | DONE: skip ceiling in `test.yml` and the full tier |
+| 17 | DONE: skip ceiling in the full tier (`pr-gate.yml` since 2026-09-04; `test.yml` before) |
 | 18 | DONE: `timeout-minutes: 20` on the test job |
 
 

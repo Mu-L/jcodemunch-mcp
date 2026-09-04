@@ -37,24 +37,24 @@ import re
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "test.yml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pr-gate.yml"  # was test.yml until 2026-09-04 (docs/cicd/DESIGN.md)
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 
 
 def _test_job_sync_line() -> str:
     """The install command from the job that runs the test matrix.
 
-    ⚠ `test.yml` carries more than one `uv sync`; the coverage job installs
+    ⚠ `pr-gate.yml` carries more than one `uv sync`; the coverage job installs
     without `--extra watch` deliberately. The matrix job is the one a human is
     trying to reproduce, and it is identified by being the sync that names an
     extra -- not by line order, which moves.
     """
     text = WORKFLOW.read_text(encoding="utf-8")
     syncs = re.findall(r"uv sync[^\n]*", text)
-    assert syncs, "no `uv sync` in test.yml; did the install step move?"
+    assert syncs, "no `uv sync` in pr-gate.yml; did the install step move?"
     with_extra = [s.strip() for s in syncs if "--extra" in s]
     assert with_extra, (
-        "no `uv sync ... --extra ...` in test.yml. If the matrix job stopped "
+        "no `uv sync ... --extra ...` in pr-gate.yml. If the matrix job stopped "
         "installing an extra, update this test AND the documented reproduce "
         "command together -- they are the same fact in two places."
     )
