@@ -28,18 +28,30 @@ STANDARD = (REPO / "docs" / "standard" / "STANDARD.md").read_text(encoding="utf-
 # (COVERAGE-MAP s3): enumerated so a deletion is noticed. Names, not
 # behaviour; the behaviour lives in the files.
 HONESTY_PINS = [
-    "tests/test_v1_108_186.py",          # ledger_trust: UNKNOWN is a third bucket, never False
+    "tests/test_v1_108_186.py",  # ledger_trust: UNKNOWN is a third bucket, never False
     "tests/test_result_cache_isolation.py",  # a cache returns a copy, not its stored object (#572)
-    "tests/test_stop_rule.py",           # terminal means final, not safe
-    "tests/test_analyze_perf_totals.py", # hit_rate_basis; a tokens-only baseline refuses a latency delta
-    "tests/test_security_disclosure.py", # every remote-write route is disclosed
+    "tests/test_stop_rule.py",  # terminal means final, not safe
+    "tests/test_analyze_perf_totals.py",  # hit_rate_basis; a tokens-only baseline refuses a latency delta
+    "tests/test_security_disclosure.py",  # every remote-write route is disclosed
     "tests/test_optional_dep_skips_are_visible.py",  # a skip must collect and show
 ]
 PROPOSED = {
-    "6a client-specific surface selection": ["tests/test_agent_selector.py", "tests/test_tier_switch_cost.py"],
-    "3a multi-process coordination": ["tests/test_v1_108_105.py", "tests/test_v1_108_108.py"],
-    "9a evidence receipts": ["tests/test_receipt.py", "tests/test_negative_evidence.py"],
-    "8a runtime-trace ingestion safety": ["tests/test_runtime_phase0.py", "tests/test_runtime_phase5.py"],
+    "6a client-specific surface selection": [
+        "tests/test_agent_selector.py",
+        "tests/test_tier_switch_cost.py",
+    ],
+    "3a multi-process coordination": [
+        "tests/test_v1_108_105.py",
+        "tests/test_v1_108_108.py",
+    ],
+    "9a evidence receipts": [
+        "tests/test_receipt.py",
+        "tests/test_negative_evidence.py",
+    ],
+    "8a runtime-trace ingestion safety": [
+        "tests/test_runtime_phase0.py",
+        "tests/test_runtime_phase5.py",
+    ],
 }
 
 
@@ -51,7 +63,9 @@ def _collects(path: Path) -> bool:
 @pytest.mark.parametrize("path", HONESTY_PINS)
 def test_honesty_pin_exists_and_collects(path):
     p = REPO / path
-    assert p.exists(), f"{path} named in the honesty enumeration is gone; retire it through harness/retired.json or restore it"
+    assert p.exists(), (
+        f"{path} named in the honesty enumeration is gone; retire it through harness/retired.json or restore it"
+    )
     assert _collects(p), f"{path} defines no test functions"
 
 
@@ -100,25 +114,42 @@ def test_unclear_items_are_still_present_and_untouched_by_the_harness():
     review question travels with the entry."""
     for u in TIERS["unclear"]:
         p = REPO / u["path"]
-        assert p.exists(), f"UNCLEAR item {u['path']} is gone; it was to stay byte-identical until reviewed"
+        assert p.exists(), (
+            f"UNCLEAR item {u['path']} is gone; it was to stay byte-identical until reviewed"
+        )
         assert u["question"], f"UNCLEAR item {u['path']} carries no review question"
 
 
 def test_counter_saving_floor():
-    b = json.loads((REPO / "benchmarks" / "schema_baseline.json").read_text(encoding="utf-8"))
+    b = json.loads(
+        (REPO / "benchmarks" / "schema_baseline.json").read_text(encoding="utf-8")
+    )
     saving = 1 - b["counter_full"] / b["full_full"]
-    T.assert_passes("counter.saving_min", round(saving, 4), context="benchmarks/schema_baseline.json")
+    T.assert_passes(
+        "counter.saving_min",
+        round(saving, 4),
+        context="benchmarks/schema_baseline.json",
+    )
 
 
 def test_language_counts_do_not_shrink():
     from jcodemunch_mcp.parser.languages import LANGUAGE_EXTENSIONS, LANGUAGE_REGISTRY
-    T.assert_passes("languages.registry_min", len(LANGUAGE_REGISTRY),
-                    context="a removed language needs a CHANGELOG entry AND a tightened-history threshold entry")
+
+    T.assert_passes(
+        "languages.registry_min",
+        len(LANGUAGE_REGISTRY),
+        context="a removed language needs a CHANGELOG entry AND a tightened-history threshold entry",
+    )
     T.assert_passes("languages.extensions_min", len(LANGUAGE_EXTENSIONS))
 
 
 def test_ci_timeout_matches_threshold():
-    text = (REPO / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
-    m = re.search(r"^\s*timeout-minutes:\s*(\d+)", text, re.M)
-    assert m, "test.yml has no timeout-minutes on the test job (STANDARD N1)"
-    T.assert_passes("ci.test_job_timeout_minutes", int(m.group(1)), context=".github/workflows/test.yml")
+    text = (REPO / ".github" / "workflows" / "pr-gate.yml").read_text(encoding="utf-8")
+    # The FULL job's ceiling, not the first job's: the block after `  full:`.
+    m = re.search(r"^  full:\n(?:.*\n)*?\s+timeout-minutes:\s*(\d+)", text, re.M)
+    assert m, "pr-gate.yml has no timeout-minutes on the full job (STANDARD N1)"
+    T.assert_passes(
+        "ci.test_job_timeout_minutes",
+        int(m.group(1)),
+        context=".github/workflows/pr-gate.yml",
+    )

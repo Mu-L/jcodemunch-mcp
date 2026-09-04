@@ -464,7 +464,7 @@ Each names a date to grep for in `ISSUE-HISTORY.md`.
   reconciled exactly**. ⚠ Read the SKIP count, not just the exit code and the
   total. ⚠⚠ The fix is in a GITIGNORED skill file, so the durable copy and its
   ratchet live in the repo — `tests/test_ci_env_reproduce_command.py` binds
-  CLAUDE.md's command to `test.yml`'s install line.
+  CLAUDE.md's command to `pr-gate.yml`'s install line (it was `test.yml` until 2026-09-04).
   [[pipes-and-missing-xdist-both-report-exit-zero]]
 - **A denylist catches the instance; an allowlist catches the class.** 08-28:
   `relnotes.md`, a scratch copy of the release notes, was swept up by
@@ -842,7 +842,7 @@ uv run --python 3.13 pytest tests/ -q
 2026-08-28 and NEVER built CI's environment** — no `--extra watch`, no
 dev-group sync. It only looked correct while `.venv` happened to carry the
 extras from an earlier sync, i.e. **the command was inheriting a state it did
-not create**. CI runs `uv sync --locked --group dev --extra watch` first.
+not create**. CI (`pr-gate.yml`, formerly `test.yml`) runs `uv sync --locked --group dev --extra watch` first.
 
 ⚠⚠ **Caught mid-release, and the near-miss is the lesson: it returned EXIT 0
 and the totals reconciled EXACTLY** (8,740 + 18 new tests = 8,758) — the two

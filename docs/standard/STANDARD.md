@@ -36,7 +36,7 @@ Method: (a) `PYTHONPATH=src python -m pytest tests/test_rust_fidelity.py tests/t
 Current: (a) Rust on ripgrep `3fce3b5`: extra 0, wrong_span 0, undercount 0, qual_mismatch 0, coverage 95.8%, missing 156 all `module`+`macro`; Racket 211 files: extra 0, wrong_span 0, source_coverage 89.7%, reader 761,009 nodes with 0 disagreements. (b) nDCG 1.0 / MRR 1.0 / Recall 1.0 on 10 queries, run 2026-09-03, 2.717 s. (c) recall 1.0 on all three channels; precision ast 0.818, duck 0.5, decorator 0.556. All at `63a621d`.
 Floor: (a) all four gated buckets at 0 for Rust [`fidelity.rust.*`]; `extra` and `wrong_span` at 0 for Racket [`fidelity.racket.*`]. (b) no replay aggregate more than the `replay.max_relative_drop` fraction below the golden file (0.02 at set time). (c) recall 1.0 on every channel [`goldset.recall_min`].
 Target: a fidelity oracle for every language in the top ten of the corpus mix, with the same four buckets at 0; a replay set of at least 100 queries across three languages.
-Status: MEASURED for the Floors (fast tier + `replay.yml` + `python -m harness check`); PARTIALLY for the axis (two languages have oracles; replay is 10 queries on one repo).
+Status: MEASURED for the Floors (fast tier + the bench tier's replay gate in `pr-gate.yml` + `python -m harness check`); PARTIALLY for the axis (two languages have oracles; replay is 10 queries on one repo).
 Gap: oracles for Python, TypeScript, Go, Java, C# at minimum; a larger replay golden set; a repo-wide precision number for `search_symbols` that `tests/` can gate.
 
 ### 2. Token reduction per task
@@ -87,7 +87,7 @@ Current (2026-09-03, self corpus, fresh process): `search_symbols` cold 2,605.9 
 Floor: [`latency.<tool>_warm_p95_ms`] for `search_symbols`, `search_text`, `get_symbol_source`, `get_file_outline`: 2x the median of three consecutive `benchmarks/self_latency/measure.py` runs on the src-only self corpus (set 2026-09-03; medians 11.2 / 135.3 / 13.1 / 13.9 ms). `analyze_perf` still refuses to diff latency against the TOKEN baselines (v1.108.309), correctly; this artifact is the latency baseline it lacked.
 Target: warm p95 under 500 ms for `search_symbols`, `search_text`, `get_symbol_source`, `get_file_outline` on the self corpus in CI; cold first-call under 5 s.
 Status: MEASURED (bench tier).
-Gap: CI runner noise is unmeasured until `harness.yml` has produced three bench runs; `search_text` at 10x `search_symbols` warm (FINDINGS F-07) is the first thing to profile.
+Gap: CI runner noise is unmeasured until `pr-gate.yml`/`main.yml` have produced three bench runs; `search_text` at 10x `search_symbols` warm (FINDINGS F-07) is the first thing to profile.
 
 ### 6. Install, configuration and client friction
 Why it matters: ~22 of 140 issues. A failed first run ends adoption before any
@@ -100,7 +100,7 @@ Current: (a) verified by hand at 1.108.292 for #536; not re-verified since. (b) 
 Floor: (a) `tests/test_mcp_instructions.py` passes (source side). (b) BOTH directions: `tests/test_docs_config_parity.py` (documented -> exists) and `tests/test_config_docs_reverse_parity.py` (exists -> documented, with an INTERNAL_KEYS list that may only shrink; FINDINGS F-03).
 Target: (a) an automated post-publish handshake against the PyPI artifact; (b) every `DEFAULTS` key documented or explicitly listed as internal; (c) each `CLIENTS.md` config parsed and validated in a test.
 Status: PARTIALLY MEASURED.
-Gap: a post-release CI job (on `release: published`, beside `sign-release.yml`) that installs the artifact in a fresh venv and asserts the handshake; a reverse-direction config parity test with an internal-keys allowlist.
+Gap: a post-release CI job (`release.yml` post-publish since 2026-09-04) that installs the artifact in a fresh venv and asserts the handshake; a reverse-direction config parity test with an internal-keys allowlist.
 
 ### 7. Stability across releases
 Why it matters: 246 releases in 90 days. Four consecutive ones shipped on a
@@ -155,8 +155,8 @@ Gap: the oracles are criterion 1's gap.
 ## Non-functional criteria that protect autonomy
 
 ### N1. Test-suite runtime ceiling
-Metric: wall-clock of the `test.yml` pytest job per leg, and local `-n auto` runtime.
-Method: `gh run list --workflow test.yml --limit 10 --json createdAt,updatedAt,conclusion`; locally `uv run pytest tests/ -n auto --dist loadfile -q`.
+Metric: wall-clock of the `pr-gate.yml` full-tier job per leg, and local `-n auto` runtime.
+Method: `gh run list --workflow pr-gate.yml --limit 10 --json createdAt,updatedAt,conclusion`; locally `uv run pytest tests/ -n auto --dist loadfile -q`.
 Current: CI 9m44s to 15m59s over the last 10 runs (whole workflow, 9 jobs); local `-n auto` 183 s on 2026-08-16 at 7,859 tests (`pyproject.toml:178-179`), UNKNOWN today at 9,174.
 Floor: CI test job under [`ci.test_job_timeout_minutes`] (20, enforced by `timeout-minutes`); a local `-n auto` run under [`suite.full_seconds`] (360 s); the fast tier under [`suite.fast_seconds`] (90 s).
 Target: CI under 12 minutes; local under 4.
@@ -167,7 +167,7 @@ Gap: none.
 Metric: line coverage of `src/` under the full suite.
 Method: `uv run pytest tests/ -n 4 --dist loadfile --cov=src --cov-fail-under=74` (CI).
 Current: passes the 74% floor on every green run; the actual percentage is UNKNOWN (not printed in this session and not recorded in any artifact).
-Floor: [`coverage.min`] 74% (enforced since v1.108.76; read from the threshold file by `test.yml` and the full tier since 2026-09-03).
+Floor: [`coverage.min`] 74% (enforced since v1.108.76; read from the threshold file by the full tier (`pr-gate.yml`) since 2026-09-03).
 Target: record the measured percentage per release so the floor can be raised on evidence.
 Status: MEASURED (floor), UNKNOWN (value).
 Gap: emit `coverage.json` as a CI artifact and pin the number in `whatsnew.json` or a benchmarks artifact.
@@ -210,11 +210,11 @@ Gap: none; rotation is Practice 5.
 
 ### N7. CI skip count
 Metric: `skipped` on each CI leg.
-Method: read the pytest summary line of the `test.yml` job.
+Method: read the pytest summary line of the `pr-gate.yml` full-tier job.
 Current: ubuntu 26, windows 19, local 13 (`CLAUDE.md`); the 2026-08-28 incident was 105 skipped at exit 0.
 Floor: ubuntu at or under 30, windows at or under 25.
 Target: a step that fails the job when `skipped` exceeds the floor.
-Status: MEASURED and enforced (`test.yml` fails a leg over [`ci.skips_ubuntu`] / [`ci.skips_windows`]; the full tier applies the same ceiling locally).
+Status: MEASURED and enforced (`pr-gate.yml` fails a leg over [`ci.skips_ubuntu`] / [`ci.skips_windows`]; the full tier applies the same ceiling locally).
 Gap: reconcile the 19-vs-13 local delta (FINDINGS F-05).
 
 ---
