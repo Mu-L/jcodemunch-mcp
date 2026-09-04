@@ -40,6 +40,26 @@ upload, tag, release or registry write and smokes the built wheel instead.
 revoke the `~/.pypirc` token on PyPI (Account settings → API tokens) and
 delete the file; §5.
 
+## 1a. Until PyPI persists a trusted publisher (C-15)
+
+`release: pypi` fails with `invalid-publisher` and the run stops after
+`release: tag`. Test PyPI, both smokes and the tag are done at that point.
+Finish by hand, with the artifact CI built (never a local rebuild):
+
+```
+gh run download <run-id> -n dist -D dist-ci
+uvx --from twine twine check dist-ci\*
+uvx --from twine twine upload dist-ci\jcodemunch_mcp-X.Y.Z*
+```
+
+then the post-publish smoke from PyPI in a fresh venv
+(`scripts\handshake.py --expect-version X.Y.Z --command <venv>\Scripts\jcodemunch-mcp.exe --fixture testsixtures\pkg_smoke`),
+`gh release create vX.Y.Z dist-ci\* --title ... --notes-file ...` with the
+notes rendered from the CHANGELOG block, and the registry line from
+CLAUDE.md. Re-try the publisher registration on PyPI before each release;
+when it finally lists one, this section is deleted and `~/.pypirc` is
+revoked (§5).
+
 ## 2. Read a failed check
 
 Open the check. The **summary** (not the log) carries one line per verdict:
