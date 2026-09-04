@@ -201,7 +201,7 @@ the coarse stop and is not reversible without the key.
 prose. A draft is a file under `drafts/` on the `inbound-ledger` branch
 with `approved: false` in its front matter. To post it, edit the file on
 that branch and set `approved: true` in a commit of your own; the next
-sweep (daily, 06:30 UTC) posts it verbatim as the App and moves the file to
+sweep (daily, 06:30 UTC) posts it as the App and moves the file to
 `drafts/posted/`. An App-authored approval never posts. Editing the body
 before approving is fine; it posts the edited text and resets that
 category's graduation streak (POLICY 9).

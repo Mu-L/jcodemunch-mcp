@@ -317,7 +317,7 @@ The performance and ranking telemetry introduced in v1.74.0–v1.80.0 is
 
 ## Headless automation on issues and pull requests
 
-Seven GitHub Actions workflows (`.github/workflows/inbound-*.yml`) read
+Nine GitHub Actions workflows (`.github/workflows/inbound-*.yml`) read
 public issues and pull requests and, when the repository variable
 `INBOUND_ENABLED` is exactly `true`, label them, draft replies for a
 human to approve, evaluate dependency updates, self-check agent-authored
@@ -331,8 +331,10 @@ controls that matter to a reporter or a contributor:
   post). Nothing from an item is executed, fetched, or pasted into a shell.
 * **The model cannot write to this repository.** The job that runs a
   model holds a read-only token and writes one file; a separate job with
-  no model verifies that file and writes with a GitHub App whose ruleset
-  confines it to `inbound/**` branches and the `inbound-ledger` branch.
+  no model verifies that file and writes with a GitHub App that a
+  repository ruleset (part of the layer's setup, `docs/cicd/RUNBOOK.md`
+  section 9) confines to `inbound/**` branches and the `inbound-ledger`
+  branch.
 * **No headless job merges, tags, publishes, closes, or edits** workflows,
   secrets, branch protection, `SECURITY.md`, or the quality gates.
 * **A security report is never summarised.** An issue classified as

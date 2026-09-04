@@ -33,18 +33,17 @@ TRACKED as of 2026-09-04** except `settings.local.json`, `*.bak` and
 ## Inbound: headless work on issues and PRs (2026-09-04)
 
 **`docs/inbound/POLICY.md` is what a headless job may do; `DESIGN.md` is
-each job; `docs/cicd/RUNBOOK.md` section 9 is what a human does.** Seven
-`inbound-*.yml` workflows triage, sweep, grade Dependabot, self-check
-agent PRs, attempt a fix on `agent-fix`, post a weekly digest. ⚠⚠
+each job; `docs/cicd/RUNBOOK.md` section 9 is what a human does.** Nine
+`inbound-*.yml` workflows (DESIGN names each). ⚠⚠
 **Nothing runs until the variable `INBOUND_ENABLED` reads exactly
 `true`**; absent is OFF, read first and again before every first write.
 ⚠⚠ **The model never holds a token that can write**: model jobs run on
 the read-only `GITHUB_TOKEN` and write a file; a no-model job verifies it
-and writes with the App, confined by ruleset to `inbound/**` and
-`inbound-ledger`. Nothing headless merges, tags, publishes, closes, or
+and writes with the App, to be confined by a ruleset to `inbound/**` and
+`inbound-ledger` (RUNBOOK 9's once-only setup). Nothing headless merges, tags, publishes, closes, or
 touches POLICY 4.4's never-touch list (this file included); every drafted
-reply waits for a human `approved: true`. Open findings (a gate behind a
-`| tee`, six sites): `docs/inbound/FINDINGS.md`, VERIFICATION 6.6.
+reply waits for a human `approved: true`. Open findings (the human setup
+steps IN-3/4/6/8; IN-15): `docs/inbound/FINDINGS.md`.
 
 ## CI/CD: the harness's judgment on every change (2026-09-04)
 
