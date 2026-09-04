@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.108.317] - 2026-09-04 - CI runs the harness on every change; publishing is a dispatched workflow
+
 ### Changed - CI runs the harness on every change; publishing is a dispatched workflow
 
 The eight workflows are five: `pr-gate.yml` (five staged jobs, every one a
