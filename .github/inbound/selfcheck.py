@@ -31,7 +31,13 @@ DESIGN = ROOT / "docs" / "inbound" / "DESIGN.md"
 
 def never_touch_patterns(policy_text: str) -> list[str]:
     """The POLICY 4.4 block, one glob per whitespace-separated token; the
-    `pyproject.toml [project].version` entry is checked by diff, not path."""
+    `pyproject.toml [project].version` entry is checked by diff, not path.
+    ⚠ That entry is removed by its exact spelling: rewording it in POLICY
+    turns `pyproject.toml` into a path pattern here (every dependency
+    bump would then trip clause (a)) and `[project].version` into a
+    meaningless one. `test_patterns_come_from_the_policy_block` asserts
+    `pyproject.toml` is not a pattern, which is the guard on that
+    coupling."""
     i = policy_text.index("### 4.4 The never-touch list")
     m = re.search(r"```\n(.*?)\n```", policy_text[i:], re.S)
     tokens = []
@@ -42,11 +48,13 @@ def never_touch_patterns(policy_text: str) -> list[str]:
 
 
 def touches_never_touch(files: list[str], patterns: list[str]) -> list[str]:
+    # fnmatch's `*` crosses `/`, so `.claude/**` matches every path under
+    # `.claude/` without a globstar branch of its own.
     hits = []
     for f in files:
         for pat in patterns:
             p = pat.rstrip("/")
-            if f == p or fnmatch.fnmatch(f, p) or (p.endswith("**") and f.startswith(p[:-2])) or f.startswith(p + "/"):
+            if f == p or fnmatch.fnmatch(f, p) or f.startswith(p + "/"):
                 hits.append(f)
                 break
     return sorted(set(hits))
@@ -100,9 +108,34 @@ def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, encoding="utf-8", timeout=900)
 
 
-def test_commit_is_red_on_main(test_sha: str, base_ref: str, worktree: Path) -> tuple[bool, str]:
+def red_from_returncode(rc: int) -> bool:
+    """Exit 1 is "tests failed", the reproduction. 0 is green (or every
+    test skipped), 2 is interrupted (a collection error, a module-level
+    import that does not resolve), 4 is usage, 5 is nothing collected:
+    none of those is a red test. Measured in the item-5 review:
+    `assert False` -> 1, a module-level `import nonexistent` -> 2, the
+    same import inside the test -> 1, all-skipped -> 0."""
+    return rc == 1
+
+
+def test_files_rewritten_after(test_sha: str, files: list[str], head_ref: str, cwd: Path = ROOT) -> list[str]:
+    """The tests/*.py the red run executed must be byte-identical at the
+    PR head, or the red run certified a file the PR does not ship
+    (item-5 review, finding 1: `assert False` as the reproduction, then
+    the real test rewritten in the fix commit)."""
+    rewritten = []
+    for f in files:
+        at_test = run(["git", "show", f"{test_sha}:{f}"], cwd)
+        at_head = run(["git", "show", f"{head_ref}:{f}"], cwd)
+        if at_test.returncode != 0 or at_head.returncode != 0 or at_test.stdout != at_head.stdout:
+            rewritten.append(f)
+    return rewritten
+
+
+def test_commit_is_red_on_main(test_sha: str, base_ref: str, worktree: Path, head_ref: str | None = None) -> tuple[bool, str]:
     """Cherry-pick the test commit onto a worktree of the base and run its
-    test files; exit 1 there is the reproduction the fix job promised."""
+    test files; exit 1 there is the reproduction the fix job promised, and
+    the files it ran are the files the PR head carries."""
     run(["git", "worktree", "add", "-q", "--detach", str(worktree), base_ref], ROOT)
     try:
         cp = run(["git", "cherry-pick", "--no-commit", test_sha], worktree)
@@ -111,6 +144,10 @@ def test_commit_is_red_on_main(test_sha: str, base_ref: str, worktree: Path) -> 
         files = [f for f in run(["git", "diff", "--cached", "--name-only"], worktree).stdout.split() if f.startswith("tests/") and f.endswith(".py")]
         if not files:
             return False, "the test commit adds no tests/*.py"
+        if head_ref:
+            rewritten = test_files_rewritten_after(test_sha, files, head_ref)
+            if rewritten:
+                return False, f"test files rewritten after the test commit: {rewritten}"
         # The main checkout's environment runs the worktree's test files: the
         # package under test is `main` either way (the worktree is `main`
         # plus a commit that touches only tests/), and a fresh `uv sync` per
@@ -121,9 +158,7 @@ def test_commit_is_red_on_main(test_sha: str, base_ref: str, worktree: Path) -> 
             ROOT,
         )
         last = (res.stdout.strip().splitlines() or [""])[-1]
-        # Exit 1 is "tests failed", the reproduction. 2 (interrupted), 4
-        # (usage) and 5 (nothing collected) are not a red test.
-        return res.returncode == 1, f"pytest exit {res.returncode}: {last}"
+        return red_from_returncode(res.returncode), f"pytest exit {res.returncode}: {last}"
     finally:
         run(["git", "worktree", "remove", "--force", str(worktree)], ROOT)
 
@@ -136,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--issue-labels", default="", help="labels on the Closes issue, comma-separated")
     ap.add_argument("--app-login", default="jcodemunch-inbound[bot]")
     ap.add_argument("--base-ref", default="origin/main")
+    ap.add_argument("--head-ref", default=None, help="the PR head ref the red run's test files must match (refs/inbound/pr-head)")
     ap.add_argument("--worktree", type=Path, default=None)
     ap.add_argument("--skip-red-run", action="store_true")
     args = ap.parse_args(argv)
@@ -155,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     test_sha, problems = commit_order(commits)
     failed += [f"(b) {p}" for p in problems]
     if test_sha and not args.skip_red_run:
-        red, why = test_commit_is_red_on_main(test_sha, args.base_ref, args.worktree or (ROOT.parent / "selfcheck-wt"))
+        red, why = test_commit_is_red_on_main(test_sha, args.base_ref, args.worktree or (ROOT.parent / "selfcheck-wt"), args.head_ref)
         if not red:
             failed.append(f"(b) the test commit is not red on {args.base_ref}: {why}")
 

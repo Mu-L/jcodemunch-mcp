@@ -105,3 +105,41 @@ def test_main_names_every_failed_clause(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     clauses = {x[:3] for x in out["failed"]}
     assert clauses == {"(a)", "(b)", "(c)", "(d)", "(e)", "(f)"}, out["failed"]
+
+
+@pytest.mark.parametrize("rc,red", [(0, False), (1, True), (2, False), (4, False), (5, False)])
+def test_only_pytest_exit_one_is_red(rc, red):
+    """Item-5 review, finding 2: the exit-code rule is the one discriminator
+    in clause (b) and survived mutation to `!= 0` with no test. 2 is a
+    collection error, 5 is nothing collected, 0 is green or all skipped."""
+    assert sc.red_from_returncode(rc) is red
+
+
+def _git(repo, *a):
+    import subprocess
+    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@x", *a], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def test_red_run_files_must_match_the_pr_head(tmp_path):
+    """Item-5 review, finding 1: `assert False` committed first and the
+    real test written in the fix commit satisfied clause (b); the files
+    the red run executed must be byte-identical at the head."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+    _git(repo, "checkout", "-q", "-b", "inbound/fix-1-x")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_x.py").write_text("def test_x():\n    assert False\n", encoding="utf-8")
+    _git(repo, "add", "-A"); _git(repo, "commit", "-q", "-m", "red")
+    test_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    # an honest fix commit leaves the test alone
+    (repo / "src").mkdir(); (repo / "src" / "x.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "-A"); _git(repo, "commit", "-q", "-m", "fix")
+    assert sc.test_files_rewritten_after(test_sha, ["tests/test_x.py"], "HEAD", cwd=repo) == []
+    # a rewritten reproduction is named
+    (repo / "tests" / "test_x.py").write_text("def test_x():\n    assert True\n", encoding="utf-8")
+    _git(repo, "add", "-A"); _git(repo, "commit", "-q", "-m", "rewrite the test")
+    assert sc.test_files_rewritten_after(test_sha, ["tests/test_x.py"], "HEAD", cwd=repo) == ["tests/test_x.py"]
+    # a file deleted at the head is named too
+    assert sc.test_files_rewritten_after(test_sha, ["tests/gone.py"], "HEAD", cwd=repo) == ["tests/gone.py"]

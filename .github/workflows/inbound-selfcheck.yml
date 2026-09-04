@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
     steps:
@@ -45,7 +44,9 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked --group dev --extra watch
 
-      - name: the PR as data (never checked out at the root)
+      - name: the PR as data (never checked out at the root; the read-only token lives in this step only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh pr view "$PR" -R "$REPO" --json number,author,headRefName,baseRefName,body,files,labels,commits > "$RUNNER_TEMP/pr.json"
           gh pr diff "$PR" -R "$REPO" > "$RUNNER_TEMP/pr.diff"
@@ -68,7 +69,7 @@ jobs:
         run: |
           uv run python .github/inbound/selfcheck.py --pr-json "$RUNNER_TEMP/pr.json" --diff "$RUNNER_TEMP/pr.diff" \
             --commits "$RUNNER_TEMP/commits.json" --issue-labels "$(cat "$RUNNER_TEMP/issue-labels.txt")" \
-            --base-ref origin/main --worktree "$RUNNER_TEMP/selfcheck-wt" | tee "$RUNNER_TEMP/selfcheck.json"
+            --base-ref origin/main --head-ref refs/inbound/pr-head --worktree "$RUNNER_TEMP/selfcheck-wt" | tee "$RUNNER_TEMP/selfcheck.json"
 
       - name: audit record
         if: always()

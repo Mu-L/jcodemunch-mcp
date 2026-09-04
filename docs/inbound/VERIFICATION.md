@@ -75,7 +75,8 @@ Unit and structural half; the end-to-end half (an App-authored PR through the ch
 | 5.3 the template is read from DESIGN 7 and order matters | nine headings from the design; swapped, missing last | out of order and `## Audit` missing named | same file |
 | 5.4 every clause fails for its own reason | `main --skip-red-run` over a PR by a stranger on `feature/x` touching `.claude/settings.json` and the version pin, no template, no Closes | exit 1; clauses (a) to (f) all present | same file |
 | 5.5 the workflow runs with the switch off and can only fail | `tests/test_inbound_workflows.py`: `inbound-selfcheck` is exempt from the kill-switch rule; read-only permissions; same-repo guard in the job `if:`; `pull_request` checkout is `main` | as specified | same file |
-| 5.6 review round 1 (item 5) | PENDING | | |
+| 5.6 the red run's files are the PR's, and only exit 1 is red | `test_files_rewritten_after` over a real repo where the test commit's file is rewritten in the fix commit, and where it is not; `red_from_returncode` over 0, 1, 2, 4, 5 | the rewritten file is named and clause (b) fails; unchanged passes; only 1 is red | `tests/test_inbound_selfcheck.py` |
+| 5.7 review round 1 (item 5) | the reviewer found: nothing bound the red run's test files to the PR head (`assert False` first, the real test in the fix commit, passed (b)); the exit-code rule survived mutation to `!= 0` with no test; notes: the token was job-scoped, the DESIGN 5 table disagreed with its as-built paragraph, a dead `**` branch, the `[project].version` string coupling | `test_files_rewritten_after` (row 5.6); `red_from_returncode` pinned; the token scoped to the data step; the table corrected; the branch removed; the coupling named in a comment | this section |
 
 ## 6. Fix attempt and promotion (item 6)
 
