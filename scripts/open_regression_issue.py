@@ -23,11 +23,17 @@ ROW = re.compile(r"^\| `([^`]+)` \| ([^|]+) \| ([^|]+) \| ([^|]+) \| \*\*FAIL\*\
 
 
 def failing_rows(summary_text: str) -> list[tuple[str, str, str, str]]:
-    return [m.groups() for m in (ROW.match(ln.strip()) for ln in summary_text.splitlines()) if m]
+    return [
+        m.groups()
+        for m in (ROW.match(ln.strip()) for ln in summary_text.splitlines())
+        if m
+    ]
 
 
 def _gh(*args: str, input_: str | None = None) -> str:
-    p = subprocess.run(["gh", *args], text=True, capture_output=True, encoding="utf-8", input=input_)
+    p = subprocess.run(
+        ["gh", *args], text=True, capture_output=True, encoding="utf-8", input=input_
+    )
     if p.returncode != 0:
         raise SystemExit(f"gh {' '.join(args[:3])} failed: {p.stderr[-500:]}")
     return p.stdout
@@ -42,7 +48,9 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     repo = os.environ.get("GITHUB_REPOSITORY", "jgravelle/jcodemunch-mcp")
-    run_url = f"https://github.com/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}"
+    run_url = (
+        f"https://github.com/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}"
+    )
     text = open(a.summary, encoding="utf-8").read()
     rows = failing_rows(text)
     if not rows:
@@ -61,13 +69,43 @@ def main(argv=None) -> int:
         print(f"{'would file' if a.dry_run else 'filing'}: {title}")
         if a.dry_run:
             continue
-        existing = _gh("issue", "list", "--repo", repo, "--state", "open", "--search", f'"{title}" in:title', "--json", "number,title")
+        existing = _gh(
+            "issue",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--search",
+            f'"{title}" in:title',
+            "--json",
+            "number,title",
+        )
         match = [x for x in json.loads(existing) if x["title"] == title]
         if match:
-            _gh("issue", "comment", str(match[0]["number"]), "--repo", repo, "--body", f"Still failing.\n\n{body}")
+            _gh(
+                "issue",
+                "comment",
+                str(match[0]["number"]),
+                "--repo",
+                repo,
+                "--body",
+                f"Still failing.\n\n{body}",
+            )
             print(f"  commented on #{match[0]['number']}")
         else:
-            out = _gh("issue", "create", "--repo", repo, "--title", title, "--label", a.label, "--body", body)
+            out = _gh(
+                "issue",
+                "create",
+                "--repo",
+                repo,
+                "--title",
+                title,
+                "--label",
+                a.label,
+                "--body",
+                body,
+            )
             print(f"  opened {out.strip()}")
     return 0
 
