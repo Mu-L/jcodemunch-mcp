@@ -215,10 +215,44 @@ def check_branch(ci: bool = False) -> tuple[bool, str]:
     return True, f"main, clean, pushed ({head.strip()[:7]})"
 
 
+GATE_MARKERS = (
+    "fast: harness fast tier",
+    "full: test (",
+    "package: install and handshake (",
+    "done: ",
+)
+
+
+def all_runs_verdict(check_runs: list[dict]) -> tuple[bool, str]:
+    """Fallback when branch protection is unreadable (docs/cicd/FINDINGS.md C-13).
+
+    Inside Actions the GITHUB_TOKEN cannot read branch protection (403), so
+    the required-context list is unavailable there. Then every check-run on
+    HEAD must have concluded success, neutral or skipped, and the PR gate's
+    job families must be present by name (names are not Floors). An
+    unfinished or failed run of ANY name blocks; UNKNOWN blocks.
+    """
+    if not check_runs:
+        return False, "no check-runs on HEAD"
+    bad = [
+        f"{r.get('name')}: {r.get('conclusion') or r.get('status')}"
+        for r in check_runs
+        if (r.get("conclusion") or "") not in ("success", "neutral", "skipped")
+    ]
+    names = " | ".join(r.get("name", "") for r in check_runs)
+    absent = [m for m in GATE_MARKERS if m not in names]
+    if absent:
+        bad.append(f"gate jobs absent on HEAD: {absent}")
+    if bad:
+        return False, "; ".join(bad)
+    return (
+        True,
+        f"{len(check_runs)} check-runs on HEAD all concluded success (protection list unreadable here; fallback rule)",
+    )
+
+
 def check_ci() -> tuple[bool, str]:
     try:
-        prot = _gh_json(f"repos/{SLUG}/branches/main/protection")
-        required = list(prot.get("required_status_checks", {}).get("contexts") or [])
         _, head = _run(["git", "rev-parse", "HEAD"])
         runs = _gh_json(
             f"repos/{SLUG}/commits/{head.strip()}/check-runs",
@@ -231,6 +265,13 @@ def check_ci() -> tuple[bool, str]:
             flat.extend(chunk if isinstance(chunk, list) else [chunk])
     except Exception as e:  # could not ask -> FAIL, never pass
         return False, f"could not read CI: {e}"
+    try:
+        prot = _gh_json(f"repos/{SLUG}/branches/main/protection")
+        required = list(prot.get("required_status_checks", {}).get("contexts") or [])
+    except Exception as e:
+        if "403" in str(e) or "Resource not accessible" in str(e):
+            return all_runs_verdict(flat)
+        return False, f"could not read branch protection: {e}"
     return ci_verdict(required, flat)
 
 

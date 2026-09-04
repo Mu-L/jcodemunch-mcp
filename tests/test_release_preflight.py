@@ -35,23 +35,45 @@ def _runs(**conclusions):
 
 
 def test_ci_passes_only_when_every_required_context_succeeded():
-    ok, msg = pf.ci_verdict(REQUIRED, _runs(**{"lint": "success", "Harness fast tier": "success", "test (ubuntu-latest, 3.12)": "success"}))
+    ok, msg = pf.ci_verdict(
+        REQUIRED,
+        _runs(
+            **{
+                "lint": "success",
+                "Harness fast tier": "success",
+                "test (ubuntu-latest, 3.12)": "success",
+            }
+        ),
+    )
     assert ok, msg
 
 
 def test_ci_fails_on_a_failed_run():
-    ok, msg = pf.ci_verdict(REQUIRED, _runs(**{"lint": "success", "Harness fast tier": "failure", "test (ubuntu-latest, 3.12)": "success"}))
+    ok, msg = pf.ci_verdict(
+        REQUIRED,
+        _runs(
+            **{
+                "lint": "success",
+                "Harness fast tier": "failure",
+                "test (ubuntu-latest, 3.12)": "success",
+            }
+        ),
+    )
     assert not ok and "Harness fast tier: failure" in msg
 
 
 def test_ci_fails_when_a_required_context_has_no_run_at_all():
     """A renamed job silently drops out of the gate on GitHub's side; this is the only place that sees it."""
-    ok, msg = pf.ci_verdict(REQUIRED, _runs(**{"lint": "success", "test (ubuntu-latest, 3.12)": "success"}))
+    ok, msg = pf.ci_verdict(
+        REQUIRED, _runs(**{"lint": "success", "test (ubuntu-latest, 3.12)": "success"})
+    )
     assert not ok and "Harness fast tier: no check-run on HEAD" in msg
 
 
 def test_ci_fails_on_an_unfinished_run():
-    runs = _runs(**{"lint": "success", "test (ubuntu-latest, 3.12)": "success"}) + [{"name": "Harness fast tier", "conclusion": None, "status": "in_progress"}]
+    runs = _runs(**{"lint": "success", "test (ubuntu-latest, 3.12)": "success"}) + [
+        {"name": "Harness fast tier", "conclusion": None, "status": "in_progress"}
+    ]
     ok, msg = pf.ci_verdict(REQUIRED, runs)
     assert not ok and "in_progress" in msg
 
@@ -76,12 +98,24 @@ def test_live_pin_sites_all_agree():
 
 
 def test_pins_fail_when_one_site_lags(tmp_path):
-    (tmp_path / "pyproject.toml").write_text('[project]\nname = "jcodemunch-mcp"\nversion = "9.9.9"\n', encoding="utf-8")
-    (tmp_path / "server.json").write_text(json.dumps({"version": "9.9.9", "packages": [{"version": "9.9.8"}]}), encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "jcodemunch-mcp"\nversion = "9.9.9"\n', encoding="utf-8"
+    )
+    (tmp_path / "server.json").write_text(
+        json.dumps({"version": "9.9.9", "packages": [{"version": "9.9.8"}]}),
+        encoding="utf-8",
+    )
     (tmp_path / ".claude-plugin").mkdir()
-    (tmp_path / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": "9.9.9"}), encoding="utf-8")
-    (tmp_path / "whatsnew.json").write_text(json.dumps({"current": "9.9.9", "entries": [{"version": "9.9.9"}]}), encoding="utf-8")
-    (tmp_path / "uv.lock").write_text('[[package]]\nname = "jcodemunch-mcp"\nversion = "9.9.9"\n', encoding="utf-8")
+    (tmp_path / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "9.9.9"}), encoding="utf-8"
+    )
+    (tmp_path / "whatsnew.json").write_text(
+        json.dumps({"current": "9.9.9", "entries": [{"version": "9.9.9"}]}),
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text(
+        '[[package]]\nname = "jcodemunch-mcp"\nversion = "9.9.9"\n', encoding="utf-8"
+    )
     ok, msg = pf.pins_verdict(pf.read_pins(tmp_path), None)
     assert not ok and "packages[0].version=9.9.8" in msg
 
@@ -106,9 +140,67 @@ def test_changelog_heading_detection():
 
 def test_only_a_mergeable_clean_contributor_pr_blocks():
     prs = [
-        {"number": 1, "author": {"login": "someone"}, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"},
-        {"number": 2, "author": {"login": "someone"}, "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED"},
-        {"number": 3, "author": {"login": "someone"}, "mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY"},
-        {"number": 4, "author": {"login": pf.OWNER}, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"},
+        {
+            "number": 1,
+            "author": {"login": "someone"},
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+        },
+        {
+            "number": 2,
+            "author": {"login": "someone"},
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "BLOCKED",
+        },
+        {
+            "number": 3,
+            "author": {"login": "someone"},
+            "mergeable": "CONFLICTING",
+            "mergeStateStatus": "DIRTY",
+        },
+        {
+            "number": 4,
+            "author": {"login": pf.OWNER},
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+        },
     ]
     assert pf.mergeable_contributor_prs(prs) == ["#1 someone"]
+
+
+def _all(**conclusions):
+    return [{"name": n, "conclusion": c} for n, c in conclusions.items()]
+
+
+GATE_OK = {
+    "fast: harness fast tier": "success",
+    "full: test (ubuntu-latest, 3.12)": "success",
+    "package: install and handshake (ubuntu-latest)": "success",
+    "done: changelog": "success",
+}
+
+
+def test_fallback_passes_when_every_run_succeeded_and_the_gate_families_are_present():
+    ok, msg = pf.all_runs_verdict(_all(**GATE_OK, **{"codeql (python)": "success"}))
+    assert ok, msg
+
+
+def test_fallback_fails_on_any_failed_or_unfinished_run():
+    ok, msg = pf.all_runs_verdict(_all(**{**GATE_OK, "codeql (python)": "failure"}))
+    assert not ok and "codeql (python): failure" in msg
+    runs = _all(**GATE_OK) + [
+        {"name": "bench: token benchmark", "conclusion": None, "status": "in_progress"}
+    ]
+    ok, msg = pf.all_runs_verdict(runs)
+    assert not ok and "in_progress" in msg
+
+
+def test_fallback_fails_when_a_gate_family_is_absent():
+    runs = _all(**{k: v for k, v in GATE_OK.items() if not k.startswith("package")})
+    ok, msg = pf.all_runs_verdict(runs)
+    assert not ok and "package: install and handshake (" in msg
+
+
+def test_fallback_fails_with_no_runs_at_all():
+    ok, msg = pf.all_runs_verdict([])
+    assert not ok and "no check-runs" in msg
