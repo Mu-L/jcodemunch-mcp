@@ -166,14 +166,14 @@ jobs:
         run: |
           set -euo pipefail
           V="${{ needs.preflight.outputs.version }}"
-          uv venv "${RUNNER_TEMP}/smoke" --python 3.12
+          VENV="${RUNNER_TEMP}/smoke"; uv venv "$VENV" --python 3.12
           if [ "${{ runner.os }}" = "Windows" ]; then B="${RUNNER_TEMP}/smoke/Scripts"; EXE="$B/jcodemunch-mcp.exe"; else B="${RUNNER_TEMP}/smoke/bin"; EXE="$B/jcodemunch-mcp"; fi
           if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
             echo "DRY RUN: installing the built wheel, not Test PyPI" | tee -a "$GITHUB_STEP_SUMMARY"
-            uv pip install --python "$B/python" dist/*.whl
+            uv pip install --python "$VENV" dist/*.whl
           else
             for i in $(seq 1 20); do
-              if uv pip install --python "$B/python" --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --index-strategy unsafe-best-match "jcodemunch-mcp==$V"; then break; fi
+              if uv pip install --python "$VENV" --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --index-strategy unsafe-best-match "jcodemunch-mcp==$V"; then break; fi
               echo "not on Test PyPI yet ($i)"; sleep 30
             done
           fi
@@ -262,16 +262,16 @@ jobs:
         run: |
           set -euo pipefail
           V="${{ needs.preflight.outputs.version }}"
-          uv venv "${RUNNER_TEMP}/pp" --python 3.12
+          VENV="${RUNNER_TEMP}/pp"; uv venv "$VENV" --python 3.12
           if [ "${{ runner.os }}" = "Windows" ]; then B="${RUNNER_TEMP}/pp/Scripts"; EXE="$B/jcodemunch-mcp.exe"; else B="${RUNNER_TEMP}/pp/bin"; EXE="$B/jcodemunch-mcp"; fi
           if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
             echo "DRY RUN: installing the built wheel, not PyPI" | tee -a "$GITHUB_STEP_SUMMARY"
-            uv pip install --python "$B/python" dist/*.whl
+            uv pip install --python "$VENV" dist/*.whl
           else
             for i in $(seq 1 40); do
               if curl -fsS "https://pypi.org/pypi/jcodemunch-mcp/$V/json" >/dev/null; then break; fi; sleep 15
             done
-            uv pip install --python "$B/python" "jcodemunch-mcp==$V"
+            uv pip install --python "$VENV" "jcodemunch-mcp==$V"
           fi
           "$B/python" scripts/handshake.py --expect-version "$V" --command "$EXE" \
             --fixture tests/fixtures/pkg_smoke --expect-languages python,typescript,javascript,go 2>&1 | tee "${RUNNER_TEMP}/hs.log"
