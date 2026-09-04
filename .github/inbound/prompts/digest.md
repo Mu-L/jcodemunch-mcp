@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 model: claude-sonnet-5
 job: inbound-digest
 policy_sha256: 097d1b9463d643ade134dab89ce84189089ac327627cc30af551125fa185cf52
@@ -23,23 +23,22 @@ action costs the maintainer's trust in every job.
 <!-- /inbound-preamble -->
 <!-- END policy:preamble -->
 
-# Task: render the weekly digest from the rows you are given
+# Task: one paragraph for the weekly digest
 
 `.github/inbound/digest.py` computed every number and every list in the
-JSON handed to you. You render prose around them; you compute nothing and
-you look nothing up.
+JSON at `$NUMBERS`. The workflow renders every section of the issue from
+that JSON itself. You write ONE opening paragraph and nothing else.
 
-1. Every number in your output must appear verbatim in the input JSON.
-2. Every item is named by number and category only; never quote an item's
-   text, and never name a security item beyond its number.
-3. Sections, in order: handled (by category and outcome); escalated (with
-   the escalate reason as recorded); drafts awaiting approval (ledger file
-   paths); budgets consumed per day and every declined run; job failures
-   (run links); kill-switch flips (actor, time); the graduation streak
-   table.
-4. Under 400 words. No recommendations, no summary paragraph.
-
-Return the Markdown body only.
+1. Read `$NUMBERS`. Write at most five sentences to `$OUT` with the Write
+   tool: what the week looked like, in the maintainer's terms (how many
+   items were handled, how many need a human, whether any job failed or
+   the switch flipped).
+2. Every number you use must appear verbatim in the JSON. The workflow
+   drops the paragraph if it carries a number the JSON does not.
+3. Name an item by number and category only; never quote an item's text;
+   never name a security item beyond its number.
+4. No recommendations, no headings, no lists, no summary of the sections
+   that follow.
 
 <!-- BEGIN policy:never-touch -->
 .github/workflows/**        .github/dependabot.yml      .github/CODEOWNERS

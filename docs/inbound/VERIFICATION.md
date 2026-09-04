@@ -37,7 +37,7 @@ Unit and structural half. The end-to-end half (a real issue through intake and t
 
 ## 3. Sweep and digest (items 3, 7)
 
-Sweep (item 3), unit and structural half; the digest (item 7) is pending.
+Sweep (item 3) and digest (item 7), unit and structural half.
 
 | property | how exercised | result | evidence |
 |---|---|---|---|
@@ -48,6 +48,13 @@ Sweep (item 3), unit and structural half; the digest (item 7) is pending.
 | 3.5 the persisted checkout is the ledger branch only | `tests/test_inbound_workflows.py`: a checkout that persists credentials must be `inbound-sweep`, `ref: inbound-ledger`, into a `path`, with the App token; every other checkout is `main` without credentials | the sweep passes on that exception and nothing else does | 64 passed across the sweep, workflow and plumbing tests |
 | 3.6 the sweep has no model and writes only the ledger branch | `inbound-sweep.yml`: no `claude-code-action`; `contents: write` is allowed by the workflow test for the fix job only; the sweep's `GITHUB_TOKEN` is read-only and its push is the App's (item-3 review round 2, note 1: the test had still admitted the sweep); the ruleset confining the App to `inbound/**` and `inbound-ledger` is a human step (1.10) | as specified | same |
 | 3.7 review round 1 (item 3) | the reviewer found: the two-day artifact window re-copied a draft a human had approved (reverting `approved: true`) and re-created posted drafts; the artifact filter admitted artifacts a fork PR's own workflow uploads under our names; `GITHUB_TOKEN` held `contents: write` and `issues: write` the job never used; one malformed draft aborted the whole sweep | `ingest_drafts` skips any name already in `drafts/` or `drafts/posted/` (three-step test: ingest, approve, re-ingest, post, re-ingest); the collection filter requires our repository id, `head_branch == main`, and a schedule/dispatch/issue/workflow_run producing event; `GITHUB_TOKEN` is `contents: read`, `actions: read`, every write is the App's; a malformed draft holds itself only | `uv run pytest tests/test_inbound_sweep.py tests/test_inbound_workflows.py tests/test_inbound_plumbing.py -q -p no:xdist`: `67 passed` |
+| 3.8 every number is code's; the model's paragraph cannot carry one the JSON lacks | `prose_admissible` over a paragraph with `7` against a JSON holding 5 and 12.5; the render-only path with a paragraph saying `99` | the paragraph is dropped and the render JSON names the digit; `99` is absent from the body | `tests/test_inbound_digest.py` |
+| 3.9 an absent cost is counted, never priced at 0 | five rows, one with `cost_usd` 12.5, three model runs with `None`, one skip | `cost_by_day_usd` holds the one figure; `runs_with_no_cost_recorded` is 3; the body says `not recorded` and never `0.00` for an empty day | same file |
+| 3.10 a kill-switch flip between consecutive records is seen | three rows true, false, true | two flips, in order | same file |
+| 3.11 a malformed ledger line holds itself only | one good row and `{not json` | one record counted, one malformed line disclosed | same file |
+| 3.12 only an unapproved draft is listed as awaiting | `approved: false`, `approved: true`, and one under `drafts/posted/` | the first only | same file |
+| 3.13 needs-human older than 7 days is the sweep's list, and no list is not an empty list | `summarise` with no sweep summary, with an empty list, with `[41, 57]` | `not recorded`; `none as of the sweep at <time>`; the two issues | same file |
+| 3.14 the model job holds no write scope and the paragraph is its only write | `tests/test_inbound_workflows.py` over `inbound-digest.yml`: read-only permissions plus `id-token`, `GITHUB_TOKEN` on the action, allow-list `Read,Write(<one path>)`, kill switch re-read before the model and before the App's write, no `contents: write`, no `issues: write` | passes with the other workflows | same |
 
 ## 4. Dependency evaluation (item 4)
 

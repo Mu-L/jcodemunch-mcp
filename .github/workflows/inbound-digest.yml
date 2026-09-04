@@ -1,0 +1,281 @@
+# purpose:  the weekly digest, the maintainer's dashboard and the only
+#           place the agent summarises its own work (docs/inbound/DESIGN.md
+#           section 6). Three jobs: numbers (no model; digest.py over the
+#           ledger branch), prose (the model, read-only, one paragraph from
+#           the JSON, optional), apply (no model; the App token opens or
+#           updates ONE issue `inbound digest <ISO week>`)
+# invokes:  killswitch.py, budget.py, digest.py, the pinned
+#           claude-code-action with prompts/digest.md, ledger.py
+# produces: one issue per ISO week labelled inbound:digest, edited in place
+#           on re-run; an audit record
+# refuses:  to let the model supply a number (every figure is digest.py's;
+#           the paragraph is dropped if it contains a digit the JSON does
+#           not); to open a second issue for the same week; to close,
+#           label or comment on anything else
+name: inbound digest
+
+on:
+  schedule:
+    - cron: "45 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      week_of:
+        description: "an ISO date inside the week to report (optional)"
+        required: false
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+
+concurrency:
+  group: inbound-digest
+  cancel-in-progress: false
+
+env:
+  ACTION_SHA: ef8bb1e43bf303cff727a1dd0b8837029fe982a2
+  MODEL: claude-sonnet-5
+
+jobs:
+  numbers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+      title: ${{ steps.num.outputs.title }}
+    env:
+      REPO: ${{ github.repository }}
+      WEEK_OF: ${{ github.event.inputs.week_of }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - name: kill switch and budget
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          python .github/inbound/budget.py --job inbound-digest --repo "$REPO"; b=$?
+          set -e
+          if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+      - name: the ledger branch, read only (no credentials; the branch is public data)
+        if: steps.gate.outputs.go == 'true'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: inbound-ledger
+          path: ledger-branch
+          persist-credentials: false
+      - name: the last sweep's summary (DESIGN 6 step 4; absent renders as "not recorded")
+        if: steps.gate.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/sweep"
+          # the newest successful run of OUR sweep workflow file on main; the artifact is that run's own
+          RUN=$(gh api "repos/$REPO/actions/workflows/inbound-sweep.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id' 2>/dev/null || true)
+          if [ -n "$RUN" ]; then
+            ID=$(gh api "repos/$REPO/actions/runs/$RUN/artifacts" --jq ".artifacts[] | select(.name == \"inbound-audit-$RUN\") | .id" | head -1)
+            if [ -n "$ID" ]; then
+              gh api "repos/$REPO/actions/artifacts/$ID/zip" > "$RUNNER_TEMP/sweep/a.zip" && \
+                python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/sweep/a.zip" "$RUNNER_TEMP/sweep/x" || true
+            fi
+          fi
+          ls "$RUNNER_TEMP/sweep/x" 2>/dev/null || echo "no sweep summary"
+      - name: every number, by code
+        if: steps.gate.outputs.go == 'true'
+        id: num
+        run: |
+          if [ -n "$WEEK_OF" ] && ! printf '%s' "$WEEK_OF" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then echo "week_of is not an ISO date" >&2; exit 1; fi
+          mkdir -p "$RUNNER_TEMP/digest"
+          python .github/inbound/digest.py --ledger-root ledger-branch --repo "$REPO" ${WEEK_OF:+--week-of "$WEEK_OF"} \
+            --sweep-summary "$RUNNER_TEMP/sweep/x/sweep-summary.json" \
+            --json --markdown "$RUNNER_TEMP/digest/body.md" > "$RUNNER_TEMP/digest/numbers.json"
+          echo "title=$(python -c "import json,os;print(json.load(open(os.environ['RUNNER_TEMP']+'/digest/numbers.json'))['title'])")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always() && steps.gate.outputs.go == 'true'
+        with:
+          name: digest-numbers-${{ github.run_id }}
+          path: ${{ runner.temp }}/digest/
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-numbers
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+          if-no-files-found: ignore
+
+  prose:
+    # The model job: read-only token, no App; one paragraph from the JSON.
+    # A failure here still posts the digest, without the paragraph (the
+    # apply job runs on always() and the prose artifact always exists).
+    needs: numbers
+    if: needs.numbers.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      id-token: write
+    env:
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        with:
+          name: digest-numbers-${{ github.run_id }}
+          path: ${{ runner.temp }}/digest/
+      - name: prompt (the prompt file is data; the JSON path is the only substitution)
+        id: prompt
+        run: |
+          python .github/inbound/render_prompts.py --check
+          python - <<'PY'
+          import os, pathlib
+          t = pathlib.Path(".github/inbound/prompts/digest.md").read_text(encoding="utf-8")
+          t = t.replace("$NUMBERS", os.environ["RUNNER_TEMP"] + "/digest/numbers.json").replace("$OUT", os.environ["RUNNER_TEMP"] + "/digest/prose.md")
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as fh:
+              fh.write("text<<INBOUND_PROMPT_EOF\n" + t + "\nINBOUND_PROMPT_EOF\n")
+          PY
+          echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/digest.md | cut -c1-64)" >> "$GITHUB_ENV"
+      - name: re-read the kill switch before the model runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+      - name: one paragraph (model; read-only token; the prose file is its only write)
+        id: model
+        uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: >-
+            --model ${{ env.MODEL }}
+            --max-turns 8
+            --permission-mode dontAsk
+            --permission-prompts none
+            --allowedTools "Read,Write(${{ runner.temp }}/digest/prose.md)"
+            --disallowedTools "WebFetch,WebSearch,Edit,Bash,Task,Grep,Glob"
+            --append-system-prompt "Read ${{ runner.temp }}/digest/numbers.json. Write one paragraph to ${{ runner.temp }}/digest/prose.md with the Write tool and nothing else. Every number you use must appear in the JSON."
+      - name: keep the paragraph and the outcome
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/prose"
+          cp "$RUNNER_TEMP/digest/prose.md" "$RUNNER_TEMP/prose/" 2>/dev/null || true
+          printf '%s\n' "${{ steps.model.outcome }}" > "$RUNNER_TEMP/prose/model-outcome.txt"
+          printf '%s\n' "$PROMPT_SHA" > "$RUNNER_TEMP/prose/prompt-sha.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: digest-prose-${{ github.run_id }}
+          path: ${{ runner.temp }}/prose/
+          retention-days: 7
+
+  apply:
+    # The write job: no model; the App token; one issue per week.
+    needs: [numbers, prose]
+    if: always() && needs.numbers.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    env:
+      REPO: ${{ github.repository }}
+      TITLE: ${{ needs.numbers.outputs.title }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        with:
+          name: digest-numbers-${{ github.run_id }}
+          path: ${{ runner.temp }}/digest/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        if: always()
+        with:
+          name: digest-prose-${{ github.run_id }}
+          path: ${{ runner.temp }}/prose/
+      - name: the body (the paragraph is admitted only if every digit in it is in the JSON)
+        id: body
+        run: |
+          python .github/inbound/digest.py --ledger-root /dev/null --repo "$REPO" --render-only \
+            --numbers "$RUNNER_TEMP/digest/numbers.json" --prose "$RUNNER_TEMP/prose/prose.md" --markdown "$RUNNER_TEMP/body.md" > "$RUNNER_TEMP/render.json" || rc=$?
+          cat "$RUNNER_TEMP/render.json"; exit "${rc:-0}"
+      - name: "re-read the kill switch before the write (GITHUB_TOKEN, because the App has no Variables scope)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+      - name: App token (DESIGN D2; this job only)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+      - name: open or update the one issue for this week
+        id: issue
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          N=$(gh issue list -R "$REPO" --label "inbound:digest" --state all --search "\"$TITLE\" in:title" --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$N" ]; then
+            gh issue edit "$N" -R "$REPO" --body-file "$RUNNER_TEMP/body.md"
+            echo "number=$N" >> "$GITHUB_OUTPUT"; echo "action=updated" >> "$GITHUB_OUTPUT"
+          else
+            URL=$(gh issue create -R "$REPO" --title "$TITLE" --label "inbound:digest" --body-file "$RUNNER_TEMP/body.md")
+            echo "number=${URL##*/}" >> "$GITHUB_OUTPUT"; echo "action=opened" >> "$GITHUB_OUTPUT"
+          fi
+      - name: audit record
+        if: always()
+        env:
+          NUMBER: ${{ steps.issue.outputs.number }}
+          ACTION: ${{ steps.issue.outputs.action }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          tmp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          def txt(p):
+              p = pathlib.Path(p)
+              return p.read_text(encoding="utf-8").strip() if p.exists() else None
+          render = {}
+          try:
+              render = json.loads((tmp / "render.json").read_text(encoding="utf-8"))
+          except Exception:
+              pass
+          number = os.environ.get("NUMBER") or ""
+          rec = {
+              "job": "inbound-digest", "item": number or "0", "outcome": "acted" if number else "failed",
+              "prompt_file": ".github/inbound/prompts/digest.md", "prompt_sha256": txt(tmp / "prose" / "prompt-sha.txt"),
+              "prompt_version": json.load(open(".github/inbound/prompts/VERSIONS.json"))["digest"]["version"],
+              "model": os.environ["MODEL"], "action_sha": os.environ["ACTION_SHA"], "kill_switch_state": "true",
+              "classification": {"category": "digest", "confidence": "high"},
+              "decision": f"{os.environ.get('ACTION') or 'no issue'} {os.environ['TITLE']}; prose {render.get('prose', 'unknown')}",
+              "actions_taken": [f"issue:{number}:{os.environ.get('ACTION')}"] if number else [],
+          }
+          args = ["python", ".github/inbound/ledger.py", "write", str(tmp / "audit" / "record.json")]
+          for k, v in rec.items():
+              args += ["--field", f"{k}={json.dumps(v)}"]
+          subprocess.run(args, check=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

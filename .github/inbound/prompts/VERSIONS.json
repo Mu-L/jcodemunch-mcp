@@ -7,11 +7,11 @@
     "version": 2
   },
   "digest": {
-    "body_sha256": "237952511e7de2f2da74197c7509a3f48bd9f77cfc92f9088120c86ea1815679",
+    "body_sha256": "a82c8881ed40c5ca104a1bcf00763b3df28f93392a9f12c9ed39a6caef0a2705",
     "model": "claude-sonnet-5",
     "policy_sha256": "097d1b9463d643ade134dab89ce84189089ac327627cc30af551125fa185cf52",
-    "sha256": "18da1cb3e06f3b26182fdf87a7b7104266ce888b58ab6c2dbeefa7887e1d68d4",
-    "version": 1
+    "sha256": "a3b614753126933bc97b97ac5aff1b34b9d83f2b89ee53d9cf6f852cd1c15fe0",
+    "version": 2
   },
   "fix": {
     "body_sha256": "1d1ff80d57d498fc0171d3462057716771d967e37d038e95073bcd9883611112",

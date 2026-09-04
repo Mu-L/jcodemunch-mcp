@@ -319,6 +319,22 @@ run; job failures with run links; kill-switch flips (actor, time); the
 streak table from POLICY §9. This is the maintainer's dashboard and the
 only place the agent summarises its own work.
 
+**As built (2026-09-04, item 7).** Three jobs, the sweep's shape: `numbers`
+(no model; `digest.py` over a read-only checkout of `inbound-ledger`; the
+last sweep's `sweep-summary.json` fetched from that run's own audit
+artifact for step 4's needs-human list, rendered "not recorded" when none
+is readable), `prose` (the model, `GITHUB_TOKEN` read-only, `Read` and
+`Write` of one file under `$RUNNER_TEMP`; one paragraph at most), and
+`apply` (no model; the App token opens or edits the one issue). No
+`issues: write` on `GITHUB_TOKEN`: every write is the App's, as for the
+sweep. The paragraph is admitted only when every digit-run in it appears
+in the JSON the model was given, and when it is under 1,200 characters;
+otherwise the issue carries the computed sections alone and the audit
+record says why. A model failure still posts the digest without the
+paragraph. A run with no cost figure is counted, never priced at 0; the
+step-5 `inbound:queued` list is the sweep's (`stale_needs_human` covers
+step 4; step 5 is FINDINGS IN-15).
+
 ## 7. The agent-authored PR description
 
 Rendered by `/fix-issue` step 8 through the `pr-description` skill with
