@@ -75,6 +75,9 @@ def test_commit_order_requires_test_first_and_alone():
     _, problems = sc.commit_order([{"sha": "c" * 40, "files": ["tests/test_new.py", "src/x.py"]}])
     assert any("also touches src/" in p for p in problems)
     assert sc.commit_order([{"sha": "d" * 40, "files": ["src/x.py"]}])[1] == ["no commit touches tests/"]
+    # round 3, note 1: a test commit that also edits the root pytest config
+    _, problems = sc.commit_order([{"sha": "e" * 40, "files": ["tests/test_new.py", "pyproject.toml"]}])
+    assert any("outside tests/" in p and "pyproject.toml" in p for p in problems), problems
 
 
 def test_template_headings_are_read_from_design_and_order_matters():

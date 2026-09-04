@@ -99,6 +99,12 @@ def commit_order(commits: list[dict]) -> tuple[str | None, list[str]]:
         return None, problems
     if any(f.startswith("src/") for f in first_test["files"]):
         problems.append(f"the first test commit {first_test['sha'][:7]} also touches src/")
+    outside = [f for f in first_test["files"] if not f.startswith("tests/")]
+    if outside:
+        # The test commit is cherry-picked into the worktree that proves
+        # the red; a root pyproject.toml or conftest in it would
+        # reconfigure that run (item-5 review round 3, note 1).
+        problems.append(f"the first test commit {first_test['sha'][:7]} touches paths outside tests/: {outside}")
     if first_src is not None and commits.index(first_src) < commits.index(first_test):
         problems.append(f"src/ changed in {first_src['sha'][:7]} before the first test commit {first_test['sha'][:7]}")
     return first_test["sha"], problems
