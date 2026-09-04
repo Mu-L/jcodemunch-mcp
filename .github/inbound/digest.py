@@ -208,7 +208,7 @@ def render(week: str, s: dict, repo: str, ledger_branch_url: str, prose: str | N
 _NUMBER_WORDS = re.compile(
     r"\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|"
     r"sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|"
-    r"thousand|dozen|half|twice|once|none|no)\b",
+    r"thousand|dozen|none)\b",  # not `no`/`once`/`half`/`twice`: ordinary prose (review round 2, note 1)
     re.I,
 )
 _NUMERIC_TOKEN = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}-W\d{2}|\d+(?:\.\d+)?")

@@ -110,6 +110,8 @@ def test_prose_is_admitted_only_when_its_numbers_are_in_the_json():
                      ("On 2026-09-02 one flip.", "2026-09-02"), ("890 runs.", "890")]:
         ok, why = dg.prose_admissible(bad, numbers)
         assert ok is False and tok in why, (bad, why)
+    ok, _ = dg.prose_admissible("5 items handled; no job failed and the switch did not flip once.", numbers)
+    assert ok is True, "ordinary prose (`no`, `once`) is not a spelled number (round 2, note 1)"
     for words in ("Five items were handled.", "A dozen escalations.", "None failed.", "Twelve items, four escalated."):
         ok, why = dg.prose_admissible(words, numbers)
         assert ok is False and "words" in why, (words, why)
