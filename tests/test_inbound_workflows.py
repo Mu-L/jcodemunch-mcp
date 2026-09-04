@@ -154,6 +154,56 @@ def test_kill_switch_precedes_every_write(path: Path):
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_event_text_never_reaches_run_by_interpolation(path: Path):
+    """Item-2 review, finding 4: `${{ github.event.* }}` inside a `run:` is
+    template injection; event text reaches the shell only through `env:`."""
+    doc = _wf(path)
+    bad = []
+    for name, job in _jobs(doc).items():
+        for s in _steps(job):
+            run = s.get("run") or ""
+            for m in re.finditer(
+                r"\$\{\{\s*github\.event\.(?!workflow_run\.(?:id|conclusion)\b)[\w.]+",
+                run,
+            ):
+                bad.append((name, m.group(0)))
+    assert not bad, bad
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_the_model_step_holds_no_write_scope(path: Path):
+    """Item-2 review, finding 1: the job that runs the model has read-only
+    permissions and the read-only GITHUB_TOKEN; the App token lives in a
+    job with no model."""
+    doc = _wf(path)
+    for name, job in _jobs(doc).items():
+        steps = _steps(job)
+        has_model = any("claude-code-action" in (s.get("uses") or "") for s in steps)
+        if not has_model:
+            continue
+        perms = job.get("permissions") or doc.get("permissions") or {}
+        writes = {k for k, v in perms.items() if v == "write" and k != "id-token"}
+        assert not writes, (
+            f"{path.name}:{name} runs the model with write scope {writes}"
+        )
+        for s in steps:
+            if "claude-code-action" in (s.get("uses") or ""):
+                tok = (s.get("with") or {}).get("github_token", "")
+                assert "secrets.GITHUB_TOKEN" in tok, (
+                    f"{path.name}:{name}: the model step must use GITHUB_TOKEN, not the App"
+                )
+                assert (
+                    "gh api"
+                    not in (s.get("with") or {})
+                    .get("claude_args", "")
+                    .split("--disallowedTools")[0]
+                ), "`gh api` admits POST forms; never in the model's allow-list"
+            assert "create-github-app-token" not in (s.get("uses") or ""), (
+                f"{path.name}:{name}: the App token in a model job"
+            )
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
 def test_timeouts_and_turns_match_the_policy(path: Path):
     doc = _wf(path)
     row = budget.BUDGETS.get(path.stem)

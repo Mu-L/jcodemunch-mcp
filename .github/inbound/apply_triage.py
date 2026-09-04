@@ -31,7 +31,10 @@ CATEGORIES = {
     "spam": ("inbound:spam", None),
     "question": ("inbound:question", "question"),
     "feature": ("inbound:feature", "enhancement"),
-    "bug-candidate": ("inbound:bug-candidate", "bug"),
+    # No human `bug` label before a reproduction: the fix job applies it
+    # when a failing test exists (POLICY section 1 attaches it to
+    # bug-reproducible; a human label implies a verdict).
+    "bug-candidate": ("inbound:bug-candidate", None),
     "unknown": ("inbound:unknown", None),
 }
 CONFIDENCES = ("high", "medium", "low")

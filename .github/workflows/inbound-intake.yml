@@ -1,9 +1,11 @@
 # purpose:  record an inbound issue event with NO model and NO secrets:
 #           the pre-model scan decides security / injection / queued and
-#           applies only those labels (docs/inbound/DESIGN.md section 1)
-# invokes:  .github/inbound/killswitch.py, scan.py, ledger.py
+#           intake_plan.py applies only those labels (docs/inbound/DESIGN.md
+#           section 1)
+# invokes:  .github/inbound/killswitch.py, scan.py, intake_plan.py, ledger.py
 # produces: labels on the issue; an inbound-audit-<run> artifact
-# refuses:  to comment, to run a model, to touch anything but labels; to act
+# refuses:  to comment, to run a model, to touch anything but labels; to
+#           re-queue an item that is held or already classified; to act
 #           when INBOUND_ENABLED is not exactly "true"
 name: inbound intake
 
@@ -53,7 +55,7 @@ jobs:
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           if [ "$rc" != "0" ] && [ "$rc" != "78" ]; then exit "$rc"; fi
 
-      - name: write the item to a file (data, never a shell argument)
+      - name: write the item to a file (event text reaches the shell only through env)
         if: steps.kill.outputs.rc == '0'
         env:
           TITLE: ${{ github.event.issue.title }}
@@ -65,49 +67,59 @@ jobs:
 
       - name: pre-model scan (POLICY rule 1 and section 4.3)
         if: steps.kill.outputs.rc == '0'
-        id: scan
+        run: python .github/inbound/scan.py "$RUNNER_TEMP/item/text.md" > "$RUNNER_TEMP/item/scan.json"
+
+      - name: the plan (no re-queue of a held or classified item)
+        if: steps.kill.outputs.rc == '0'
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ACTOR: ${{ github.actor }}
+          AUTHOR: ${{ github.event.issue.user.login }}
         run: |
-          python .github/inbound/scan.py "$RUNNER_TEMP/item/text.md" > "$RUNNER_TEMP/item/scan.json"
+          LABELS=$(gh issue view "$ISSUE" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          python .github/inbound/intake_plan.py "$RUNNER_TEMP/item/scan.json" \
+            --event "$EVENT" --action "$ACTION" --actor "$ACTOR" --author "$AUTHOR" --labels "$LABELS" \
+            | tee "$RUNNER_TEMP/item/plan.json"
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
-          s = json.load(open(os.environ["RUNNER_TEMP"] + "/item/scan.json", encoding="utf-8"))
-          print("security=" + str(s["security_hit"]).lower())
-          print("injection=" + str(s["injection_hit"]).lower())
+          p = json.load(open(os.environ["RUNNER_TEMP"] + "/item/plan.json", encoding="utf-8"))
+          print("add=" + ",".join(p["add"]))
+          print("remove=" + ",".join(p["remove"]))
+          print("outcome=" + p["outcome"])
+          print("reason=" + p["reason"])
           PY
 
       - name: re-read the kill switch before the first write
-        if: steps.kill.outputs.rc == '0'
+        if: steps.kill.outputs.rc == '0' && steps.plan.outputs.add != ''
         run: python .github/inbound/killswitch.py --repo "$REPO"
 
       - name: label (the only write this job makes)
-        if: steps.kill.outputs.rc == '0'
-        id: label
+        if: steps.kill.outputs.rc == '0' && steps.plan.outputs.add != ''
+        env:
+          ADD: ${{ steps.plan.outputs.add }}
+          REMOVE: ${{ steps.plan.outputs.remove }}
         run: |
-          if [ "${{ steps.scan.outputs.security }}" = "true" ]; then
-            gh issue edit "$ISSUE" -R "$REPO" --add-label "inbound:security" --add-label "needs-human" --remove-label "inbound:queued"
-            echo "outcome=escalated" >> "$GITHUB_OUTPUT"; echo "labels=inbound:security,needs-human" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.scan.outputs.injection }}" = "true" ]; then
-            gh issue edit "$ISSUE" -R "$REPO" --add-label "inbound:unknown" --add-label "needs-human" --add-label "inbound:injection-suspected" --remove-label "inbound:queued"
-            echo "outcome=escalated" >> "$GITHUB_OUTPUT"; echo "labels=inbound:unknown,needs-human,inbound:injection-suspected" >> "$GITHUB_OUTPUT"
-          else
-            gh issue edit "$ISSUE" -R "$REPO" --add-label "inbound:queued"
-            echo "outcome=acted" >> "$GITHUB_OUTPUT"; echo "labels=inbound:queued" >> "$GITHUB_OUTPUT"
-          fi
+          args=()
+          IFS=',' read -ra A <<< "$ADD"; for l in "${A[@]}"; do [ -n "$l" ] && args+=(--add-label "$l"); done
+          IFS=',' read -ra R <<< "$REMOVE"; for l in "${R[@]}"; do [ -n "$l" ] && args+=(--remove-label "$l"); done
+          gh issue edit "$ISSUE" -R "$REPO" "${args[@]}"
 
       - name: audit record (written on every path, POLICY section 6.1)
         if: always()
         env:
-          OUTCOME: ${{ steps.label.outputs.outcome || 'failed' }}
-          LABELS: ${{ steps.label.outputs.labels }}
+          OUTCOME: ${{ steps.plan.outputs.outcome || 'failed' }}
+          REASON: ${{ steps.plan.outputs.reason }}
+          ADD: ${{ steps.plan.outputs.add }}
           KILL_RC: ${{ steps.kill.outputs.rc }}
-          SECURITY: ${{ steps.scan.outputs.security }}
         run: |
           if [ "$KILL_RC" = "78" ]; then exit 0; fi   # the kill-switch step wrote the skipped record
-          CATEGORY=$([ "$SECURITY" = "true" ] && echo security || echo pending)
+          case ",$ADD," in *,inbound:security,*) CATEGORY=security;; *) CATEGORY=pending;; esac
           python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
-            --field job=inbound-intake --field item="$ISSUE" --field outcome="$OUTCOME" \
-            --field 'classification={"category":"'"$CATEGORY"'","confidence":"high","evidence":[]}' \
-            --field "actions_taken=[\"labels:$LABELS\"]" --field kill_switch_state=true \
+            --field job=inbound-intake --field item="$ISSUE" --field outcome="$OUTCOME" --field decision="$REASON" \
+            --field 'classification={"category":"'"$CATEGORY"'","confidence":"high"}' \
+            --field "actions_taken=[\"labels+:$ADD\"]" --field kill_switch_state=true \
             --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4

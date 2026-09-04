@@ -79,10 +79,10 @@ human step in `docs/cicd/RUNBOOK.md` §8, not something this layer does.
 |---|---|
 | workflow | `.github/workflows/inbound-intake.yml` |
 | trigger | `issues: [opened, edited, reopened]`, `issue_comment: [created]` on issues only |
-| permissions | `issues: write` (labels only), `contents: read` |
+| permissions | `issues: write` (labels only), `contents: read`, `actions: read` (the kill-switch variable is read through the Actions API) |
 | secrets | none |
 | model | none |
-| reads | the event payload; `INBOUND_ENABLED` via API |
+| reads | the event payload; `INBOUND_ENABLED` via API; the labels already on the item (`intake_plan.py`: a held or already-classified item is never re-queued; an edit or comment by anyone but the author re-queues nothing) |
 | invokes | `.github/inbound/scan.py`: the POLICY §4.3 plain-text pattern scan and the POLICY §1 rule-1 security keyword scan, both over title, body and the new comment, with HTML comments, `<details>`, zero-width characters and code fences INCLUDED in the scanned text |
 | writes | on a security keyword hit: label `inbound:security` + `needs-human`, and NOTHING else in this job; on an injection-pattern hit: `inbound:unknown` + `needs-human` + `inbound:injection-suspected`; otherwise label `inbound:queued`. Uploads the audit artifact. |
 | budgets | 10 min; no model; unlimited runs (it is one API call) |
@@ -99,8 +99,8 @@ only if the edit is by the author and the item is not `needs-human`.
 |---|---|
 | workflow | `.github/workflows/inbound-triage.yml` |
 | trigger | `schedule: */15 * * * *`; `workflow_dispatch` with an optional issue number |
-| permissions | `issues: write`, `contents: read`, `id-token: write` (the action requires it) |
-| secrets | `ANTHROPIC_API_KEY`; App id and key (D2) |
+| permissions | Two jobs per item. `classify` (the model): `contents: read`, `issues: read`, `id-token: write` (the action requires it), `github_token` = the read-only `GITHUB_TOKEN`; it holds no write scope at all, so the allow-list is not the only thing between the model and a post. `apply` (no model): `issues: write`, `contents: read`, `actions: read`, the App token from D2, and only `apply_triage.py`. The kill-switch re-read in `apply` uses `GITHUB_TOKEN`, because the App has no Variables scope (item-2 review, finding 2). |
+| secrets | `ANTHROPIC_API_KEY` in `classify`; App id and key in `apply` only |
 | model | `claude-sonnet-5`, `--max-turns 12` |
 | reads | up to 5 issues labelled `inbound:queued` (oldest first); for each, the issue via `gh issue view` (the only Bash tool allowed: `Bash(gh issue view:*)`, `Bash(gh search issues:*)` for duplicate candidates, `Bash(gh api repos/*/issues/*/comments:*)` read); the tree at `main` (read-only tools); `docs/inbound/POLICY.md` §1 and §2 |
 | invokes | prompt `prompts/triage.md`, which is `/triage-issue <n>` bounded by the policy: classify, produce the `--json-schema` object `{category, confidence, evidence[], duplicate_of?, draft?}` |

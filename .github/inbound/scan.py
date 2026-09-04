@@ -55,11 +55,11 @@ INJECTION_PATTERNS = [
     # Repository controls only: env vars and Claude Code hooks are PRODUCT
     # features here (CLAUDE.md "Env Vars", `hook-*`), so a bare "variable" or
     # "hook" would tax the most ordinary bug reports (plumbing review, note 2).
-    r"(?:disable|skip|bypass|remove|modify|change|edit|update|turn[ -]off|set|unset|flip|toggle|revoke|add)\s+(?:[\w.\-/`'\"]+\s+){0,4}?(?:workflow|github action|branch protection|codeowners|ruleset|deploy key|(?:repo(?:sitory)?|actions?|github|org(?:anization)?)\s+(?:secret|variable|permission)s?|inbound_enabled|inbound_autofix|\.claude/hooks|deny[_ ]guard|pre_commit\.py|pre_pr\.py)\b",
+    r"(?:disable|skip|bypass|remove|delete|drop|modify|change|edit|update|turn[ -]off|set|unset|flip|toggle|revoke|add)\s+(?:[\w.\-/`'\"]+\s+){0,4}?(?:workflow|github action|branch protection|codeowners|ruleset|deploy key|(?:repo(?:sitory)?|actions?|github|org(?:anization)?)\s+(?:secret|variable|permission)s?|inbound_enabled|inbound_autofix|\.claude/hooks|deny[_ ]guard|pre_commit\.py|pre_pr\.py)\b",
     r"(?:edit|change|modify|loosen|lower|raise|update|rewrite)\s+(?:the |your )?(?:standard\.md|thresholds?\.json|retired\.json|archaeology\.md|security\.md|license|policy\.md)",
     # Exfiltration verbs followed by a destination. github.com is where our own
     # work goes, so a pushed branch or a linked PR is not a destination here.
-    r"(?:post|send|upload|report|exfiltrate|forward|curl|wget|submit|transmit|email|mail|dm|message)\b[^\n]{0,80}\b(?:https?://(?!github\.com/)|webhook|[\w.+-]+@\w+\.\w+|to my server|to this url|as a (?:public )?gist|hooks\.slack\.com|discord(?:app)?\.com|ngrok|pastebin|requestbin|(?<!github\.com/)\b(?!github\.com)[\w-]+\.(?:invalid|io|sh|xyz|ru|cn|net|org|co)/\w)",
+    r"(?:post|send|upload|report|exfiltrate|forward|curl|wget|submit|transmit|email|mail|dm|message)\b[^\n]{0,80}\b(?:https?://(?!github\.com/)|webhook|[\w.+-]+(?:@|\s*[\[(]at[\])]\s*)[\w-]+(?:\.|\s*[\[(]dot[\])]\s*)\w+|to my server|to this url|as a (?:public )?gist|hooks\.slack\.com|discord(?:app)?\.com|ngrok|pastebin|requestbin|(?<!github\.com/)\b(?!github\.com)[\w-]+\.(?:invalid|io|sh|xyz|ru|cn|net|org|co)/\w)",
     r"(?:approve|merge|close|tag|release|publish)\s+(?:this|the|your|my|that|pr\b|pull request|issue)",
     r"you must (?:now )?(?:approve|merge|close|tag|release|publish|comply|obey)",
     r"(?:print|reveal|show|dump|echo|output|read|cat|type|access|include|paste|put)\s+(?:the |your |any )?(?:[\w.\-/`'\"]+\s+){0,3}?(?:system prompt|instructions|configuration|config|secrets?|environment|env vars?|tokens?|api[_ -]?keys?|~/\.claude|settings\.json|anthropic_api_key|github_token)",
