@@ -50,3 +50,13 @@ def test_continue_on_error_only_on_informational_jobs(path):
             if "(informational)" not in name:
                 offenders.append(name)
     assert not offenders, f"{path.name}: continue-on-error on a job not marked (informational): {offenders}"
+
+
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name)
+def test_every_workflow_parses_as_yaml(path):
+    """CodeQL found `name: Dry run: no upload` (an unquoted colon) in release.yml after it merged;
+    a workflow that does not parse never runs and never fails, which is the worst gate."""
+    import yaml
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict) and "jobs" in data, f"{path.name}: not a workflow mapping"

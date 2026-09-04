@@ -26,6 +26,7 @@
     "tests/test_file_io_encoding_guard.py",
     "tests/test_groq_explainer.py",
     "tests/test_groq_voice.py",
+    "tests/test_harness_summary.py",
     "tests/test_health_radar_action.py",
     "tests/test_key_files_split.py",
     "tests/test_license_identifier_agreement.py",
@@ -44,6 +45,7 @@
     "tests/test_racket_fidelity.py",
     "tests/test_racket_fidelity_artifacts.py",
     "tests/test_register_edit.py",
+    "tests/test_release_preflight.py",
     "tests/test_render_diagram_integration.py",
     "tests/test_render_diagram_viewer.py",
     "tests/test_replay_metrics.py",
@@ -56,8 +58,10 @@
     "tests/test_schema_budget.py",
     "tests/test_sdist_exclusions.py",
     "tests/test_search_result_cache.py",
+    "tests/test_search_symbols_tie_order.py",
     "tests/test_security_disclosure.py",
     "tests/test_security_md_limits_parity.py",
+    "tests/test_security_md_policy.py",
     "tests/test_server_json_sync.py",
     "tests/test_session_journal.py",
     "tests/test_session_state.py",
@@ -86,7 +90,8 @@
     "tests/test_verdict_coverage_calibration.py",
     "tests/test_watcher_dynamic.py",
     "tests/test_watcher_lock.py",
-    "tests/test_watcher_serve.py"
+    "tests/test_watcher_serve.py",
+    "tests/test_workflows_pinned.py"
   ],
   "bench": [
     {

@@ -1,0 +1,386 @@
+# Release (docs/cicd/DESIGN.md section 3; CLAUDE.md "Issue + release policy",
+# "Registry verification reads a NESTED row", "Reproducing CI's environment").
+#
+# Purpose:  cut a release with no human act after the dispatch: pre-flight on
+#           main's HEAD, build once, Test PyPI + clean-venv smoke on two OSes,
+#           tag, PyPI via trusted publishing, post-publish smoke from PyPI on
+#           two OSes with the tool count recomputed, GitHub release from the
+#           CHANGELOG block, MCP registry publish, and a P0 issue if anything
+#           after the publish fails. Never yanks.
+# Trigger:  workflow_dispatch with `version` (X.Y.Z) and `dry_run` (default
+#           TRUE until the first real publish is separately approved). A
+#           hand-pushed `v*` tag runs only the pre-flight and FAILS it with a
+#           message: releases are cut by dispatch.
+# Blocks:   itself. Each job needs the previous one. Publish jobs get
+#           id-token: write and nothing else they do not use.
+# Rules:    thresholds never live here; every number in the notes is computed
+#           in this run; actions SHA-pinned; no continue-on-error.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (X.Y.Z, no v). Must equal the seven pin sites on main."
+        required: true
+      dry_run:
+        description: "Dry run: build, check, smoke from the built wheel; no upload, no tag, no release, no registry"
+        type: boolean
+        default: true
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.9.5"
+
+jobs:
+  preflight:
+    name: "release: pre-flight"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      sha: ${{ steps.v.outputs.sha }}
+      tool_count: ${{ steps.v.outputs.tool_count }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
+    steps:
+      - name: A hand-pushed tag is refused (releases are cut by dispatch)
+        if: github.event_name == 'push'
+        run: |
+          echo "::error title=release::tag ${GITHUB_REF_NAME} was pushed by hand. Delete it and dispatch the Release workflow with version=${GITHUB_REF_NAME#v} (docs/cicd/RUNBOOK.md)."
+          exit 1
+      # A real release checks out main regardless of the dispatch ref; a dry
+      # run checks out the dispatched ref so the pipeline can be proven from a
+      # branch without a tag or a bump on main.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ inputs.dry_run == true && github.ref || 'main' }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --group dev
+      - name: Pre-flight (required checks green on HEAD, pins, changelog, tag, PyPI, 3b PRs, lint)
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DRY=""; if [ "${{ inputs.dry_run }}" = "true" ]; then DRY="--dry-run"; fi
+          uv run python scripts/release_preflight.py --version "${{ inputs.version }}" --ci --no-harness $DRY --summary "$GITHUB_STEP_SUMMARY"
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+          COUNT=$(uv run python -c "from jcodemunch_mcp import server; print(len(server._build_tools_list(profile_override='full', surface_override='full')))")
+          echo "tool_count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "tool count on this commit: $COUNT (computed, never typed)" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: "release: build"
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Build once; every later job installs THIS artifact
+        run: |
+          uv build
+          uvx --from twine twine check dist/*
+          ls -l dist/ | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  testpypi:
+    name: "release: test pypi"
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: testpypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - name: "Dry run: no upload; the artifact set is listed instead"
+        if: needs.preflight.outputs.dry_run == 'true'
+        run: |
+          echo "## release: test pypi (DRY RUN, nothing uploaded)" >> "$GITHUB_STEP_SUMMARY"
+          ls -l dist/ >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish to Test PyPI via trusted publishing (OIDC)
+        if: needs.preflight.outputs.dry_run != 'true'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
+          print-hash: true
+
+  smoke-testpypi:
+    name: "release: smoke from test pypi (${{ matrix.os }})"
+    needs: [preflight, testpypi]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - name: Fresh venv; install from Test PyPI (or the built wheel under dry run); real stdio handshake + fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ needs.preflight.outputs.version }}"
+          VENV="${RUNNER_TEMP}/smoke"; uv venv "$VENV" --python 3.12
+          if [ "${{ runner.os }}" = "Windows" ]; then B="${RUNNER_TEMP}/smoke/Scripts"; EXE="$B/jcodemunch-mcp.exe"; else B="${RUNNER_TEMP}/smoke/bin"; EXE="$B/jcodemunch-mcp"; fi
+          if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
+            echo "DRY RUN: installing the built wheel, not Test PyPI" | tee -a "$GITHUB_STEP_SUMMARY"
+            uv pip install --python "$VENV" dist/*.whl
+          else
+            for i in $(seq 1 20); do
+              if uv pip install --python "$VENV" --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --index-strategy unsafe-best-match "jcodemunch-mcp==$V"; then break; fi
+              echo "not on Test PyPI yet ($i)"; sleep 30
+            done
+          fi
+          "$B/python" scripts/handshake.py --expect-version "$V" --command "$EXE" \
+            --fixture tests/fixtures/pkg_smoke --expect-languages python,typescript,javascript,go 2>&1 | tee "${RUNNER_TEMP}/hs.log"
+          { echo "## smoke from test pypi (${{ matrix.os }})"; echo '```'; grep -E "HANDSHAKE|FAIL|tool_count|first_hit" "${RUNNER_TEMP}/hs.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  tag:
+    name: "release: tag"
+    needs: [preflight, smoke-testpypi]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ needs.preflight.outputs.dry_run == 'true' && needs.preflight.outputs.sha || 'main' }}
+          fetch-depth: 0
+      - name: Tag the pre-flight SHA (refuse if main moved mid-release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ needs.preflight.outputs.version }}"; SHA="${{ needs.preflight.outputs.sha }}"
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then echo "::error title=release::main moved during the release ($SHA -> $(git rev-parse HEAD)); re-dispatch"; exit 1; fi
+          TITLE=$(grep -m1 -E "^## \[$V\]" CHANGELOG.md | sed -E 's/^## \[[^]]+\] *-? *//')
+          if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
+            echo "DRY RUN: would tag v$V at $SHA with: $TITLE" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          git config user.name "release-bot"; git config user.email "release-bot@users.noreply.github.com"
+          git tag -a "v$V" -m "v$V $TITLE" "$SHA"
+          git push origin "v$V"
+          echo "tagged v$V at $SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  pypi:
+    name: "release: pypi"
+    needs: [preflight, tag]
+    if: needs.preflight.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI via trusted publishing (OIDC, attestations)
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+        with:
+          attestations: true
+          print-hash: true
+
+  post-publish:
+    name: "release: post-publish (${{ matrix.os }})"
+    needs: [preflight, tag, pypi]
+    if: always() && needs.tag.result == 'success' && (needs.pypi.result == 'success' || needs.preflight.outputs.dry_run == 'true')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - name: Install from PyPI in a fresh venv (poll up to 10 min), handshake, fixture, tool count == pre-flight's
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ needs.preflight.outputs.version }}"
+          VENV="${RUNNER_TEMP}/pp"; uv venv "$VENV" --python 3.12
+          if [ "${{ runner.os }}" = "Windows" ]; then B="${RUNNER_TEMP}/pp/Scripts"; EXE="$B/jcodemunch-mcp.exe"; else B="${RUNNER_TEMP}/pp/bin"; EXE="$B/jcodemunch-mcp"; fi
+          if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
+            echo "DRY RUN: installing the built wheel, not PyPI" | tee -a "$GITHUB_STEP_SUMMARY"
+            uv pip install --python "$VENV" dist/*.whl
+          else
+            for i in $(seq 1 40); do
+              if curl -fsS "https://pypi.org/pypi/jcodemunch-mcp/$V/json" >/dev/null; then break; fi; sleep 15
+            done
+            uv pip install --python "$VENV" "jcodemunch-mcp==$V"
+          fi
+          "$B/python" scripts/handshake.py --expect-version "$V" --command "$EXE" \
+            --fixture tests/fixtures/pkg_smoke --expect-languages python,typescript,javascript,go 2>&1 | tee "${RUNNER_TEMP}/hs.log"
+          COUNT=$("$B/python" -c "from jcodemunch_mcp import server; print(len(server._build_tools_list(profile_override='full', surface_override='full')))")
+          echo "installed tool count $COUNT vs pre-flight ${{ needs.preflight.outputs.tool_count }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$COUNT" = "${{ needs.preflight.outputs.tool_count }}" ] || { echo "::error title=post-publish::tool count $COUNT != ${{ needs.preflight.outputs.tool_count }}"; exit 1; }
+      - name: Open a P0 issue (no yank; a person decides that with the failure in front of them)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          V="${{ needs.preflight.outputs.version }}"
+          gh issue create --repo "${{ github.repository }}" --label P0 --label release \
+            --title "P0: post-publish check failed for v$V on ${{ matrix.os }}" \
+            --body "Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. The published artifact failed the clean-environment handshake or the tool-count check. Nothing was yanked (docs/cicd/RUNBOOK.md)."
+
+  github-release:
+    name: "release: github release"
+    needs: [preflight, build, tag, post-publish]
+    if: always() && needs.post-publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - name: Sign the artifact set (sigstore; folds sign-release.yml in)
+        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc  # v3.3.0
+        with:
+          inputs: dist/*.whl dist/*.tar.gz
+      - name: Notes = the CHANGELOG block verbatim + computed figures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ needs.preflight.outputs.version }}"
+          python - "$V" "${{ needs.preflight.outputs.tool_count }}" > "${RUNNER_TEMP}/notes.md" <<'PY'
+          import re, sys, pathlib
+          v, count = sys.argv[1], sys.argv[2]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          m = re.search(rf"^## \[{re.escape(v)}\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.M | re.S)
+          if not m:
+              sys.exit(f"no CHANGELOG block for {v}")
+          py = re.search(r'requires-python\s*=\s*"([^"]+)"', pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(m.group(1).strip())
+          print()
+          print(f"---\n{count} tools in the `full` surface; Python {py.group(1) if py else 'unknown'}. Published by the Release workflow with PyPI trusted publishing and sigstore-signed artifacts.")
+          PY
+          TITLE=$(grep -m1 -E "^## \[$V\]" CHANGELOG.md | sed -E 's/^## \[[^]]+\] *-? *[0-9-]* *-? *//')
+          if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
+            { echo "## github release (DRY RUN) — v$V — $TITLE"; echo; cat "${RUNNER_TEMP}/notes.md"; } >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          gh release create "v$V" dist/* --title "v$V — $TITLE" --notes-file "${RUNNER_TEMP}/notes.md" --latest
+
+  registry:
+    name: "release: mcp registry"
+    needs: [preflight, github-release]
+    if: always() && needs.github-release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - name: Install mcp-publisher (pinned release asset, checksum recorded in the log)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" -o mp.tgz
+          sha256sum mp.tgz | tee -a "$GITHUB_STEP_SUMMARY"
+          tar -xzf mp.tgz mcp-publisher && chmod +x mcp-publisher && ./mcp-publisher --version
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.1   # asset name carries no version (checked 2026-09-03 via the releases API)
+      - name: "Login via GitHub OIDC and publish (dry run: login + validate only)"
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mcp-publisher login github-oidc
+          if [ "${{ needs.preflight.outputs.dry_run }}" = "true" ]; then
+            ./mcp-publisher validate server.json 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || ./mcp-publisher publish --dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "DRY RUN: not published to the registry" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          ./mcp-publisher publish
+      - name: Verify the registry row (nested shape; a flat read returns 0 rows on a good publish)
+        if: needs.preflight.outputs.dry_run != 'true'
+        shell: bash
+        run: |
+          python scripts/registry_verify.py --version "${{ needs.preflight.outputs.version }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Open an issue (PyPI is live; the registry is a follow-up, not a rollback)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "${{ github.repository }}" --label release \
+            --title "registry publish failed for v${{ needs.preflight.outputs.version }}" \
+            --body "Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. PyPI and the GitHub release are live. Fallback is the cmd.exe line in CLAUDE.md (Registry verification reads a NESTED row)."

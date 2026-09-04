@@ -9,6 +9,28 @@
 - **Python:** >=3.10
 - **Tool count:** 91 visible in `full` / 94 in catalog (front door hidden; counts verified 2026-07-30 from `jcodemunch-mcp surface`, which is the only place to get them — do NOT hand-type this; +1 v1.108.111 `get_parity_map`, +1 v1.108.112 `get_decorator_census`, +1 v1.108.113 `get_architecture_metrics`); `tool_surface=counter` exposes a 3-tool front door (`order`/`menu`/`route`) instead
 
+## CI/CD: the harness's judgment on every change (2026-09-04)
+
+**`docs/cicd/DESIGN.md` is the pipeline; `docs/cicd/RUNBOOK.md` is what a
+human does.** `pr-gate.yml` runs `python -m harness fast|full|check <id>` in
+five stages; every job is a REQUIRED check on `main` BY NAME (`fast: *`,
+`full: test (<os>, <py>)` x8, `package: install and handshake (<os>)` x2,
+`bench: *`, `done: *`, `license/cla`; the list is one `gh api` call, RUNBOOK
+§8, and renaming a job is a protection change). `main.yml` re-runs full +
+online bench after a merge and OPENS a `regression` issue per failing Floor;
+`nightly.yml` does the matrix with fresh corpora (`drift`); `security.yml`
+is CodeQL. ⚠⚠ **Read a failed check from its SUMMARY**: one verdict line
+`<id> crit <c> floor <cmp v> observed <o> FAIL`, also as an annotation; a
+pytest or ruff failure lists the ids. ⚠⚠ **No threshold lives in a
+workflow**; `tests/test_workflows_pinned.py` also fails an action not pinned
+to a 40-hex SHA or `continue-on-error` outside a job named `(informational)`.
+⚠⚠ **Publishing is `release.yml`, dispatched with a version, never local,
+never a hand-pushed tag** (the tag path runs the pre-flight and fails it);
+trusted publishing on environments `testpypi`/`pypi`, `dry_run` true until
+the first real publish is approved (RUNBOOK §1, §5). ⚠ `enforce_admins` and
+`strict` are ON; the emergency path is RUNBOOK §6 with a `bypass` issue.
+Findings: `docs/cicd/FINDINGS.md`.
+
 ## The Standard and the Harness (2026-09-03)
 
 **`docs/standard/STANDARD.md` is the authority on what "good" means here,
