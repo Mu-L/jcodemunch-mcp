@@ -37,7 +37,16 @@ Unit and structural half. The end-to-end half (a real issue through intake and t
 
 ## 3. Sweep and digest (items 3, 7)
 
-PENDING.
+Sweep (item 3), unit and structural half; the digest (item 7) is pending.
+
+| property | how exercised | result | evidence |
+|---|---|---|---|
+| 3.1 only a literal `approved: true` posts | `decide()` over `None`, `True`, `yes`, `1`, `approved` | every one holds | `tests/test_inbound_sweep.py` |
+| 3.2 an App-authored approval never posts | `approver_is_human` against a real `git init` repo: an App-authored commit holds, a later human commit posts | as specified | same file |
+| 3.3 an edited body posts but resets the streak; security never graduates | `decide()` with body ≠ original; `update_streaks` two unedited then one edited; a `security` post | edited=True; count 2 → 0 with the reason recorded; `{}` for security | same file |
+| 3.4 never posts twice | `post_approved` twice over one approved and one unapproved draft with `gh` mocked | one post, the file moved to `drafts/posted/`, the second sweep holds everything | same file |
+| 3.5 the persisted checkout is the ledger branch only | `tests/test_inbound_workflows.py`: a checkout that persists credentials must be `inbound-sweep`, `ref: inbound-ledger`, into a `path`, with the App token; every other checkout is `main` without credentials | the sweep passes on that exception and nothing else does | 64 passed across the sweep, workflow and plumbing tests |
+| 3.6 the sweep has no model and writes only the ledger branch | `inbound-sweep.yml`: no `claude-code-action`; `contents: write` is allowed by the workflow test for the sweep and the fix job only (D7); the ruleset confining the App to `inbound/**` and `inbound-ledger` is a human step (1.10) | as specified | same |
 
 ## 4. Dependency evaluation (item 4)
 

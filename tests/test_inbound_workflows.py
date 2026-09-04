@@ -87,9 +87,21 @@ def test_no_pull_request_target_and_no_fork_checkout(path: Path):
                     ref == "main"
                     or ref.startswith("${{ github.event.pull_request.head") is False
                 ), f"{path.name}: checkout of a PR head at the workspace root"
-                assert (s.get("with") or {}).get("persist-credentials") is False, (
-                    f"{path.name}: checkout persists credentials"
-                )
+                with_ = s.get("with") or {}
+                if with_.get("persist-credentials") is not False:
+                    # The one exception (DESIGN D7): the sweep checks out the
+                    # ledger branch into a subdirectory with the App token so
+                    # it can push there, and nowhere else.
+                    assert path.stem == "inbound-sweep", (
+                        f"{path.name}: checkout persists credentials"
+                    )
+                    assert (
+                        ref == "inbound-ledger"
+                        and with_.get("path")
+                        and "steps.app.outputs.token" in with_.get("token", "")
+                    ), (
+                        f"{path.name}: a persisted checkout must be the ledger branch, in a subdirectory, with the App token"
+                    )
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
