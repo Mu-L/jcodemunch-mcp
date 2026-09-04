@@ -57,6 +57,26 @@ def test_missing_variable_reads_as_off_and_writes_a_skipped_record(
     assert data["outcome"] == "skipped" and data["kill_switch_state"] is None
 
 
+def test_a_padded_value_reads_as_off_through_main(monkeypatch):
+    """`gh` appends one newline; anything else the human typed stays and reads OFF."""
+
+    class P:
+        returncode = 0
+        stdout = " true\n"
+
+    monkeypatch.setattr(ks.subprocess, "run", lambda *a, **k: P())
+    assert ks.main([]) == ks.EXIT_SKIP
+
+
+def test_the_trailing_newline_alone_is_tolerated(monkeypatch):
+    class P:
+        returncode = 0
+        stdout = "true\n"
+
+    monkeypatch.setattr(ks.subprocess, "run", lambda *a, **k: P())
+    assert ks.main([]) == 0
+
+
 def test_gh_failure_reads_as_off(monkeypatch):
     class P:
         returncode = 1
@@ -72,9 +92,14 @@ def test_gh_failure_reads_as_off(monkeypatch):
 def test_budget_table_matches_policy_section_7():
     text = (ROOT / "docs" / "inbound" / "POLICY.md").read_text(encoding="utf-8")
     assert (
-        "| runs per day | 20 triage, 3 fix attempts, 4 dependency evaluations, 1 sweep, 1 digest |"
+        "| runs per day | 20 triage, 3 fix attempts, 4 dependency evaluations, 4 full-corpus benches, 1 sweep, 1 digest |"
         in text
     )
+    assert "| turns, digest | 8 |" in text
+    assert budget.BUDGETS["inbound-digest"]["turns"] == 8
+    assert "2 USD digest" in text
+    assert budget.BUDGETS["inbound-digest"]["cost_per_run_usd"] == 2.0
+    assert budget.BUDGETS["inbound-bench-full"]["runs_per_day"] == 4
     assert budget.BUDGETS["inbound-triage"]["runs_per_day"] == 20
     assert budget.BUDGETS["inbound-fix"]["runs_per_day"] == 3
     assert budget.BUDGETS["inbound-depeval"]["runs_per_day"] == 4
@@ -163,6 +188,13 @@ def test_security_record_carries_no_excerpt():
             item="9",
             outcome="escalated",
             classification={"category": "security", "evidence": ["the exploit is ..."]},
+        )
+    with pytest.raises(ValueError):
+        ledger.make_record(
+            job="inbound-intake",
+            item="#9 path escape in install-pack",
+            outcome="escalated",
+            classification={"category": "security"},
         )
 
 

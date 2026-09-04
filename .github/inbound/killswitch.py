@@ -42,7 +42,8 @@ def read_variable(name: str = VARIABLE, repo: str | None = None) -> str | None:
         return None
     if proc.returncode != 0:
         return None
-    return proc.stdout.strip()
+    # Only the one newline `gh` appends; a padded value stays padded and reads OFF.
+    return proc.stdout.rstrip("\n").rstrip("\r")
 
 
 def main(argv: list[str] | None = None) -> int:

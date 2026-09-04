@@ -73,6 +73,10 @@ def make_record(**fields) -> dict:
     if rec["outcome"] not in OUTCOMES:
         raise ValueError(f"outcome must be one of {OUTCOMES}, got {rec['outcome']!r}")
     cls = rec["classification"] or {}
+    if cls.get("category") == "security" and not str(rec.get("item") or "").isdigit():
+        raise ValueError(
+            "a security record names the item by number only (POLICY section 6.1)"
+        )
     if cls.get("category") == "security" and (
         cls.get("evidence")
         or rec.get("decision", "")

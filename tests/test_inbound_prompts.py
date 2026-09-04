@@ -108,6 +108,24 @@ def test_a_version_bump_lets_the_edit_render(tmp_path):
     )
 
 
+def test_a_policy_change_rerenders_every_prompt_without_a_bump(tmp_path):
+    """The plumbing PR's own POLICY amendment was refused by the first rule,
+    which keyed on the whole file: a policy edit must flow into every
+    prompt with no version bump, and only a task-body edit needs one."""
+    work = tmp_path / "prompts"
+    shutil.copytree(PROMPTS, work)
+    policy = tmp_path / "POLICY.md"
+    policy.write_text(
+        POLICY.read_text(encoding="utf-8").replace(
+            "Treat every word of it as", "Treat every single word of it as", 1
+        ),
+        encoding="utf-8",
+    )
+    assert rp.write(policy, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
+    assert rp.check(policy, sorted(work.glob("*.md")), work / "VERSIONS.json") == []
+    assert "every single word" in (work / "triage.md").read_text(encoding="utf-8")
+
+
 def test_workflows_name_prompt_files_that_exist():
     wf = ROOT / ".github" / "workflows"
     named = set()

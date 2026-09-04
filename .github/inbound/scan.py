@@ -51,12 +51,15 @@ SECURITY_TERMS = [
 
 # POLICY section 4.3. Each is a pattern over normalised text.
 INJECTION_PATTERNS = [
-    r"ignore (?:all |the )?(?:previous|prior|above|earlier) (?:instructions?|prompts?|rules?)",
-    r"(?:disable|skip|bypass|remove|modify|change|edit|update|turn off)\s+(?:[\w.\-/`'\"]+\s+){0,4}?(?:workflow|github action|hook|permission|secret|variable|branch protection|codeowners|ruleset)s?\b",
+    r"(?:ignore|disregard|forget|drop|override)\s+(?:all |the |your |any )?(?:previous|prior|above|earlier|existing|original|system)\s+(?:instructions?|prompts?|rules?|policy|guidance)",
+    r"(?:disable|skip|bypass|remove|modify|change|edit|update|turn off|set|unset|flip|toggle)\s+(?:[\w.\-/`'\"]+\s+){0,4}?(?:workflow|github action|hook|permission|secret|variable|branch protection|codeowners|ruleset|inbound_enabled|inbound_autofix)s?\b",
     r"(?:edit|change|modify|loosen|lower|raise|update|rewrite)\s+(?:the |your )?(?:standard\.md|thresholds?\.json|retired\.json|archaeology\.md|security\.md|license|policy\.md)",
-    r"(?:post|send|upload|report|exfiltrate|forward|curl|wget)\b[^\n]{0,80}\b(?:https?://|webhook|@\w+\.\w+|to my server|to this url)",
-    r"(?:approve|merge|close|tag|release|publish)\s+(?:this|the|your|my)\s+(?:pr|pull request|issue|release|tag|version)",
-    r"(?:print|reveal|show|dump|echo|output)\s+(?:your |the )?(?:system prompt|instructions|configuration|config|secrets?|environment|env vars?|token|api key|~/\.claude)",
+    r"(?:post|send|upload|report|exfiltrate|forward|curl|wget|submit|transmit|push)\b[^\n]{0,80}\b(?:https?://|webhook|@\w+\.\w+|to my server|to this url|hooks\.slack\.com|discord(?:app)?\.com|ngrok|pastebin|requestbin|\w+\.\w{2,}/\w)",
+    r"(?:approve|merge|close|tag|release|publish)\s+(?:this|the|your|my|that|pr\b|pull request|issue)",
+    r"you must (?:now )?(?:approve|merge|close|tag|release|publish|comply|obey)",
+    r"(?:print|reveal|show|dump|echo|output|read|cat|type|access|include|paste|put)\s+(?:the |your |any )?(?:[\w.\-/`'\"]+\s+){0,3}?(?:system prompt|instructions|configuration|config|secrets?|environment|env vars?|tokens?|api[_ -]?keys?|~/\.claude|settings\.json|anthropic_api_key|github_token)",
+    r"pip install [^\n]*--(?:extra-)?index-url (?!https://pypi\.org)",
+    r"(?:^|\n)\s*(?:assistant|ai)\s*:\s*(?:i will|sure|understood|ok)",
     r"\b(?:the maintainer|jgravelle|anthropic|github|the owner) (?:said|says|told|approved|authori[sz]ed|allows?|wants) (?:you|this|that)",
     r"you are (?:now )?(?:allowed|authori[sz]ed|permitted|cleared) to",
     r"\bnew (?:policy|instructions?|rules?)\b",

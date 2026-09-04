@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed - the sdist no longer carries `.github/`
+
+Workflows, the Dependabot config and, from this release, the inbound
+layer's headless prompts and helper scripts under `.github/inbound/` are
+repository plumbing; nothing an installed package reads. `.github/` joins
+`.claude/` in `[tool.hatch.build.targets.sdist] exclude`, asserted by
+`tests/test_inbound_plumbing.py` (docs/inbound/FINDINGS.md IN-10). Wheels
+were never affected.
+
 ### Fixed - the test suite rewrote the developer's real `~/.claude/settings.json` (workflows W-34)
 
 Five `run_init(yes=True, no_backup=True)` tests in `tests/test_init.py`

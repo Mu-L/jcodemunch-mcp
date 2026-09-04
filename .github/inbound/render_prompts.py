@@ -94,6 +94,21 @@ def front_matter(prompt_text: str) -> dict:
     return fm
 
 
+def body_sha(prompt_text: str) -> str:
+    """The prompt's OWN text: generated regions and the policy sha line
+    blanked. A policy change re-renders every prompt without a bump; an
+    edit to the task body needs one."""
+    out = prompt_text.replace(CRLF, LF)
+    for name in ("preamble", "never-touch"):
+        b, e = BEGIN.format(name=name), END.format(name=name)
+        if b in out and e in out:
+            pre, rest = out.split(b, 1)
+            _, post = rest.split(e, 1)
+            out = f"{pre}{b}{e}{post}"
+    out = re.sub(r"^policy_sha256:.*$", "policy_sha256:", out, count=1, flags=re.M)
+    return hashlib.sha256(out.encode("utf-8")).hexdigest()
+
+
 def prompt_files() -> list[Path]:
     return sorted(p for p in PROMPTS.glob("*.md"))
 
@@ -151,11 +166,12 @@ def write(
         rec = versions.get(p.stem, {})
         if (
             rec
-            and rec.get("sha256") != sha_of(new)
+            and rec.get("body_sha256") is not None
+            and rec.get("body_sha256") != body_sha(new)
             and str(rec.get("version")) == fm["version"]
         ):
             refused.append(
-                f"{p.name}: content changed but version is still {fm['version']}; bump `version:` first"
+                f"{p.name}: task body changed but version is still {fm['version']}; bump `version:` first"
             )
             continue
         p.write_text(new, encoding="utf-8", newline=LF)
@@ -163,6 +179,7 @@ def write(
             "version": int(fm["version"]),
             "model": fm["model"],
             "sha256": sha_of(new),
+            "body_sha256": body_sha(new),
             "policy_sha256": psha,
         }
     versions_path.write_text(
