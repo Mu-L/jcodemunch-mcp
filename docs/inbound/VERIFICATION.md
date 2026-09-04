@@ -26,7 +26,7 @@ Unit and structural half. The end-to-end half (a real issue through intake and t
 
 | property | how exercised | result | evidence |
 |---|---|---|---|
-| 2.1 no `pull_request_target`, no fork checkout, no persisted credentials | `tests/test_inbound_workflows.py` over every `inbound-*.yml` | both workflows check out `main` with `persist-credentials: false` | 147 passed across the six inbound test files and `test_workflows_pinned.py` |
+| 2.1 no `pull_request_target`, no fork checkout, no persisted credentials | `tests/test_inbound_workflows.py` over every `inbound-*.yml` | both workflows check out `main` with `persist-credentials: false` | 147 passed across the six inbound test files and `test_workflows_pinned.py` on the first item-2 commit; 166 after review round 1 (row 2.8) |
 | 2.2 write permissions only on actorless triggers | same file: `contents: write` reserved to the fix job and the sweep; `pull_request` needs the same-repo guard | intake has `issues: write` on `issues`/`issue_comment`; the runner on `schedule`/`workflow_dispatch` | same |
 | 2.3 the kill switch precedes every write | same file: the first `killswitch.py` step index is below the first label, comment, `apply_triage`, or model step in every job | holds in both workflows; the runner re-reads the switch before the model and again before `apply_triage` | same |
 | 2.4 turns, timeout, model, action pin | same file: `--max-turns 12` at or under POLICY §7, `timeout-minutes` 10 and 5, `claude-sonnet-5` from the prompt's front matter, `anthropics/claude-code-action@ef8bb1e4…` | as specified; `WebFetch`/`WebSearch` disallowed by name; `--permission-mode dontAsk --permission-prompts none` | same |
