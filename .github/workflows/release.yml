@@ -56,9 +56,12 @@ jobs:
         run: |
           echo "::error title=release::tag ${GITHUB_REF_NAME} was pushed by hand. Delete it and dispatch the Release workflow with version=${GITHUB_REF_NAME#v} (docs/cicd/RUNBOOK.md)."
           exit 1
+      # A real release checks out main regardless of the dispatch ref; a dry
+      # run checks out the dispatched ref so the pipeline can be proven from a
+      # branch without a tag or a bump on main.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
-          ref: main
+          ref: ${{ inputs.dry_run == true && github.ref || 'main' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
@@ -69,14 +72,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --locked --group dev
-      - name: Pre-flight on main's HEAD (required checks green, pins, changelog, tag, PyPI, 3b PRs, lint)
+      - name: Pre-flight (required checks green on HEAD, pins, changelog, tag, PyPI, 3b PRs, lint)
         id: v
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          uv run python scripts/release_preflight.py --version "${{ inputs.version }}" --ci --no-harness --summary "$GITHUB_STEP_SUMMARY"
+          DRY=""; if [ "${{ inputs.dry_run }}" = "true" ]; then DRY="--dry-run"; fi
+          uv run python scripts/release_preflight.py --version "${{ inputs.version }}" --ci --no-harness $DRY --summary "$GITHUB_STEP_SUMMARY"
           echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
@@ -187,7 +191,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
-          ref: main
+          ref: ${{ needs.preflight.outputs.dry_run == 'true' && needs.preflight.outputs.sha || 'main' }}
           fetch-depth: 0
       - name: Tag the pre-flight SHA (refuse if main moved mid-release)
         shell: bash

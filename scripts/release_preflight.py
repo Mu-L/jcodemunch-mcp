@@ -371,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--offline", action="store_true", help="skip the PyPI lookup")
     ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="release dry run from any ref: branch, ci, tag and pypi verdicts are reported but do not block",
+    )
+    ap.add_argument(
         "--ci",
         action="store_true",
         help="inside the Release workflow on a checkout of main: accept a detached HEAD at origin/main",
@@ -393,6 +398,8 @@ def main(argv: list[str] | None = None) -> int:
 
     lines: list[str] = []
 
+    soft = {"branch", "ci", "tag", "pypi"} if a.dry_run else set()
+
     def report(name: str, verdict: tuple[bool, str] | None) -> None:
         nonlocal ok
         if verdict is None:
@@ -400,6 +407,10 @@ def main(argv: list[str] | None = None) -> int:
             lines.append(f"| {name} | — | SKIP |")
             return
         good, msg = verdict
+        if not good and name in soft:
+            print(f"{name:<10} {msg:<90} FAIL (dry run: not blocking)")
+            lines.append(f"| {name} | {msg} | FAIL, not blocking under dry run |")
+            return
         ok = ok and good
         print(f"{name:<10} {msg:<90} {'PASS' if good else 'FAIL'}")
         lines.append(f"| {name} | {msg} | {'PASS' if good else '**FAIL**'} |")
