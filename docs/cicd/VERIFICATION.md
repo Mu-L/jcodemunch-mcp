@@ -147,3 +147,16 @@ drop to two Python versions on PRs and keep four on the nightly.
   `check-runs on HEAD concluded success, including ['main: harness full
   (ubuntu, 3.12)', 'main: harness bench (online)']` and PASS; recorded below
   by the session that dispatches it.
+- Run 33828632839 (after #587, the C-14 fix): the pre-flight waited on
+  `main: harness full (ubuntu, 3.12)` for the merge's own main.yml run, then
+  read `5 check-runs on HEAD concluded success, including ['main: harness
+  full (ubuntu, 3.12)', 'main: harness bench (online)'] PASS`. Every job
+  green, `release: pypi` skipped by `dry_run`. This is the state the first
+  real publish starts from.
+
+## 7. End state (2026-09-04)
+
+Workflows: PR gate, Main, Nightly, Security, Release, Benchmark, Health
+Radar, Health Radar Comment. Protection on `main`: 21 required contexts,
+`strict` and `enforce_admins` on. Open PRs: 0. Every `cicd/*` branch that
+merged was deleted; the five probe branches remain for their run links.
