@@ -22,7 +22,17 @@ GitHub; a local run cites its command and its last line.
 
 ## 2. Intake and triage (item 2)
 
-PENDING (item 2 PR).
+Unit and structural half. The end-to-end half (a real issue through intake and the scheduled runner) needs the App and the API key (1.10) and is in section 7.
+
+| property | how exercised | result | evidence |
+|---|---|---|---|
+| 2.1 no `pull_request_target`, no fork checkout, no persisted credentials | `tests/test_inbound_workflows.py` over every `inbound-*.yml` | both workflows check out `main` with `persist-credentials: false` | 147 passed across the six inbound test files and `test_workflows_pinned.py` |
+| 2.2 write permissions only on actorless triggers | same file: `contents: write` reserved to the fix job and the sweep; `pull_request` needs the same-repo guard | intake has `issues: write` on `issues`/`issue_comment`; the runner on `schedule`/`workflow_dispatch` | same |
+| 2.3 the kill switch precedes every write | same file: the first `killswitch.py` step index is below the first label, comment, `apply_triage`, or model step in every job | holds in both workflows; the runner re-reads the switch before the model and again before `apply_triage` | same |
+| 2.4 turns, timeout, model, action pin | same file: `--max-turns 12` at or under POLICY §7, `timeout-minutes` 10 and 5, `claude-sonnet-5` from the prompt's front matter, `anthropics/claude-code-action@ef8bb1e4…` | as specified; `WebFetch`/`WebSearch` disallowed by name; `--permission-mode dontAsk --permission-prompts none` | same |
+| 2.5 the plan cannot exceed POLICY §2 | `tests/test_inbound_triage_apply.py`: medium and low never draft or comment; security is label + needs-human at every confidence; duplicate is the one comment and never applies the human `duplicate` label; the owner's issues get labels only; four schema violations refused; a malformed result file escalates and never reaches `gh` | as specified | same |
+| 2.6 the scan's false positives on this repo's vocabulary | seven ordinary reports naming env vars, Claude Code hooks, a github.com URL and a pasted `assistant:` log line as green arms; fifteen new red arms from the plumbing reviewer's second round | green arms trip nothing; red arms all found | `tests/test_inbound_scan.py`; the variable/hook pattern now needs a repository qualifier (`repo secret`, `actions variable`, `.claude/hooks`, `deny_guard`) |
+| 2.7 the action's inputs | verified against `docs/usage.md` on 2026-09-04: there is no `prompt_file` input; the runner renders the prompt file into a step output and passes `prompt:`; `structured_output` exists when `--json-schema` is passed, but the runner reads the JSON the model writes to `$RUNNER_TEMP` under a path-restricted `Write` rule, so the schema is enforced by `apply_triage.py` and a malformed file escalates | design as built | FINDINGS IN-13 |
 
 ## 3. Sweep and digest (items 3, 7)
 

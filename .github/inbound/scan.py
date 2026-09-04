@@ -52,9 +52,14 @@ SECURITY_TERMS = [
 # POLICY section 4.3. Each is a pattern over normalised text.
 INJECTION_PATTERNS = [
     r"(?:ignore|disregard|forget|drop|override)\s+(?:all |the |your |any )?(?:previous|prior|above|earlier|existing|original|system)\s+(?:instructions?|prompts?|rules?|policy|guidance)",
-    r"(?:disable|skip|bypass|remove|modify|change|edit|update|turn off|set|unset|flip|toggle)\s+(?:[\w.\-/`'\"]+\s+){0,4}?(?:workflow|github action|hook|permission|secret|variable|branch protection|codeowners|ruleset|inbound_enabled|inbound_autofix)s?\b",
+    # Repository controls only: env vars and Claude Code hooks are PRODUCT
+    # features here (CLAUDE.md "Env Vars", `hook-*`), so a bare "variable" or
+    # "hook" would tax the most ordinary bug reports (plumbing review, note 2).
+    r"(?:disable|skip|bypass|remove|modify|change|edit|update|turn[ -]off|set|unset|flip|toggle|revoke|add)\s+(?:[\w.\-/`'\"]+\s+){0,4}?(?:workflow|github action|branch protection|codeowners|ruleset|deploy key|(?:repo(?:sitory)?|actions?|github|org(?:anization)?)\s+(?:secret|variable|permission)s?|inbound_enabled|inbound_autofix|\.claude/hooks|deny[_ ]guard|pre_commit\.py|pre_pr\.py)\b",
     r"(?:edit|change|modify|loosen|lower|raise|update|rewrite)\s+(?:the |your )?(?:standard\.md|thresholds?\.json|retired\.json|archaeology\.md|security\.md|license|policy\.md)",
-    r"(?:post|send|upload|report|exfiltrate|forward|curl|wget|submit|transmit|push)\b[^\n]{0,80}\b(?:https?://|webhook|@\w+\.\w+|to my server|to this url|hooks\.slack\.com|discord(?:app)?\.com|ngrok|pastebin|requestbin|\w+\.\w{2,}/\w)",
+    # Exfiltration verbs followed by a destination. github.com is where our own
+    # work goes, so a pushed branch or a linked PR is not a destination here.
+    r"(?:post|send|upload|report|exfiltrate|forward|curl|wget|submit|transmit|email|mail|dm|message)\b[^\n]{0,80}\b(?:https?://(?!github\.com/)|webhook|[\w.+-]+@\w+\.\w+|to my server|to this url|as a (?:public )?gist|hooks\.slack\.com|discord(?:app)?\.com|ngrok|pastebin|requestbin|(?<!github\.com/)\b(?!github\.com)[\w-]+\.(?:invalid|io|sh|xyz|ru|cn|net|org|co)/\w)",
     r"(?:approve|merge|close|tag|release|publish)\s+(?:this|the|your|my|that|pr\b|pull request|issue)",
     r"you must (?:now )?(?:approve|merge|close|tag|release|publish|comply|obey)",
     r"(?:print|reveal|show|dump|echo|output|read|cat|type|access|include|paste|put)\s+(?:the |your |any )?(?:[\w.\-/`'\"]+\s+){0,3}?(?:system prompt|instructions|configuration|config|secrets?|environment|env vars?|tokens?|api[_ -]?keys?|~/\.claude|settings\.json|anthropic_api_key|github_token)",
@@ -64,11 +69,20 @@ INJECTION_PATTERNS = [
     r"you are (?:now )?(?:allowed|authori[sz]ed|permitted|cleared) to",
     r"\bnew (?:policy|instructions?|rules?)\b",
     r"(?:override|test|debug|maintenance|emergency|admin|developer) mode",
-    r"(?:^|\n)\s*(?:system|assistant|developer)\s*:\s",
+    # A pasted log line `assistant: calling search_symbols` is a bug report;
+    # a fake assistant turn is caught by the compliance pattern below.
+    r"(?:^|\n)\s*(?:system|developer)\s*:\s",
     r"\[INST\]|<\|im_start\|>|<\|system\|>|<<SYS>>|\[system\]",
     r"curl [^\n]*\|\s*(?:ba|z)?sh\b",
-    r"pip install [^\n]*--index-url (?!https://pypi\.org)",
+    r"(?:pipx?|uv pip|uv) install [^\n]*--(?:extra-)?index(?:-url)? (?!https://pypi\.org)",
+    r"\$\((?:curl|wget) [^\n]*\)",
+    r"run (?:the )?(?:attached|included|provided|this) [\w.-]+\.(?:sh|py|ps1|bat|cmd)\b",
     r"as (?:agreed|discussed|approved|instructed) (?:with|by|earlier|before)",
+    r"(?:has|have|was|were|is|are) (?:already |now )?(?:been )?(?:approved|authori[sz]ed|signed off|cleared|okayed) by (?:the maintainer|jgravelle|anthropic|github|the owner|an? (?:admin|maintainer))",
+    r"\b(?:the maintainer|jgravelle|the owner) has (?:already )?(?:approved|authori[sz]ed|agreed|okayed)",
+    r"no (?:review|approval|check|test)s? (?:is |are )?(?:needed|required|necessary)[^\n]{0,40}\b(?:merge|approve|ship|release)",
+    r"(?:ship it|cut (?:the |a )?release|tag v?\d+\.\d+|create (?:the |a )?(?:release|tag))",
+    r"\b(?:gh auth token|printenv|env \||set \| grep|echo \$\w*(?:key|token|secret)\w*|base64)\b",
 ]
 
 _SEC = [re.compile(p, re.IGNORECASE) for p in SECURITY_TERMS]

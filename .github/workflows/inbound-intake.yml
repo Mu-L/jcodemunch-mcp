@@ -1,0 +1,118 @@
+# purpose:  record an inbound issue event with NO model and NO secrets:
+#           the pre-model scan decides security / injection / queued and
+#           applies only those labels (docs/inbound/DESIGN.md section 1)
+# invokes:  .github/inbound/killswitch.py, scan.py, ledger.py
+# produces: labels on the issue; an inbound-audit-<run> artifact
+# refuses:  to comment, to run a model, to touch anything but labels; to act
+#           when INBOUND_ENABLED is not exactly "true"
+name: inbound intake
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: inbound-intake-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    # Issues only: a PR comment also fires issue_comment.
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      # Our own default branch, never the event's content.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+
+      - name: kill switch (POLICY section 8)
+        id: kill
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-intake --item "$ISSUE" \
+            --record "$RUNNER_TEMP/audit/record.json"
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" != "0" ] && [ "$rc" != "78" ]; then exit "$rc"; fi
+
+      - name: write the item to a file (data, never a shell argument)
+        if: steps.kill.outputs.rc == '0'
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/item"
+          printf '%s\n\n%s\n\n%s\n' "$TITLE" "$BODY" "$COMMENT" > "$RUNNER_TEMP/item/text.md"
+
+      - name: pre-model scan (POLICY rule 1 and section 4.3)
+        if: steps.kill.outputs.rc == '0'
+        id: scan
+        run: |
+          python .github/inbound/scan.py "$RUNNER_TEMP/item/text.md" > "$RUNNER_TEMP/item/scan.json"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          s = json.load(open(os.environ["RUNNER_TEMP"] + "/item/scan.json", encoding="utf-8"))
+          print("security=" + str(s["security_hit"]).lower())
+          print("injection=" + str(s["injection_hit"]).lower())
+          PY
+
+      - name: re-read the kill switch before the first write
+        if: steps.kill.outputs.rc == '0'
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: label (the only write this job makes)
+        if: steps.kill.outputs.rc == '0'
+        id: label
+        run: |
+          if [ "${{ steps.scan.outputs.security }}" = "true" ]; then
+            gh issue edit "$ISSUE" -R "$REPO" --add-label "inbound:security" --add-label "needs-human" --remove-label "inbound:queued"
+            echo "outcome=escalated" >> "$GITHUB_OUTPUT"; echo "labels=inbound:security,needs-human" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.scan.outputs.injection }}" = "true" ]; then
+            gh issue edit "$ISSUE" -R "$REPO" --add-label "inbound:unknown" --add-label "needs-human" --add-label "inbound:injection-suspected" --remove-label "inbound:queued"
+            echo "outcome=escalated" >> "$GITHUB_OUTPUT"; echo "labels=inbound:unknown,needs-human,inbound:injection-suspected" >> "$GITHUB_OUTPUT"
+          else
+            gh issue edit "$ISSUE" -R "$REPO" --add-label "inbound:queued"
+            echo "outcome=acted" >> "$GITHUB_OUTPUT"; echo "labels=inbound:queued" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: audit record (written on every path, POLICY section 6.1)
+        if: always()
+        env:
+          OUTCOME: ${{ steps.label.outputs.outcome || 'failed' }}
+          LABELS: ${{ steps.label.outputs.labels }}
+          KILL_RC: ${{ steps.kill.outputs.rc }}
+          SECURITY: ${{ steps.scan.outputs.security }}
+        run: |
+          if [ "$KILL_RC" = "78" ]; then exit 0; fi   # the kill-switch step wrote the skipped record
+          CATEGORY=$([ "$SECURITY" = "true" ] && echo security || echo pending)
+          python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
+            --field job=inbound-intake --field item="$ISSUE" --field outcome="$OUTCOME" \
+            --field 'classification={"category":"'"$CATEGORY"'","confidence":"high","evidence":[]}' \
+            --field "actions_taken=[\"labels:$LABELS\"]" --field kill_switch_state=true \
+            --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

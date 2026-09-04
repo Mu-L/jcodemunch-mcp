@@ -1,0 +1,204 @@
+# purpose:  process the inbound:queued issues with the triage prompt, up to
+#           five per run, applying only what POLICY section 2 permits
+#           (docs/inbound/DESIGN.md section 2)
+# invokes:  killswitch.py, budget.py, the pinned claude-code-action with
+#           .github/inbound/prompts/triage.md, apply_triage.py, ledger.py
+# produces: labels; at most one comment per item (the duplicate link); draft
+#           files and an audit record as artifacts
+# refuses:  to run on an issue event (D1: the queue is processed on a
+#           schedule so no external actor is in the context); to act when
+#           INBOUND_ENABLED is not "true"; to exceed the section 7 budgets
+name: inbound triage
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "one issue number to triage (optional)"
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: inbound-triage
+  cancel-in-progress: false
+
+env:
+  ACTION_SHA: ef8bb1e43bf303cff727a1dd0b8837029fe982a2
+  MODEL: claude-sonnet-5
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      issues: ${{ steps.pick.outputs.issues }}
+      go: ${{ steps.pick.outputs.go }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - name: kill switch and budget
+        id: pick
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-triage --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          python .github/inbound/budget.py --job inbound-triage --repo "$REPO"; b=$?
+          set -e
+          if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; echo "issues=[]" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -n "${{ github.event.inputs.issue }}" ]; then
+            echo "issues=[${{ github.event.inputs.issue }}]" >> "$GITHUB_OUTPUT"
+          else
+            gh issue list -R "$REPO" --label "inbound:queued" --state open --json number --limit 5 \
+              --jq 'map(.number)' | tr -d '\n' | sed 's/^/issues=/' >> "$GITHUB_OUTPUT"; echo >> "$GITHUB_OUTPUT"
+          fi
+          echo "go=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-queue
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+          if-no-files-found: ignore
+
+  triage:
+    needs: queue
+    if: needs.queue.outputs.go == 'true' && needs.queue.outputs.issues != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      max-parallel: 2
+      fail-fast: false
+      matrix:
+        issue: ${{ fromJson(needs.queue.outputs.issues) }}
+    env:
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ matrix.issue }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - run: uv sync --locked --group dev
+
+      - name: App token (Contents, Issues, Pull requests; DESIGN D2)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+
+      - name: prompt for this issue (the prompt file is data; the number is the only substitution)
+        id: prompt
+        run: |
+          python .github/inbound/render_prompts.py --check
+          python - <<'PY'
+          import os, pathlib
+          t = pathlib.Path(".github/inbound/prompts/triage.md").read_text(encoding="utf-8")
+          t = t.replace("$ISSUE", os.environ["ISSUE"])
+          out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write("text<<INBOUND_PROMPT_EOF\n" + t + "\nINBOUND_PROMPT_EOF\n")
+          PY
+          echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/triage.md | cut -c1-64)" >> "$GITHUB_ENV"
+
+      - name: re-read the kill switch before the model runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: classify (model; no write tool but the result file)
+        id: model
+        uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app.outputs.token }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: >-
+            --model ${{ env.MODEL }}
+            --max-turns 12
+            --permission-mode dontAsk
+            --permission-prompts none
+            --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search issues:*),Bash(gh api repos/*/issues/*/comments:*),Write(${{ runner.temp }}/triage-${{ matrix.issue }}.json)"
+            --disallowedTools "WebFetch,WebSearch,Edit,Bash(git *),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh pr *)"
+            --append-system-prompt "Write your final JSON to ${{ runner.temp }}/triage-${{ matrix.issue }}.json with the Write tool and nothing else."
+
+      - name: apply exactly what section 2 permits
+        id: apply
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          AUTHOR=$(gh issue view "$ISSUE" -R "$REPO" --json author --jq .author.login)
+          OWNER="${REPO%%/*}"
+          python .github/inbound/killswitch.py --repo "$REPO"
+          python .github/inbound/apply_triage.py "$RUNNER_TEMP/triage-$ISSUE.json" \
+            --author "$AUTHOR" --owner "$OWNER" --repo "$REPO" \
+            --drafts-dir "$RUNNER_TEMP/drafts" --run-id "$GITHUB_RUN_ID" --apply | tee "$RUNNER_TEMP/plan.json"
+
+      - name: audit record
+        if: always()
+        env:
+          CONCLUSION: ${{ steps.model.outcome }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          tmp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          res = {}
+          try:
+              res = json.loads((tmp / f"triage-{os.environ['ISSUE']}.json").read_text(encoding="utf-8"))
+          except Exception:
+              pass
+          plan = {}
+          try:
+              plan = json.loads((tmp / "plan.json").read_text(encoding="utf-8"))
+          except Exception:
+              pass
+          outcome = "failed" if os.environ.get("CONCLUSION") != "success" else ("drafted" if plan.get("draft") else ("escalated" if "needs-human" in plan.get("add", []) else "acted"))
+          cls = {k: res.get(k) for k in ("category", "confidence", "evidence")} if res else {}
+          if cls.get("category") == "security":
+              cls = {"category": "security", "confidence": cls.get("confidence")}
+          rec = {
+              "job": "inbound-triage", "item": os.environ["ISSUE"], "outcome": outcome,
+              "prompt_file": ".github/inbound/prompts/triage.md", "prompt_sha256": os.environ.get("PROMPT_SHA"),
+              "prompt_version": json.load(open(".github/inbound/prompts/VERSIONS.json"))["triage"]["version"],
+              "model": os.environ["MODEL"], "action_sha": os.environ["ACTION_SHA"], "kill_switch_state": "true",
+              "classification": cls, "decision": plan.get("error") or res.get("category"),
+              "actions_taken": [f"labels+:{','.join(plan.get('add', []))}", f"labels-:{','.join(plan.get('remove', []))}"] + (["comment"] if plan.get("comment") else []) + ([plan.get("draft_path")] if plan.get("draft_path") else []),
+          }
+          args = ["python", ".github/inbound/ledger.py", "write", str(tmp / "audit" / "record.json")]
+          for k, v in rec.items():
+              args += ["--field", f"{k}={json.dumps(v)}"]
+          subprocess.run(args, check=True)
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-${{ matrix.issue }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: draft-${{ github.run_id }}-${{ matrix.issue }}
+          path: ${{ runner.temp }}/drafts/
+          retention-days: 90
+          if-no-files-found: ignore
