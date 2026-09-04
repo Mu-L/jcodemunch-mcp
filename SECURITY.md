@@ -315,6 +315,25 @@ The performance and ranking telemetry introduced in v1.74.0–v1.80.0 is
 
 ---
 
+## Reporting a vulnerability
+
+Report privately through GitHub's advisory form:
+<https://github.com/jgravelle/jcodemunch-mcp/security/advisories/new>.
+Do not open a public issue for a suspected vulnerability.
+
+- You will get an acknowledgement within **3 days** and a verdict (confirmed,
+  not a vulnerability, or needs more information) within **14 days**.
+- A confirmed report ships as a fix release under this project's normal
+  cadence, credited to you in `CHANGELOG.md` and the release notes unless you
+  ask otherwise. Policy 2 in `CLAUDE.md` applies: a release is never held
+  for a second finding.
+- Scope: the `jcodemunch-mcp` package on PyPI, this repository's workflows,
+  and the published container of the MCP registry entry. The pinned
+  benchmark corpora and the observatory are out of scope.
+- ⚠ This section is asserted by `tests/test_security_md_policy.py` in the
+  harness fast tier: the advisory URL and both response windows must stay
+  present.
+
 ## Summary of Controls
 
 | Control                   | Location                       | Default                     |
