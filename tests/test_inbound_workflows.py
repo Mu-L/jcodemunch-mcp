@@ -132,8 +132,10 @@ def test_write_permissions_only_on_actorless_or_same_repo_triggers(path: Path):
             f"{path.name}: pull_request with a write permission needs the same-repo guard"
         )
     if "contents: write" in writes:
-        assert path.stem in ("inbound-fix", "inbound-sweep"), (
-            f"{path.name}: contents: write is reserved for the fix job and the sweep (DESIGN D7)"
+        # The sweep pushes with the App token, not GITHUB_TOKEN (item-3
+        # review round 2, note 1): only the fix job may hold this scope.
+        assert path.stem == "inbound-fix", (
+            f"{path.name}: contents: write is reserved for the fix job (DESIGN D7; the sweep writes with the App token)"
         )
 
 
