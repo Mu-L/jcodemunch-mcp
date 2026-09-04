@@ -194,10 +194,10 @@ def mergeable_contributor_prs(prs: list[dict]) -> list[str]:
 # ------------------------------------------------------------------ live runs
 
 
-def check_branch() -> tuple[bool, str]:
+def check_branch(ci: bool = False) -> tuple[bool, str]:
     rc, br = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
     br = br.strip()
-    if br != "main":
+    if br != "main" and not (ci and br == "HEAD"):
         return False, f"on {br!r}, releases cut from main"
     rc, st = _run(["git", "status", "--porcelain"])
     if st.strip():
@@ -371,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--offline", action="store_true", help="skip the PyPI lookup")
     ap.add_argument(
+        "--ci",
+        action="store_true",
+        help="inside the Release workflow on a checkout of main: accept a detached HEAD at origin/main",
+    )
+    ap.add_argument(
         "--pins-only",
         action="store_true",
         help="PR gate mode: pins agree; if they moved vs --base-ref, CHANGELOG and whatsnew carry the version; the `release` label requires a move",
@@ -386,16 +391,22 @@ def main(argv: list[str] | None = None) -> int:
 
     ok = True
 
+    lines: list[str] = []
+
     def report(name: str, verdict: tuple[bool, str] | None) -> None:
         nonlocal ok
         if verdict is None:
             print(f"{name:<10} SKIP")
+            lines.append(f"| {name} | — | SKIP |")
             return
         good, msg = verdict
         ok = ok and good
         print(f"{name:<10} {msg:<90} {'PASS' if good else 'FAIL'}")
+        lines.append(f"| {name} | {msg} | {'PASS' if good else '**FAIL**'} |")
+        if not good:
+            print(f"::error title=pre-flight {name}::{msg}")
 
-    report("branch", check_branch())
+    report("branch", check_branch(a.ci))
     report("ci", check_ci())
     pins = read_pins()
     pv = pins_verdict(pins, a.version)
@@ -424,6 +435,11 @@ def main(argv: list[str] | None = None) -> int:
     report("lint", check_lint())
     report("harness", None if a.no_harness else check_harness())
     print("PREFLIGHT", "PASS" if ok else "FAIL")
+    if a.summary:
+        with open(a.summary, "a", encoding="utf-8") as fh:
+            head = f"## release: pre-flight: {'PASS' if ok else 'FAIL'}"
+            table = "| check | observed | verdict |\n|---|---|---|\n" + "\n".join(lines)
+            fh.write(head + "\n\n" + table + "\n")
     return 0 if ok else 1
 
 
