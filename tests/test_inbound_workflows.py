@@ -157,7 +157,7 @@ def test_kill_switch_precedes_every_write(path: Path):
             i
             for i, r in runs
             if re.search(
-                r"gh (issue|pr) (edit|comment|create|ready)|git push|claude-code-action|apply_triage",
+                r"gh (issue|pr) (edit|comment|create|ready)|git push|claude-code-action|apply_triage|apply_depeval",
                 r,
             )
         ]

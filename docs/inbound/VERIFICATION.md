@@ -51,7 +51,17 @@ Sweep (item 3), unit and structural half; the digest (item 7) is pending.
 
 ## 4. Dependency evaluation (item 4)
 
-PENDING.
+Unit and structural half; the end-to-end half (a real Dependabot PR through the gate, the evaluation and the bench) needs the App and the API key (1.10) and is in section 7.
+
+| property | how exercised | result | evidence |
+|---|---|---|---|
+| 4.1 the kind is decided with no model | `depkind.classify` over a patch bump, a major crossing, a new package, a tree-sitter bump beside a major, a diff touching `src/`, a `[project].version` change, a `uses:` bump with no lock movement; `lock_versions` over this repo's real `uv.lock` | patch-or-minor / major / major / grammar-or-parser / unknown / unknown / patch-or-minor; the real lock yields `tree-sitter` and `mcp` | `tests/test_inbound_depkind.py` |
+| 4.2 `agent:ready-to-merge` needs every input green | `apply_depeval.plan` over the ready case and eight weaker combinations (major, Floor FAIL, gate failure, missing result, no Floor table, REQUEST CHANGES, grammar, unknown) | ready once; evaluation-failed for the gate and Floor cases; bench-pending for grammar; needs-human-review for the rest; a missing Floor table is UNKNOWN and never ready | `tests/test_inbound_depeval_apply.py` |
+| 4.3 the Floor table is read by code | `floors_hold` over a summary with one PASS and one FAIL row, a missing directory, a file with no table | `(False, ["suite.full_seconds"])`; `(None, [])` twice | same file |
+| 4.4 one sticky comment, outcome labels swapped | `apply` with `_gh` mocked returning one existing marker comment | the comment is PATCHed, no second comment, the three other outcome labels removed; `gh api` calls carry no `-R` (the flag does not exist on `gh api`) | same file |
+| 4.5 the bench table is per row, never per total | `bench_table.render` over two summary shapes with one id present on one side only | the delta column is filled where both sides exist and `n/a` where one is absent; the footer says an absent measurement is never a zero | `tests/test_inbound_bench_table.py` |
+| 4.6 the model job holds no write scope; the bench is started by a label, not a dispatch | `tests/test_inbound_workflows.py` over `inbound-depeval.yml` and `inbound-bench-full.yml` | `classify` has `pull-requests: read` and `GITHUB_TOKEN`; `apply` holds the App token and no model; `inbound-bench-full` triggers on `pull_request: labeled` with the same-repo guard and read-only `GITHUB_TOKEN`; the kill switch precedes `apply_depeval` in both | same file (`apply_depeval` added to the write regex) |
+| 4.7 review round 1 (item 4) | PENDING | | |
 
 ## 5. Self-check (item 5)
 

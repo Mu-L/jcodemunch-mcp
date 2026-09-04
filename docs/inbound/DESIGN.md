@@ -170,6 +170,28 @@ minutes; posts the per-row table under the sticky comment and swaps
 is the one budget the policy exempts, because a grammar update has never
 been measured (AUDIT §2.3) and a truncated measurement is worse than none.
 
+**As built (2026-09-04, item 4).** The evaluation is two jobs, the shape
+item 2's review settled on: `classify` (model; `GITHUB_TOKEN` read-only,
+`contents: read`, `pull-requests: read`, `actions: read`, `id-token:
+write`; no App token; the result JSON is its only write, kept as an
+artifact) and `apply` (no model, no API key; the App token; `apply_depeval.py`
+reads the result, the no-model kind from `depkind.py`, the gate conclusion
+and the Floor table, and applies exactly one outcome label and the one
+sticky comment). The workflow-level permission block is therefore
+`pull-requests: read`, not `write`: the App writes. The Floor table is read
+by code in `apply`, never taken from the model's JSON, so `floors_hold` in
+the model's output is informational.
+
+The full-corpus bench is NOT dispatched with `gh workflow run` (the App has
+no Actions scope, and D2 does not add one). `apply` labels the PR
+`agent:bench-pending`, and `inbound-bench-full.yml` triggers on that
+`pull_request: labeled` event, guarded by same-repo, `dependabot/` head,
+and the label name; a human applying the same label is the manual re-run
+path. Its `GITHUB_TOKEN` is read-only; the appended table and the label
+swap use the App token. `gh api` rejects `-R`, so `apply_depeval._gh`
+omits it for API calls (the first draft passed it and would have failed on
+every comment lookup).
+
 ## 5. Agent PR self-check
 
 | | |
