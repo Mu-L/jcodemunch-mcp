@@ -1,0 +1,88 @@
+# purpose:  on any same-repo PR labelled agent-authored, prove what the fix
+#           job promised and fail the PR otherwise (docs/inbound/DESIGN.md
+#           section 5); the one job that runs with the kill switch off,
+#           because it can only ever fail a PR
+# invokes:  .github/inbound/selfcheck.py (git, uv run pytest on a worktree
+#           of main with the test commit cherry-picked)
+# produces: one check run, pass or fail, each failed clause named
+# refuses:  to check out the PR head at the workspace root; to run a model;
+#           to label, comment, or edit anything
+name: inbound agent PR self-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, ready_for_review, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: inbound-selfcheck-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  selfcheck:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'agent-authored')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --group dev --extra watch
+
+      - name: the PR as data (never checked out at the root)
+        run: |
+          gh pr view "$PR" -R "$REPO" --json number,author,headRefName,baseRefName,body,files,labels,commits > "$RUNNER_TEMP/pr.json"
+          gh pr diff "$PR" -R "$REPO" > "$RUNNER_TEMP/pr.diff"
+          git fetch -q origin "refs/pull/$PR/head:refs/inbound/pr-head"
+          BASE=$(git merge-base origin/main refs/inbound/pr-head)
+          python - "$BASE" <<'PY' > "$RUNNER_TEMP/commits.json"
+          import json, subprocess, sys
+          base = sys.argv[1]
+          shas = subprocess.run(["git", "rev-list", "--reverse", f"{base}..refs/inbound/pr-head"], capture_output=True, text=True).stdout.split()
+          out = []
+          for s in shas:
+              files = subprocess.run(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", s], capture_output=True, text=True).stdout.split()
+              out.append({"sha": s, "files": files})
+          print(json.dumps(out))
+          PY
+          ISSUE=$(python -c "import json,re;b=json.load(open('$RUNNER_TEMP/pr.json'))['body'] or '';m=re.search(r'Closes #(\d+)',b);print(m.group(1) if m else '')")
+          if [ -n "$ISSUE" ]; then gh issue view "$ISSUE" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")' > "$RUNNER_TEMP/issue-labels.txt"; else : > "$RUNNER_TEMP/issue-labels.txt"; fi
+
+      - name: self-check (a) to (f)
+        run: |
+          uv run python .github/inbound/selfcheck.py --pr-json "$RUNNER_TEMP/pr.json" --diff "$RUNNER_TEMP/pr.diff" \
+            --commits "$RUNNER_TEMP/commits.json" --issue-labels "$(cat "$RUNNER_TEMP/issue-labels.txt")" \
+            --base-ref origin/main --worktree "$RUNNER_TEMP/selfcheck-wt" | tee "$RUNNER_TEMP/selfcheck.json"
+
+      - name: audit record
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          OUTCOME=$([ "$JOB_STATUS" = "success" ] && echo acted || echo failed)
+          python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
+            --field job=inbound-selfcheck --field item="$PR" --field outcome="$OUTCOME" \
+            --field kill_switch_state=n/a --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null \
+            --field decision="$(python -c "import json;d=json.load(open('$RUNNER_TEMP/selfcheck.json'));print('ok' if d['ok'] else '; '.join(d['failed'])[:500])" 2>/dev/null || echo 'selfcheck did not run')"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

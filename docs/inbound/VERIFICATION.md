@@ -66,7 +66,16 @@ Unit and structural half; the end-to-end half (a real Dependabot PR through the 
 
 ## 5. Self-check (item 5)
 
-PENDING.
+Unit and structural half; the end-to-end half (an App-authored PR through the check) needs item 6 and the App (1.10) and is in section 7.
+
+| property | how exercised | result | evidence |
+|---|---|---|---|
+| 5.1 the never-touch list is read from POLICY 4.4 | `never_touch_patterns` over the real policy; eleven never-touch paths and four ordinary ones | every listed path caught, `pyproject.toml` is not a path pattern (the version pin is checked by diff), ordinary paths pass | `tests/test_inbound_selfcheck.py` |
+| 5.2 the failing test precedes every src/ change | `commit_order` over test-first, src-first, a mixed first commit, no test commit | the first accepted; the others each named | same file |
+| 5.3 the template is read from DESIGN 7 and order matters | nine headings from the design; swapped, missing last | out of order and `## Audit` missing named | same file |
+| 5.4 every clause fails for its own reason | `main --skip-red-run` over a PR by a stranger on `feature/x` touching `.claude/settings.json` and the version pin, no template, no Closes | exit 1; clauses (a) to (f) all present | same file |
+| 5.5 the workflow runs with the switch off and can only fail | `tests/test_inbound_workflows.py`: `inbound-selfcheck` is exempt from the kill-switch rule; read-only permissions; same-repo guard in the job `if:`; `pull_request` checkout is `main` | as specified | same file |
+| 5.6 review round 1 (item 5) | PENDING | | |
 
 ## 6. Fix attempt and promotion (item 6)
 

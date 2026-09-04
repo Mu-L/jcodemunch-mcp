@@ -304,8 +304,14 @@ def test_label_triggered_jobs_name_the_label_and_the_branch_prefix(path: Path):
         return
     first = next(iter(_jobs(doc).values()))
     cond = str(first.get("if", ""))
-    assert re.search(r"github\.event\.label\.name == '[\w:-]+'", cond), (path.name, cond)
-    assert "startsWith(github.event.pull_request.head.ref, '" in cond, (path.name, cond)
+    by_label_event = re.search(r"github\.event\.label\.name == '[\w:-]+'", cond)
+    by_label_set = re.search(r"contains\(github\.event\.pull_request\.labels\.\*\.name, '[\w:-]+'\)", cond)
+    assert by_label_event or by_label_set, (path.name, cond)
+    if by_label_event:
+        # A job started by ONE label event (the bench) also pins the
+        # branch prefix; a job that runs on every PR event and filters
+        # by the label set (the self-check) checks the branch itself.
+        assert "startsWith(github.event.pull_request.head.ref, '" in cond, (path.name, cond)
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)

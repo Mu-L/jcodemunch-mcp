@@ -229,6 +229,18 @@ calls. `tests/test_inbound_workflows.py` asserts each of these guards
 | escalation | a failed check; the promote job (§3) reads it and keeps the PR a draft |
 | kill switch | none: this job only ever fails a PR, so it runs even when the switch is off |
 
+**As built (2026-09-04, item 5).** No `checks: write`: the job's own
+conclusion is the check run named `selfcheck`, which the promote job
+reads. The PR's commits are fetched into `refs/inbound/pr-head` and read
+with `git diff-tree`; the test commit is cherry-picked into a worktree of
+`main` under `$RUNNER_TEMP` and its `tests/*.py` run from the MAIN
+checkout's environment (`uv run --no-sync`), because the package under
+test is `main` either way and a second `uv sync` per worktree is a second
+environment to keep honest. Only pytest exit 1 counts as red: 2, 4 and 5
+(interrupted, usage, nothing collected) are not a reproduction. The PR
+author check accepts the App's login with or without `[bot]` and the
+`app/` prefix `gh` renders.
+
 ## 6. Scheduled sweep and weekly digest
 
 **Sweep**, `.github/workflows/inbound-sweep.yml`, daily 06:30 UTC and
