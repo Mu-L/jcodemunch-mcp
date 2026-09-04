@@ -27,67 +27,67 @@ def _load():
 
 pf = _load()
 
-REQUIRED = ["license/cla", "lint", "Harness fast tier", "test (ubuntu-latest, 3.12)"]
-
 
 def _runs(**conclusions):
     return [{"name": n, "conclusion": c} for n, c in conclusions.items()]
 
 
-def test_ci_passes_only_when_every_required_context_succeeded():
-    ok, msg = pf.ci_verdict(
-        REQUIRED,
-        _runs(
-            **{
-                "lint": "success",
-                "Harness fast tier": "success",
-                "test (ubuntu-latest, 3.12)": "success",
-            }
-        ),
-    )
+WITNESSES_OK = {
+    "main: harness full (ubuntu, 3.12)": "success",
+    "main: harness bench (online)": "success",
+    "codeql (python)": "success",
+}
+
+
+def test_ci_passes_when_the_main_witnesses_succeeded():
+    ok, pending, msg = pf.main_witness_verdict(_runs(**WITNESSES_OK))
+    assert ok and pending is None, msg
+
+
+def test_ci_ignores_the_release_workflows_own_running_jobs():
+    runs = _runs(**WITNESSES_OK) + [
+        {"name": "release: pre-flight", "conclusion": None, "status": "in_progress"}
+    ]
+    ok, pending, msg = pf.main_witness_verdict(runs)
     assert ok, msg
 
 
-def test_ci_fails_on_a_failed_run():
-    ok, msg = pf.ci_verdict(
-        REQUIRED,
-        _runs(
-            **{
-                "lint": "success",
-                "Harness fast tier": "failure",
-                "test (ubuntu-latest, 3.12)": "success",
-            }
-        ),
+def test_ci_fails_on_a_failed_run_of_any_name():
+    ok, pending, msg = pf.main_witness_verdict(
+        _runs(**{**WITNESSES_OK, "codeql (python)": "failure"})
     )
-    assert not ok and "Harness fast tier: failure" in msg
+    assert not ok and pending is None and "codeql (python): failure" in msg
 
 
-def test_ci_fails_when_a_required_context_has_no_run_at_all():
-    """A renamed job silently drops out of the gate on GitHub's side; this is the only place that sees it."""
-    ok, msg = pf.ci_verdict(
-        REQUIRED, _runs(**{"lint": "success", "test (ubuntu-latest, 3.12)": "success"})
+def test_ci_fails_when_a_witness_is_absent():
+    """A renamed main.yml job silently stops being a witness; this is the only place that notices."""
+    ok, pending, msg = pf.main_witness_verdict(
+        _runs(**{k: v for k, v in WITNESSES_OK.items() if "bench" not in k})
     )
-    assert not ok and "Harness fast tier: no check-run on HEAD" in msg
+    assert not ok and "witness absent" in msg and "main: harness bench (online)" in msg
 
 
-def test_ci_fails_on_an_unfinished_run():
-    runs = _runs(**{"lint": "success", "test (ubuntu-latest, 3.12)": "success"}) + [
-        {"name": "Harness fast tier", "conclusion": None, "status": "in_progress"}
+def test_ci_reports_a_running_witness_as_pending_not_pass():
+    runs = _runs(**{k: v for k, v in WITNESSES_OK.items() if "bench" not in k}) + [
+        {
+            "name": "main: harness bench (online)",
+            "conclusion": None,
+            "status": "in_progress",
+        }
     ]
-    ok, msg = pf.ci_verdict(REQUIRED, runs)
-    assert not ok and "in_progress" in msg
+    ok, pending, msg = pf.main_witness_verdict(runs)
+    assert (
+        not ok and pending == "main: harness bench (online)" and "still running" in msg
+    )
 
 
-def test_ci_does_not_expect_the_cla_status_on_a_main_commit():
-    ok, _ = pf.ci_verdict(["license/cla", "lint"], _runs(lint="success"))
-    assert ok
-
-
-def test_ci_fails_when_nothing_is_required():
-    ok, msg = pf.ci_verdict([], _runs(lint="success"))
-    assert not ok and "no required checks" in msg
-    ok, _ = pf.ci_verdict(["license/cla"], _runs(lint="success"))
-    assert not ok
+def test_ci_fails_with_no_runs_at_all():
+    ok, pending, msg = pf.main_witness_verdict([])
+    assert not ok and pending is None and "no check-runs" in msg
+    ok, pending, msg = pf.main_witness_verdict(
+        [{"name": "release: build", "conclusion": None, "status": "queued"}]
+    )
+    assert not ok and "no check-runs" in msg
 
 
 def test_live_pin_sites_all_agree():
@@ -166,41 +166,3 @@ def test_only_a_mergeable_clean_contributor_pr_blocks():
         },
     ]
     assert pf.mergeable_contributor_prs(prs) == ["#1 someone"]
-
-
-def _all(**conclusions):
-    return [{"name": n, "conclusion": c} for n, c in conclusions.items()]
-
-
-GATE_OK = {
-    "fast: harness fast tier": "success",
-    "full: test (ubuntu-latest, 3.12)": "success",
-    "package: install and handshake (ubuntu-latest)": "success",
-    "done: changelog": "success",
-}
-
-
-def test_fallback_passes_when_every_run_succeeded_and_the_gate_families_are_present():
-    ok, msg = pf.all_runs_verdict(_all(**GATE_OK, **{"codeql (python)": "success"}))
-    assert ok, msg
-
-
-def test_fallback_fails_on_any_failed_or_unfinished_run():
-    ok, msg = pf.all_runs_verdict(_all(**{**GATE_OK, "codeql (python)": "failure"}))
-    assert not ok and "codeql (python): failure" in msg
-    runs = _all(**GATE_OK) + [
-        {"name": "bench: token benchmark", "conclusion": None, "status": "in_progress"}
-    ]
-    ok, msg = pf.all_runs_verdict(runs)
-    assert not ok and "in_progress" in msg
-
-
-def test_fallback_fails_when_a_gate_family_is_absent():
-    runs = _all(**{k: v for k, v in GATE_OK.items() if not k.startswith("package")})
-    ok, msg = pf.all_runs_verdict(runs)
-    assert not ok and "package: install and handshake (" in msg
-
-
-def test_fallback_fails_with_no_runs_at_all():
-    ok, msg = pf.all_runs_verdict([])
-    assert not ok and "no check-runs" in msg
