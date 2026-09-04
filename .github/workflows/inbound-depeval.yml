@@ -110,10 +110,15 @@ jobs:
         run: |
           gh pr diff "$PR" -R "$REPO" --name-only > "$RUNNER_TEMP/files.txt"
           gh pr diff "$PR" -R "$REPO" > "$RUNNER_TEMP/pr.diff"
-          gh api "repos/$REPO/contents/uv.lock?ref=main" --jq .content | base64 -d > "$RUNNER_TEMP/before.lock"
-          gh api "repos/$REPO/contents/uv.lock?ref=$HEAD_SHA" --jq .content | base64 -d > "$RUNNER_TEMP/after.lock"
-          gh api "repos/$REPO/contents/pyproject.toml?ref=main" --jq .content | base64 -d > "$RUNNER_TEMP/before.pyproject"
-          gh api "repos/$REPO/contents/pyproject.toml?ref=$HEAD_SHA" --jq .content | base64 -d > "$RUNNER_TEMP/after.pyproject"
+          # From git, not the contents API: that API's base64 body caps at
+          # 1 MB and uv.lock is past 680 KB (item-4 review round 2, note 3).
+          # The head SHA is a same-repo commit (the job's `if:` and the
+          # Dependabot check above), fetched by SHA and never checked out.
+          git fetch -q origin "$HEAD_SHA"
+          git show "origin/main:uv.lock" > "$RUNNER_TEMP/before.lock"
+          git show "$HEAD_SHA:uv.lock" > "$RUNNER_TEMP/after.lock"
+          git show "origin/main:pyproject.toml" > "$RUNNER_TEMP/before.pyproject"
+          git show "$HEAD_SHA:pyproject.toml" > "$RUNNER_TEMP/after.pyproject"
           python .github/inbound/depkind.py --files "$RUNNER_TEMP/files.txt" --before "$RUNNER_TEMP/before.lock" --after "$RUNNER_TEMP/after.lock" \
             --diff "$RUNNER_TEMP/pr.diff" --before-pyproject "$RUNNER_TEMP/before.pyproject" --after-pyproject "$RUNNER_TEMP/after.pyproject" | tee "$RUNNER_TEMP/kind.json"
           echo "kind=$(python -c "import json,os;print(json.load(open(os.environ['RUNNER_TEMP']+'/kind.json'))['kind'])")" >> "$GITHUB_OUTPUT"
