@@ -137,3 +137,13 @@ The PR budget is revised to ~25 min wall when windows legs are queued; the
 runner-minute estimate (~95) held. Two levers exist if that matters: stage
 3-5 already start after the ubuntu 3.12 leg, and the windows matrix could
 drop to two Python versions on PRs and keep four on the nightly.
+
+### 6.3 Second and third dry runs
+
+- Run 33827504322 (after #586): every job green again; the pre-flight's
+  `ci` line read `gate jobs absent on HEAD` — the C-13 fallback was asking a
+  PR-ref question of a main commit (C-14).
+- Third dry run (after the C-14 fix): the `ci` line is expected to read
+  `check-runs on HEAD concluded success, including ['main: harness full
+  (ubuntu, 3.12)', 'main: harness bench (online)']` and PASS; recorded below
+  by the session that dispatches it.

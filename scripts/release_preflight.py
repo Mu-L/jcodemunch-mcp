@@ -14,9 +14,11 @@ a local run.
 
 Checks
   branch        on `main`, tree clean, HEAD == origin/main after a fetch
-  ci            every required status check on `main` has a check-run on HEAD
-                whose conclusion is `success` (`license/cla` is a PR status and
-                is not expected on a main commit)
+  ci            main.yml's witnesses on HEAD (`main: harness full`, `main: harness
+                bench (online)`) concluded success and no run of any other name
+                failed; the release workflow's own jobs are ignored; under --ci
+                it waits up to 20 min for a witness still running. The PR gate
+                itself is guaranteed by branch protection (enforce_admins on)
   pins          every version pin site agrees (pyproject, server.json x2,
                 .claude-plugin/plugin.json, whatsnew.json current + entries[0],
                 uv.lock name-scoped line) and equals --version when given
@@ -47,10 +49,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 SLUG = "jgravelle/jcodemunch-mcp"
 OWNER = "jgravelle"
-PR_STATUS_ONLY = {
-    "license/cla"
-}  # posted to PR heads by a webhook, never to a main commit
-
 PIN_SITES = (
     "pyproject.toml",
     "server.json",
@@ -147,34 +145,6 @@ def pins_verdict(pins: dict[str, str | None], want: str | None) -> tuple[bool, s
     return True, v
 
 
-def ci_verdict(required: list[str], check_runs: list[dict]) -> tuple[bool, str]:
-    """Every required context (minus PR-only statuses) must have a successful run on HEAD.
-
-    A context with no run at all is a FAIL: a renamed job silently stops being
-    required on GitHub's side, and this is the only place that notices.
-    """
-    by_name: dict[str, list[str]] = {}
-    for r in check_runs:
-        by_name.setdefault(r.get("name", ""), []).append(
-            r.get("conclusion") or r.get("status") or "unknown"
-        )
-    bad = []
-    for ctx in required:
-        if ctx in PR_STATUS_ONLY:
-            continue
-        runs = by_name.get(ctx)
-        if not runs:
-            bad.append(f"{ctx}: no check-run on HEAD")
-        elif any(c != "success" for c in runs):
-            bad.append(f"{ctx}: {','.join(runs)}")
-    if not [c for c in required if c not in PR_STATUS_ONLY]:
-        return False, "no required checks configured on main (policy 3d)"
-    if bad:
-        return False, "; ".join(bad)
-    n = len([c for c in required if c not in PR_STATUS_ONLY])
-    return True, f"{n} required checks success on HEAD"
-
-
 def changelog_has(version: str, text: str) -> bool:
     return (
         re.search(rf"^##\s*\[?{re.escape(version)}\]?(?=\s|$)", text, re.M) is not None
@@ -215,64 +185,84 @@ def check_branch(ci: bool = False) -> tuple[bool, str]:
     return True, f"main, clean, pushed ({head.strip()[:7]})"
 
 
-GATE_MARKERS = (
-    "fast: harness fast tier",
-    "full: test (",
-    "package: install and handshake (",
-    "done: ",
-)
+# The witnesses that run ON a main commit (main.yml). The PR gate's jobs ran on
+# the PR's merge ref, a different SHA, and branch protection (enforce_admins on)
+# is what guarantees they passed; a main commit carries only these.
+MAIN_WITNESSES = ("main: harness full (ubuntu, 3.12)", "main: harness bench (online)")
+IGNORED_PREFIXES = (
+    "release: ",
+)  # the release workflow's own jobs, in progress by definition
+PENDING = ("queued", "in_progress", "waiting", "pending", "requested")
 
 
-def all_runs_verdict(check_runs: list[dict]) -> tuple[bool, str]:
-    """Fallback when branch protection is unreadable (docs/cicd/FINDINGS.md C-13).
+def main_witness_verdict(check_runs: list[dict]) -> tuple[bool, str | None, str]:
+    """(ok, still_pending_or_None, message) for HEAD on main (docs/cicd/FINDINGS.md C-13, C-14).
 
-    Inside Actions the GITHUB_TOKEN cannot read branch protection (403), so
-    the required-context list is unavailable there. Then every check-run on
-    HEAD must have concluded success, neutral or skipped, and the PR gate's
-    job families must be present by name (names are not Floors). An
-    unfinished or failed run of ANY name blocks; UNKNOWN blocks.
+    Nothing reaches `main` without the PR gate (branch protection with
+    `enforce_admins`), so on a main commit the question is whether the
+    witnesses that DO run there concluded success: `main.yml`'s full and
+    online-bench jobs, plus no failed run of any other name. The release
+    workflow's own jobs are ignored (they are running). An in-progress
+    witness is reported as pending so the caller can wait; UNKNOWN blocks.
     """
-    if not check_runs:
-        return False, "no check-runs on HEAD"
-    bad = [
-        f"{r.get('name')}: {r.get('conclusion') or r.get('status')}"
-        for r in check_runs
-        if (r.get("conclusion") or "") not in ("success", "neutral", "skipped")
+    runs = [
+        r for r in check_runs if not str(r.get("name", "")).startswith(IGNORED_PREFIXES)
     ]
-    names = " | ".join(r.get("name", "") for r in check_runs)
-    absent = [m for m in GATE_MARKERS if m not in names]
+    if not runs:
+        return False, None, "no check-runs on HEAD (main.yml has not started?)"
+    names = {
+        r.get("name", ""): (r.get("conclusion") or r.get("status") or "unknown")
+        for r in runs
+    }
+    pending = [n for n, c in names.items() if c in PENDING or c == "unknown"]
+    failed = [
+        f"{n}: {c}"
+        for n, c in names.items()
+        if c not in ("success", "neutral", "skipped") and n not in pending
+    ]
+    absent = [w for w in MAIN_WITNESSES if w not in names]
+    if failed:
+        return False, None, "; ".join(failed)
     if absent:
-        bad.append(f"gate jobs absent on HEAD: {absent}")
-    if bad:
-        return False, "; ".join(bad)
+        return False, None, f"witness absent on HEAD: {absent}"
+    if pending:
+        return False, ", ".join(pending), f"still running: {', '.join(pending)}"
     return (
         True,
-        f"{len(check_runs)} check-runs on HEAD all concluded success (protection list unreadable here; fallback rule)",
+        None,
+        f"{len(runs)} check-runs on HEAD concluded success, including {list(MAIN_WITNESSES)}",
     )
 
 
-def check_ci() -> tuple[bool, str]:
-    try:
-        _, head = _run(["git", "rev-parse", "HEAD"])
-        runs = _gh_json(
-            f"repos/{SLUG}/commits/{head.strip()}/check-runs",
-            "--paginate",
-            "--jq",
-            ".check_runs",
-        )
-        flat: list[dict] = []
-        for chunk in runs if isinstance(runs, list) else [runs]:
-            flat.extend(chunk if isinstance(chunk, list) else [chunk])
-    except Exception as e:  # could not ask -> FAIL, never pass
-        return False, f"could not read CI: {e}"
-    try:
-        prot = _gh_json(f"repos/{SLUG}/branches/main/protection")
-        required = list(prot.get("required_status_checks", {}).get("contexts") or [])
-    except Exception as e:
-        if "403" in str(e) or "Resource not accessible" in str(e):
-            return all_runs_verdict(flat)
-        return False, f"could not read branch protection: {e}"
-    return ci_verdict(required, flat)
+def _head_runs() -> list[dict]:
+    _, head = _run(["git", "rev-parse", "HEAD"])
+    runs = _gh_json(
+        f"repos/{SLUG}/commits/{head.strip()}/check-runs",
+        "--paginate",
+        "--jq",
+        ".check_runs",
+    )
+    flat: list[dict] = []
+    for chunk in runs if isinstance(runs, list) else [runs]:
+        flat.extend(chunk if isinstance(chunk, list) else [chunk])
+    return flat
+
+
+def check_ci(wait_seconds: int = 0) -> tuple[bool, str]:
+    """Wait up to `wait_seconds` for main.yml's witnesses on HEAD (the release runs right after a merge)."""
+    import time
+
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            flat = _head_runs()
+        except Exception as e:  # could not ask -> FAIL, never pass
+            return False, f"could not read CI: {e}"
+        ok, pending, msg = main_witness_verdict(flat)
+        if ok or pending is None or time.monotonic() >= deadline:
+            return ok, msg
+        print(f"ci         waiting for {pending} ...")
+        time.sleep(30)
 
 
 def check_tag(version: str) -> tuple[bool, str]:
@@ -459,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"::error title=pre-flight {name}::{msg}")
 
     report("branch", check_branch(a.ci))
-    report("ci", check_ci())
+    report("ci", check_ci(1200 if a.ci else 0))
     pins = read_pins()
     pv = pins_verdict(pins, a.version)
     report("pins", pv)
