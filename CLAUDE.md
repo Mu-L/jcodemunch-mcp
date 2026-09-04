@@ -9,6 +9,34 @@
 - **Python:** >=3.10
 - **Tool count:** 91 visible in `full` / 94 in catalog (front door hidden; counts verified 2026-07-30 from `jcodemunch-mcp surface`, which is the only place to get them — do NOT hand-type this; +1 v1.108.111 `get_parity_map`, +1 v1.108.112 `get_decorator_census`, +1 v1.108.113 `get_architecture_metrics`); `tool_surface=counter` exposes a 3-tool front door (`order`/`menu`/`route`) instead
 
+## CI/CD: the harness's judgment on every change (2026-09-04)
+
+**`docs/cicd/DESIGN.md` is the pipeline; `docs/cicd/RUNBOOK.md` is what a
+human does.** `pr-gate.yml` runs `python -m harness fast|full|check <id>`
+in five stages and every job is a REQUIRED check on `main` by name:
+`fast: harness fast tier`, `fast: format`, `fast: types`, `fast: dependency
+audit`, `fast: secret scan`, `full: test (<os>, <py>)` x8, `package: install
+and handshake (<os>)` x2, `bench: harness bench tier`, `bench: token
+benchmark`, `done: changelog`, `done: version pins`, `done: tool surface
+documented`, plus `license/cla`. `main.yml` re-runs the full and online bench
+tiers after a merge and OPENS a `regression` issue per failing Floor;
+`nightly.yml` does the same across the matrix with fresh corpora (`drift`);
+`security.yml` is CodeQL. ⚠⚠ **Read a failed check from its SUMMARY**: one
+line per verdict, `<id> crit <c> floor <cmp v> observed <o> FAIL`, and the
+same as an annotation; a pytest or ruff failure lists the ids. ⚠⚠ **No
+threshold lives in a workflow** -- `tests/test_thresholds_are_the_only_copy.py`
+and `tests/test_workflows_pinned.py` fail on a restated Floor, an action
+not pinned to a 40-hex SHA, or `continue-on-error` outside a job named
+`(informational)`. ⚠⚠ **Publishing is `release.yml`, dispatched with a
+version, never run locally and never tag-driven by hand**: a hand-pushed
+`v*` tag runs the pre-flight and fails it. Trusted publishing (OIDC) on
+environments `testpypi`/`pypi`; `dry_run` defaults true until the first real
+publish is separately approved (RUNBOOK §1, §5). ⚠ `enforce_admins` is ON
+and `strict` is ON: nobody pushes to `main`, a stale branch updates before
+it merges, and the emergency path is RUNBOOK §6 with a `bypass` issue.
+⚠ A required check is matched by NAME; renaming a job is a protection
+change (RUNBOOK §8). Open findings: `docs/cicd/FINDINGS.md`.
+
 ## The Standard and the Harness (2026-09-03)
 
 **`docs/standard/STANDARD.md` is the authority on what "good" means here,
