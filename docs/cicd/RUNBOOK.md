@@ -234,4 +234,10 @@ installed on this repository only), store `INBOUND_APP_ID`,
 `INBOUND_APP_PRIVATE_KEY` and `ANTHROPIC_API_KEY` as repository secrets,
 add the App to the CLA allowlist, enable private vulnerability reporting,
 and add the ruleset that confines the App to `inbound/**` and
-`inbound-ledger`. `docs/inbound/VERIFICATION.md` row 1.10 tracks it.
+`inbound-ledger` (target `branch`, include `~ALL`, exclude
+`refs/heads/inbound/**`, `refs/heads/inbound-ledger` AND
+`refs/heads/main`; rules creation, update, deletion; bypass actors the
+Write, Maintain and Admin repository roles, mode `always`). ⚠ Leaving
+`main` inside it makes every human merge need `--admin` and stops
+auto-merge (FINDINGS IN-19); `main` is protected by branch protection
+already. `docs/inbound/VERIFICATION.md` row 1.10 tracks it.

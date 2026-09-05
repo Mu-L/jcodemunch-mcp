@@ -276,3 +276,65 @@ def test_a_failed_switch_read_names_its_error(monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out.strip().splitlines()[0])
     assert rc == ks.EXIT_SKIP and out["enabled"] is False and out["value"] is None
     assert "403" in out["error"], out
+
+
+def test_a_run_that_declined_at_its_gate_spends_no_budget():
+    """FINDINGS IN-17, closed 2026-09-05 after the second live sweep: the
+    first sweep of the day had declined (switch unreadable), and the second
+    was declined by the budget for it, `runs_per_day: 1 of 1 used`. A run
+    in which nothing but the plumbing steps succeeded did no work."""
+    declined = [{"name": "Set up job", "conclusion": "success"}, {"name": "Run actions/checkout@abc", "conclusion": "success"},
+                {"name": "switch-reading token (App)", "conclusion": "success"}, {"name": "kill switch and budget", "conclusion": "success"},
+                {"name": "App token (DESIGN D2)", "conclusion": "skipped"}, {"name": "commit the ledger", "conclusion": "skipped"},
+                {"name": "audit record", "conclusion": "success"}, {"name": "Post Run actions/checkout@abc", "conclusion": "success"},
+                {"name": "Complete job", "conclusion": "success"}]
+    assert budget.run_did_work(declined) is False
+    worked = declined[:4] + [{"name": "App token (DESIGN D2)", "conclusion": "success"}, {"name": "commit the ledger", "conclusion": "success"}]
+    assert budget.run_did_work(worked) is True
+    failed = declined[:4] + [{"name": "classify (model)", "conclusion": "failure"}]
+    assert budget.run_did_work(failed) is True, "a failed model step spent its budget (review, finding 3)"
+    assert budget.run_did_work([]) is True, "no steps readable: fail closed, count it"
+    # `gate (read by the gate job ...)` is the echo step of a model job, plumbing too
+    assert budget.run_did_work([{"name": "gate (read by the gate job)", "conclusion": "success"}]) is False
+
+
+def test_the_budget_stops_reading_runs_at_the_ceiling():
+    """Review of IN-17's fix, finding 2: one `gh run view` per prior run,
+    on a job that fires every 15 minutes; the count stops at the ceiling."""
+    reads = []
+    def steps_of(r):
+        reads.append(r["databaseId"])
+        return [{"name": "work", "conclusion": "success"}]
+    runs = [{"databaseId": i} for i in range(10)]
+    assert budget.count_working_runs(runs, steps_of, 3) == 3 and reads == [0, 1, 2]
+    reads.clear()
+    assert budget.count_working_runs(runs, steps_of, 0) == 10, "no ceiling: read everything"
+    assert budget.other_runs(runs, "4") == [r for r in runs if r["databaseId"] != 4]
+    assert len(budget.other_runs([{"databaseId": 4}, {"databaseId": 5}], "4")) == 1
+
+
+def test_plumbing_prefixes_match_every_gate_step_and_no_work_step():
+    """Review of IN-17's fix, note 4: the prefix list is hand-written. Bind
+    it to the workflows: in every job with a kill-switch step, every step
+    up to and including that step matches a prefix, and the first step
+    after it that is neither an upload nor the audit record does not."""
+    import yaml
+    for path in sorted((ROOT / ".github" / "workflows").glob("inbound-*.yml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for jname, job in doc.get("jobs", {}).items():
+            steps = job.get("steps", [])
+            names = [s.get("name") or ("Run " + s["uses"] if s.get("uses") else "run") for s in steps]
+            kills = [i for i, s in enumerate(steps) if "killswitch.py" in (s.get("run") or "")]
+            if not kills:
+                continue
+            if names[kills[0]].startswith("kill switch"):
+                # a gate job: nothing before its gate is work
+                for n in names[: kills[0] + 1]:
+                    assert n.startswith(budget._PLUMBING_STEP_PREFIXES), (path.name, jname, n)
+            else:
+                # a write job whose only read is the re-read: a decline there
+                # counts as work (steps before it ran), the fail-closed side
+                assert names[kills[0]].startswith("re-read the kill switch"), (path.name, jname, names[kills[0]])
+            after = [n for n in names[kills[0] + 1:] if not n.startswith(("Run actions/upload", "audit record", "Post ", "Complete"))]
+            if after:
+                assert not after[0].startswith(budget._PLUMBING_STEP_PREFIXES), (path.name, jname, after[0])

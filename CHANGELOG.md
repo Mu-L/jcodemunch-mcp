@@ -34,6 +34,16 @@ model or PR-code job is never first. And the daily budget counted the run
 that was asking, so a job allowed one run a day always declined itself.
 VERIFICATION section 7.
 
+The second live run, the same day, found the rest of that budget defect
+and one of the setup's: a run that had declined at its gate still spent
+the day's one slot, so the fixed sweep was declined for the broken one
+(the budget now reads each run's steps and counts only a run in which
+something beyond the gate ran); and the ruleset written to confine
+the App applied its update rule to `main` too, so every human merge needed
+an admin bypass and auto-merge could not fire. `main` is out of the ruleset
+and under branch protection; the App never merging is by construction.
+FINDINGS IN-17, IN-19.
+
 ### Changed - the sdist no longer carries `.github/`
 
 Workflows, the Dependabot config and, from this release, the inbound
