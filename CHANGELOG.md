@@ -42,7 +42,9 @@ something beyond the gate ran); and the ruleset written to confine
 the App applied its update rule to `main` too, so every human merge needed
 an admin bypass and auto-merge could not fire. `main` is out of the ruleset
 and under branch protection; the App never merging is by construction.
-FINDINGS IN-17, IN-19.
+FINDINGS IN-17, IN-19. The third run got through every step of the sweep
+and failed on the last line, writing its summary into a directory that
+only a declined run had ever created; the directory is created first now.
 
 ### Changed - the sdist no longer carries `.github/`
 
