@@ -309,7 +309,7 @@ def test_the_budget_stops_reading_runs_at_the_ceiling():
     assert budget.count_working_runs(runs, steps_of, 3) == 3 and reads == [0, 1, 2]
     reads.clear()
     assert budget.count_working_runs(runs, steps_of, 0) == 10, "no ceiling: read everything"
-    assert budget.other_runs(runs, "4") == [r for r in runs if r["databaseId"] != 4] or True
+    assert budget.other_runs(runs, "4") == [r for r in runs if r["databaseId"] != 4]
     assert len(budget.other_runs([{"databaseId": 4}, {"databaseId": 5}], "4")) == 1
 
 
