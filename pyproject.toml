@@ -104,6 +104,9 @@ packages = ["src/jcodemunch_mcp", "munch-bench/munch_bench"]
 # Nested .gitignore files do not reach hatchling, only the root one does.
 exclude = [
     ".claude/",
+    # Inbound-layer prompts and helper scripts, and every workflow: repository
+    # plumbing, never something an installed package needs (docs/inbound/FINDINGS.md IN-10).
+    ".github/",
     # Per-project index config for THIS source tree: it raises `max_file_size`
     # so `server.py` and `parser/extractor.py` enter this repo's own index
     # (#566). A consumer who installs the package does not have this tree, so

@@ -2,6 +2,8 @@
 
 **Status 2026-09-04 (workflows layer, `docs/workflows/`):** the process side is a set of Claude Code commands, hooks and a reviewer subagent that invoke items 1-4, 7, 8, 10, 17 at the right moments (`/feature`, `/fix-issue`, `/release`, `/benchmark-compare`, `/review`, `/triage-issue`; `docs/workflows/DESIGN.md`). No item below changes state by it; item 13 (coverage as an artifact) and W-1/W-2/W-3 in `docs/workflows/FINDINGS.md` are what the workflows still lack from the harness.
 
+**Status 2026-09-04 (inbound layer, `docs/inbound/`):** nine headless workflow files put items 1-4, 7 and 17 in front of inbound issues and PRs as well as our own changes: triage labels and drafts, dependency PRs are graded by the gate's Floor lines and a full-corpus bench, an agent-authored fix is opened as a draft only when a no-model gate accepts its commits, and marked ready only when the PR gate, the self-check (the failing test proven red on `main`) and the reviewer's APPROVE are all green. No item below moves by it; the layer adds no gate and loosens none (POLICY 4.4 makes `harness/thresholds.json`, `retired.json`, the standard and `ARCHAEOLOGY.md` untouchable to every headless job). Open: `docs/inbound/FINDINGS.md`.
+
 **Status 2026-09-03 (branch `harness/source-of-truth`):** items 1, 2, 4, 6-partial, 7, 12-partial, 13-partial, 16, 17, 18 are DONE by the harness build; the table below keeps the original order and marks each.
 
 | # | Done? |

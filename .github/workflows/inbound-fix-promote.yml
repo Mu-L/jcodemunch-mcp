@@ -1,0 +1,151 @@
+# purpose:  when the PR gate finishes on an inbound/fix-* branch, mark the
+#           draft ready ONLY if the gate, the self-check and the reviewer's
+#           APPROVE are all green; otherwise label agent:incomplete and
+#           leave the draft (docs/inbound/DESIGN.md section 3, promotion)
+# invokes:  killswitch.py; gh reads of the gate, the self-check run and the
+#           fix run's evidence artifact; `gh pr ready` or `gh pr edit --add-label`
+# produces: one of: the draft marked ready; agent:incomplete
+# refuses:  to run a model; to edit the PR body; to re-run anything; to
+#           promote on any input missing or non-green
+name: inbound fix promote
+
+on:
+  workflow_run:
+    workflows: ["PR gate"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: inbound-fix-promote-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'inbound/fix-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      GATE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      APP_LOGIN: jcodemunch-inbound[bot]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+
+      - name: kill switch
+        id: kill
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-fix-promote --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          set -e
+          echo "go=$([ "$k" = "0" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: the three inputs (gate, self-check, reviewer verdict)
+        if: steps.kill.outputs.go == 'true'
+        id: inputs
+        run: |
+          # Exact login, never a substring: HEAD_BRANCH is PR-controlled in a
+          # workflow_run context (review round 1, finding 3).
+          PR=$(gh pr list -R "$REPO" --head "$HEAD_BRANCH" --state open --json number,author | python -c "
+          import json, os, sys
+          app = os.environ['APP_LOGIN']
+          ok = (app, app.replace('[bot]', ''))
+          for pr in json.load(sys.stdin):
+              if (pr.get('author') or {}).get('login', '').replace('app/', '') in ok:
+                  print(pr['number']); break
+          ")
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+          [ -z "$PR" ] && { echo "no open App PR on $HEAD_BRANCH" ; exit 0; }
+          SELF=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs" --jq '.check_runs[] | select(.name == "selfcheck") | .conclusion' | head -1)
+          echo "selfcheck=${SELF:-missing}" >> "$GITHUB_OUTPUT"
+          ISSUE=$(gh pr view "$PR" -R "$REPO" --json body --jq '.body' | python -c "import re,sys;m=re.search(r'Closes #(\d+)',sys.stdin.read());print(m.group(1) if m else '')")
+          # The fix run's evidence artifact: named by the issue, newest first.
+          AID=$(gh api "repos/$REPO/actions/artifacts?per_page=100&name=inbound-fix-evidence-$ISSUE" --paginate \
+                --jq '.artifacts | sort_by(.created_at) | reverse | .[0].id' 2>/dev/null | head -1)
+          VERDICT=missing
+          if [ -n "$AID" ] && [ "$AID" != "null" ]; then
+            gh api "repos/$REPO/actions/artifacts/$AID/zip" > "$RUNNER_TEMP/ev.zip" && \
+            python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/ev.zip" "$RUNNER_TEMP/ev" && \
+            VERDICT=$(python - <<'PY'
+          import os, pathlib, re
+          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ev" / "review.md"
+          t = p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+          m = re.search(r"^## Verdict\s*\n\s*(APPROVE|REQUEST CHANGES|BLOCK)", t, re.M)
+          # The verdict is about ONE tree: the hand-over's head must be the
+          # SHA being promoted (review round 1, finding 4).
+          sha_file = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ev" / "head-sha.txt"
+          sha = sha_file.read_text(encoding="utf-8").strip() if sha_file.exists() else ""
+          if not m:
+              print("missing")
+          elif sha != os.environ["HEAD_SHA"]:
+              print(f"stale (evidence is for {sha[:7] or 'no sha'}, the PR head is {os.environ['HEAD_SHA'][:7]})")
+          else:
+              print(m.group(1))
+          PY
+          )
+          fi
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+
+      - name: re-read the kill switch before the write
+        if: steps.kill.outputs.go == 'true' && steps.inputs.outputs.pr != ''
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: App token (DESIGN D2; the two writes below)
+        if: steps.kill.outputs.go == 'true' && steps.inputs.outputs.pr != ''
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+
+      - name: promote or hold
+        if: steps.kill.outputs.go == 'true' && steps.inputs.outputs.pr != ''
+        id: act
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.inputs.outputs.pr }}
+          SELF: ${{ steps.inputs.outputs.selfcheck }}
+          VERDICT: ${{ steps.inputs.outputs.verdict }}
+        run: |
+          if [ "$GATE_CONCLUSION" = "success" ] && [ "$SELF" = "success" ] && [ "$VERDICT" = "APPROVE" ]; then
+            gh pr ready "$PR" -R "$REPO"
+            gh pr edit "$PR" -R "$REPO" --remove-label "agent:incomplete" || true
+            echo "decision=ready" >> "$GITHUB_OUTPUT"
+          else
+            gh pr edit "$PR" -R "$REPO" --add-label "agent:incomplete"
+            echo "decision=held gate=$GATE_CONCLUSION selfcheck=$SELF verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: audit record
+        if: always()
+        env:
+          DECISION: ${{ steps.act.outputs.decision || 'no open App PR' }}
+          PR: ${{ steps.inputs.outputs.pr }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -f "$RUNNER_TEMP/audit/record.json" ]; then exit 0; fi
+          OUTCOME=$([ "$JOB_STATUS" = "success" ] && echo acted || echo failed)
+          python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
+            --field job=inbound-fix-promote --field item="${PR:-0}" --field outcome="$OUTCOME" \
+            --field decision="$DECISION" --field kill_switch_state=true \
+            --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

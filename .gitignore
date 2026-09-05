@@ -130,3 +130,4 @@ benchmarks/rust_fidelity/oracle/Cargo.lock
 # ⚠⚠ `suite.log` was caught SHIPPING by that guard on 2026-08-28, minutes
 # after `relnotes.md` did ship in 1.108.304. Write scratch outside the repo.
 *.log
+!docs/inbound/

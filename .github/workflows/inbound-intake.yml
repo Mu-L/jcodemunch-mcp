@@ -1,0 +1,131 @@
+# purpose:  record an inbound issue event with NO model and NO secrets:
+#           the pre-model scan decides security / injection / queued and
+#           intake_plan.py applies only those labels (docs/inbound/DESIGN.md
+#           section 1)
+# invokes:  .github/inbound/killswitch.py, scan.py, intake_plan.py, ledger.py
+# produces: labels on the issue; an inbound-audit-<run> artifact
+# refuses:  to comment, to run a model, to touch anything but labels; to
+#           re-queue an item that is held or already classified; to act
+#           when INBOUND_ENABLED is not exactly "true"
+name: inbound intake
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: inbound-intake-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    # Issues only: a PR comment also fires issue_comment.
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      # Our own default branch, never the event's content.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+
+      - name: kill switch (POLICY section 8)
+        id: kill
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-intake --item "$ISSUE" \
+            --record "$RUNNER_TEMP/audit/record.json"
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" != "0" ] && [ "$rc" != "78" ]; then exit "$rc"; fi
+
+      - name: write the item to a file (event text reaches the shell only through env)
+        if: steps.kill.outputs.rc == '0'
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/item"
+          printf '%s\n\n%s\n\n%s\n' "$TITLE" "$BODY" "$COMMENT" > "$RUNNER_TEMP/item/text.md"
+
+      - name: pre-model scan (POLICY rule 1 and section 4.3)
+        if: steps.kill.outputs.rc == '0'
+        run: python .github/inbound/scan.py "$RUNNER_TEMP/item/text.md" > "$RUNNER_TEMP/item/scan.json"
+
+      - name: the plan (no re-queue of a held or classified item)
+        if: steps.kill.outputs.rc == '0'
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ACTOR: ${{ github.actor }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          LABELS=$(gh issue view "$ISSUE" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          python .github/inbound/intake_plan.py "$RUNNER_TEMP/item/scan.json" \
+            --event "$EVENT" --action "$ACTION" --actor "$ACTOR" --author "$AUTHOR" --labels "$LABELS" \
+            > "$RUNNER_TEMP/item/plan.json" || rc=$?
+          cat "$RUNNER_TEMP/item/plan.json"; [ "${rc:-0}" = "0" ] || exit "$rc"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          p = json.load(open(os.environ["RUNNER_TEMP"] + "/item/plan.json", encoding="utf-8"))
+          print("add=" + ",".join(p["add"]))
+          print("remove=" + ",".join(p["remove"]))
+          print("outcome=" + p["outcome"])
+          print("reason=" + p["reason"])
+          PY
+
+      - name: re-read the kill switch before the first write
+        if: steps.kill.outputs.rc == '0' && steps.plan.outputs.add != ''
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: label (the only write this job makes)
+        if: steps.kill.outputs.rc == '0' && steps.plan.outputs.add != ''
+        env:
+          ADD: ${{ steps.plan.outputs.add }}
+          REMOVE: ${{ steps.plan.outputs.remove }}
+        run: |
+          args=()
+          IFS=',' read -ra A <<< "$ADD"; for l in "${A[@]}"; do [ -n "$l" ] && args+=(--add-label "$l"); done
+          IFS=',' read -ra R <<< "$REMOVE"; for l in "${R[@]}"; do [ -n "$l" ] && args+=(--remove-label "$l"); done
+          gh issue edit "$ISSUE" -R "$REPO" "${args[@]}"
+
+      - name: audit record (written on every path, POLICY section 6.1)
+        if: always()
+        env:
+          OUTCOME: ${{ steps.plan.outputs.outcome || 'failed' }}
+          REASON: ${{ steps.plan.outputs.reason }}
+          ADD: ${{ steps.plan.outputs.add }}
+          KILL_RC: ${{ steps.kill.outputs.rc }}
+        run: |
+          if [ "$KILL_RC" = "78" ]; then exit 0; fi   # the kill-switch step wrote the skipped record
+          case ",$ADD," in *,inbound:security,*) CATEGORY=security;; *) CATEGORY=pending;; esac
+          python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
+            --field job=inbound-intake --field item="$ISSUE" --field outcome="$OUTCOME" --field decision="$REASON" \
+            --field 'classification={"category":"'"$CATEGORY"'","confidence":"high"}' \
+            --field "actions_taken=[\"labels+:$ADD\"]" --field kill_switch_state=true \
+            --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

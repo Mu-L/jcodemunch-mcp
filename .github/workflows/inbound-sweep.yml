@@ -1,0 +1,136 @@
+# purpose:  once a day, roll audit and draft artifacts into the
+#           inbound-ledger branch, post the drafts a human approved, and
+#           list what needs re-notification (docs/inbound/DESIGN.md section 6)
+# invokes:  killswitch.py, budget.py, sweep.py (ingest_drafts, ledger.roll,
+#           post_approved inside), git on the ledger checkout, the App token
+# produces: commits on inbound-ledger; at most one comment per approved
+#           draft; a sweep summary artifact
+# refuses:  to post a draft the App approved or that is not literally
+#           `approved: true`; to ingest an artifact from any run but this
+#           repository's own main-branch schedule/dispatch/issue runs; to
+#           overwrite a draft already in the ledger; to touch any branch but
+#           inbound-ledger; to run a model; to act when INBOUND_ENABLED is
+#           not "true"
+name: inbound sweep
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+# GITHUB_TOKEN is read-only here: every write goes through the App token,
+# which the ruleset confines to inbound-ledger (item-3 review, finding 3).
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: inbound-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REPO: ${{ github.repository }}
+      APP_LOGIN: jcodemunch-inbound[bot]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+
+      - name: kill switch and budget
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-sweep --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          python .github/inbound/budget.py --job inbound-sweep --repo "$REPO"; b=$?
+          set -e
+          if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: App token (DESIGN D2)
+        if: steps.gate.outputs.go == 'true'
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+
+      - name: check out the ledger branch beside the tree (the one persisted checkout)
+        if: steps.gate.outputs.go == 'true'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: inbound-ledger
+          path: ledger-branch
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: collect this repository's own artifacts since the last sweep (POLICY 4.1 applies to the ledger)
+        if: steps.gate.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifacts"
+          SINCE=$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          REPO_ID=$(gh api "repos/$REPO" --jq .id)
+          # A fork PR's own workflow file can upload an artifact with any name
+          # (item-3 review, finding 2): require OUR repository id, the main
+          # branch, and an actorless or issue event on the producing run.
+          gh api "repos/$REPO/actions/artifacts?per_page=100" --paginate \
+            --jq ".artifacts[] | select(.expired == false and .created_at > \"$SINCE\")
+                  | select(.name | test(\"^(inbound-audit|draft)-\"))
+                  | select(.workflow_run.head_repository_id == $REPO_ID and .workflow_run.head_branch == \"main\")
+                  | \"\\(.id) \\(.name) \\(.workflow_run.id)\"" \
+            | while read -r id name runid; do
+                EV=$(gh api "repos/$REPO/actions/runs/$runid" --jq .event)
+                case "$EV" in schedule|workflow_dispatch|issues|issue_comment|workflow_run) ;; *) echo "skip $name: event $EV"; continue;; esac
+                gh api "repos/$REPO/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$name.zip" && \
+                python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/$name.zip" "$RUNNER_TEMP/artifacts/$name"
+              done
+          find "$RUNNER_TEMP/artifacts" -type f | wc -l
+
+      - name: re-read the kill switch before the first write
+        if: steps.gate.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO" --job inbound-sweep --record "$RUNNER_TEMP/audit/record.json"
+
+      - name: ingest new drafts, roll the ledger, post approved drafts, list stale needs-human
+        if: steps.gate.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          python .github/inbound/sweep.py --ledger-dir ledger-branch --artifacts-dir "$RUNNER_TEMP/artifacts" \
+            --repo "$REPO" --app-login "$APP_LOGIN" --apply --summary "$RUNNER_TEMP/audit/sweep-summary.json"
+
+      - name: commit the ledger (the only push; the ruleset confines the App to this branch)
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          cd ledger-branch
+          git config user.name "$APP_LOGIN"
+          git config user.email "inbound@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -q -m "sweep: $(date -u +%Y-%m-%d)"
+          git push origin HEAD:inbound-ledger
+
+      - name: audit record
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/audit/record.json" ]; then exit 0; fi
+          python .github/inbound/ledger.py write "$RUNNER_TEMP/audit/record.json" \
+            --field job=inbound-sweep --field item=sweep --field outcome="${{ job.status == 'success' && 'acted' || 'failed' }}" \
+            --field kill_switch_state=true --field model=null --field prompt_file=null --field prompt_version=null --field prompt_sha256=null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

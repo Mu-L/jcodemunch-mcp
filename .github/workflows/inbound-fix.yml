@@ -1,0 +1,317 @@
+# purpose:  run /fix-issue headlessly on an issue a maintainer labelled
+#           agent-fix, in a fresh checkout of main, and open a DRAFT PR
+#           labelled agent-authored (docs/inbound/DESIGN.md section 3).
+#           Three jobs: preflight (no model; kill switch, budget, the fix
+#           pre-flight, agent:in-progress), fix (the model, read-only
+#           token, no App: it commits LOCALLY and hands over a bundle, the
+#           PR body and its evidence), publish (no model; the App token,
+#           fix_publish.py, then the push and the draft)
+# invokes:  killswitch.py, budget.py, fix_preflight.py, the pinned
+#           claude-code-action with prompts/fix.md (non-bare: the layer-4
+#           hooks and the deny guard are live), fix_publish.py, ledger.py
+# produces: branch inbound/fix-<n>-<slug>; a draft PR; evidence artifacts;
+#           agent:in-progress on the issue while running
+# refuses:  to give the model job any write scope or the App token; to
+#           push a bundle that touches a never-touch path, changes the
+#           version pin, or puts a src/ change before the failing test; to
+#           mark the PR ready (inbound-fix-promote does); to run on a young
+#           or silent account unless a human applied the label; on
+#           agent:reverted, agent:in-progress or inbound:security; when a
+#           merged revert names the issue after the last human agent-fix
+name: inbound fix attempt
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: inbound-fix
+  cancel-in-progress: false
+
+env:
+  ACTION_SHA: ef8bb1e43bf303cff727a1dd0b8837029fe982a2
+  MODEL: claude-opus-5
+  APP_LOGIN: jcodemunch-inbound[bot]
+
+jobs:
+  preflight:
+    if: github.event.label.name == 'agent-fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    outputs:
+      go: ${{ steps.pre.outputs.go }}
+      reason: ${{ steps.pre.outputs.reason }}
+    env:
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+      LABELER: ${{ github.event.sender.login }}
+      LABELER_TYPE: ${{ github.event.sender.type }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - name: kill switch, budget, and the fix pre-flight (POLICY section 2, bug row)
+        id: pre
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! printf '%s' "$ISSUE" | grep -Eq '^[0-9]{1,7}$'; then echo "issue number is not digits" >&2; exit 1; fi
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-fix --item "$ISSUE" --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          python .github/inbound/budget.py --job inbound-fix --repo "$REPO"; b=$?
+          python .github/inbound/fix_preflight.py --repo "$REPO" --issue "$ISSUE" --labeler "$LABELER" --labeler-type "$LABELER_TYPE" \
+            --app-login "$APP_LOGIN" --record "$RUNNER_TEMP/audit/record.json" > "$RUNNER_TEMP/preflight.json"; p=$?
+          # `| tee` would report tee's status, not the gate's (review round 1, finding 1; the
+          # "trailing command hides the exit code" lesson): redirect, then show.
+          cat "$RUNNER_TEMP/preflight.json"
+          set -e
+          if [ "$k" != "0" ] || [ "$b" != "0" ] || [ "$p" != "0" ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "reason=kill=$k budget=$b preflight=$p" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"; echo "reason=ok" >> "$GITHUB_OUTPUT"
+          fi
+      - name: App token (this job only; the one label below)
+        if: steps.pre.outputs.go == 'true'
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+      - name: mark in progress (removed by the publish job's always() step)
+        if: steps.pre.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: gh issue edit "$ISSUE" -R "$REPO" --add-label "agent:in-progress"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-preflight
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+          if-no-files-found: ignore
+
+  fix:
+    # The model job: read-only token, no App, no write scope. It commits on
+    # a local branch and hands the commits over as a bundle.
+    needs: preflight
+    if: needs.preflight.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+      id-token: write
+    env:
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - run: |
+          uv sync --locked --group dev --extra watch
+          uv run python -m harness warm
+
+      - name: git identity for the commits /fix-issue makes (local only; nothing here can push)
+        run: |
+          git config user.name "$APP_LOGIN"
+          git config user.email "inbound@users.noreply.github.com"
+          git remote set-url --push origin no_push
+
+      - name: prompt for this issue (the prompt file is data; the number is the only substitution)
+        id: prompt
+        run: |
+          python .github/inbound/render_prompts.py --check
+          python - <<'PY'
+          import os, pathlib
+          t = pathlib.Path(".github/inbound/prompts/fix.md").read_text(encoding="utf-8").replace("$ISSUE", os.environ["ISSUE"])
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as fh:
+              fh.write("text<<INBOUND_PROMPT_EOF\n" + t + "\nINBOUND_PROMPT_EOF\n")
+          PY
+          echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/fix.md | cut -c1-64)" >> "$GITHUB_ENV"
+
+      - name: re-read the kill switch before the model runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: /fix-issue (model; non-bare so the layer-4 hooks and deny guard are live; read-only token)
+        id: model
+        uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
+        env:
+          CLAUDE_PROJECT_DIR: ${{ github.workspace }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: >-
+            --model ${{ env.MODEL }}
+            --max-turns 60
+            --permission-mode dontAsk
+            --permission-prompts none
+            --allowedTools "Read,Edit,Write,Grep,Glob,Task,Bash(uv run *),Bash(python *),Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git add *),Bash(git commit *),Bash(git checkout -b inbound/fix-*),Bash(git rev-parse *),Bash(git fetch origin main*),Bash(gh issue view:*),Bash(mkdir *),Bash(ls *),Bash(cat *)"
+            --disallowedTools "WebFetch,WebSearch,Bash(git push*),Bash(git tag *),Bash(git remote *),Bash(gh pr *),Bash(gh api *),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue close:*),Bash(gh release *),Bash(gh workflow *),Bash(gh variable *),Bash(gh secret *)"
+
+      - name: hand-over for the publish job (bundle, body, evidence)
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/handover"
+          BR=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+          printf '%s\n' "$BR" > "$RUNNER_TEMP/handover/branch.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/handover/head-sha.txt" 2>/dev/null || true
+          case "$BR" in inbound/fix-*) git bundle create "$RUNNER_TEMP/handover/fix.bundle" "origin/main..$BR" || true;; esac
+          cp -r .claude/state/evidence/. "$RUNNER_TEMP/handover/evidence/" 2>/dev/null || true
+          cp -r .claude/state/runs "$RUNNER_TEMP/handover/runs" 2>/dev/null || true
+          cp "$RUNNER_TEMP/pr-body.md" "$RUNNER_TEMP/handover/pr-body.md" 2>/dev/null || true
+          cp "$RUNNER_TEMP/pr-title.txt" "$RUNNER_TEMP/handover/pr-title.txt" 2>/dev/null || true
+          printf '%s\n' "${{ steps.model.outcome }}" > "$RUNNER_TEMP/handover/model-outcome.txt"
+          printf '%s\n' "$PROMPT_SHA" > "$RUNNER_TEMP/handover/prompt-sha.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-fix-evidence-${{ github.event.issue.number }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/handover/
+          retention-days: 90
+
+  publish:
+    # The write job: no model, no API key; fix_publish.py decides from the
+    # hand-over alone, then the App pushes the branch and opens the draft.
+    needs: [preflight, fix]
+    if: always() && needs.preflight.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    env:
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        with:
+          name: inbound-fix-evidence-${{ github.event.issue.number }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/handover/
+
+      - name: the publish gate (no model; refuses on any reason)
+        id: gate
+        run: |
+          set +e
+          python .github/inbound/fix_publish.py --bundle "$RUNNER_TEMP/handover/fix.bundle" --branch-file "$RUNNER_TEMP/handover/branch.txt" \
+            --body "$RUNNER_TEMP/handover/pr-body.md" --issue "$ISSUE" --base-ref origin/main --out "$RUNNER_TEMP/publish.json"; rc=$?
+          set -e
+          echo "ok=$([ "$rc" = "0" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "branch=$(python -c "import json,os;print(json.load(open(os.environ['RUNNER_TEMP']+'/publish.json')).get('branch',''))")" >> "$GITHUB_OUTPUT"
+
+      - name: "re-read the kill switch before the first write (GITHUB_TOKEN, because the App has no Variables scope)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: App token (DESIGN D2; this job only)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+
+      - name: push the branch and open the draft (the ruleset confines the App to inbound/**)
+        if: steps.gate.outputs.ok == 'true'
+        id: open
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ steps.gate.outputs.branch }}
+        run: |
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "refs/inbound/fix-head:refs/heads/${BRANCH}"
+          TITLE=$(head -c 200 "$RUNNER_TEMP/handover/pr-title.txt" 2>/dev/null | head -1)
+          [ -n "$TITLE" ] || TITLE="fix: agent draft for #$ISSUE"
+          URL=$(gh pr create -R "$REPO" --draft --base main --head "$BRANCH" --label agent-authored \
+                --title "$TITLE" --body-file "$RUNNER_TEMP/handover/pr-body.md")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: remove in-progress; escalate on anything but a clean draft PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          OK: ${{ steps.gate.outputs.ok }}
+          URL: ${{ steps.open.outputs.url }}
+        run: |
+          gh issue edit "$ISSUE" -R "$REPO" --remove-label "agent:in-progress" || true
+          if [ "$OK" != "true" ] || [ -z "$URL" ]; then
+            gh issue edit "$ISSUE" -R "$REPO" --add-label "needs-human"
+          fi
+
+      - name: audit record
+        if: always()
+        env:
+          URL: ${{ steps.open.outputs.url }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          tmp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          h = tmp / "handover"
+          def txt(name):
+              p = h / name
+              return p.read_text(encoding="utf-8").strip() if p.exists() else None
+          pub = {}
+          try:
+              pub = json.loads((tmp / "publish.json").read_text(encoding="utf-8"))
+          except Exception:
+              pass
+          model_outcome = txt("model-outcome.txt") or "unknown"
+          url = os.environ.get("URL") or ""
+          outcome = "drafted" if url else ("failed" if model_outcome != "success" else "escalated")
+          review = txt("evidence/review.md") or ""
+          rec = {
+              "job": "inbound-fix", "item": os.environ["ISSUE"], "outcome": outcome,
+              "prompt_file": ".github/inbound/prompts/fix.md", "prompt_sha256": txt("prompt-sha.txt"),
+              "prompt_version": json.load(open(".github/inbound/prompts/VERSIONS.json"))["fix"]["version"],
+              "model": os.environ["MODEL"], "action_sha": os.environ["ACTION_SHA"], "kill_switch_state": "true",
+              "classification": {"category": "bug-candidate", "confidence": "high"},
+              "decision": (url or "; ".join(pub.get("reasons") or [f"model step {model_outcome}"]))[:500],
+              "actions_taken": ([f"push:{pub.get('branch')}", f"draft:{url}"] if url else []) + (["label:needs-human"] if not url else []),
+              "error": None if url else review[:300] or None,
+          }
+          args = ["python", ".github/inbound/ledger.py", "write", str(tmp / "audit" / "record.json")]
+          for k, v in rec.items():
+              args += ["--field", f"{k}={json.dumps(v)}"]
+          subprocess.run(args, check=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90

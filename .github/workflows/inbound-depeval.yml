@@ -1,0 +1,320 @@
+# purpose:  after the PR gate finishes on a Dependabot branch, classify the
+#           bump with no model, run the reviewer on the diff and the gate's
+#           verdicts in a READ-ONLY job, then in a SEPARATE job holding the
+#           App token post the delta comment and apply the outcome label
+#           (docs/inbound/DESIGN.md section 4)
+# invokes:  killswitch.py, budget.py, depkind.py, the pinned
+#           claude-code-action with prompts/depeval.md, apply_depeval.py,
+#           ledger.py
+# produces: one sticky comment; one of agent:ready-to-merge /
+#           agent:evaluation-failed / agent:needs-human-review; for a
+#           grammar bump the label agent:bench-pending, whose `labeled`
+#           event is what starts inbound-bench-full; for a major or grammar
+#           bump a draft assessment as an artifact for the sweep
+# refuses:  to check out the PR head at the workspace root; to merge,
+#           approve, re-run, edit the body or push; to run on a
+#           non-Dependabot PR; to give the model step any write scope; to
+#           post the model's prose (it is drafted, never posted)
+name: inbound dependency evaluation
+
+on:
+  workflow_run:
+    workflows: ["PR gate"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: inbound-depeval-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+env:
+  ACTION_SHA: ef8bb1e43bf303cff727a1dd0b8837029fe982a2
+  MODEL: claude-sonnet-5
+
+jobs:
+  classify:
+    # The model job: read-only token, no App, no write scope of any kind.
+    # Dependabot only, and all three signals (DESIGN section 9).
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      id-token: write
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+      pr: ${{ steps.pr.outputs.number }}
+      dependabot: ${{ steps.pr.outputs.dependabot }}
+      kind: ${{ steps.kind.outputs.kind }}
+    env:
+      REPO: ${{ github.repository }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      GATE_RUN: ${{ github.event.workflow_run.id }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - run: uv sync --locked --group dev
+
+      - name: kill switch and budget
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-depeval --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          python .github/inbound/budget.py --job inbound-depeval --repo "$REPO"; b=$?
+          set -e
+          if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: find the PR and check it is Dependabot's
+        if: steps.gate.outputs.go == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list -R "$REPO" --head "$HEAD_BRANCH" --state open --json number --jq '.[0].number')
+          if ! printf '%s' "$PR" | grep -Eq '^[0-9]{1,7}$'; then echo "no open PR on $HEAD_BRANCH"; echo "dependabot=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          gh pr view "$PR" -R "$REPO" --json author,labels,headRefOid > "$RUNNER_TEMP/pr.json"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          p = json.load(open(os.environ["RUNNER_TEMP"] + "/pr.json", encoding="utf-8"))
+          ok = (p["author"]["login"] in ("dependabot", "app/dependabot", "dependabot[bot]")
+                and "dependencies" in [l["name"] for l in p["labels"]]
+                and p["headRefOid"] == os.environ["HEAD_SHA"])
+          print("dependabot=" + str(ok).lower())
+          PY
+          echo "number=$PR" >> "$GITHUB_OUTPUT"
+
+      - name: classify with no model (POLICY rule 2; the diff is inspected line by line)
+        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        id: kind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          gh pr diff "$PR" -R "$REPO" --name-only > "$RUNNER_TEMP/files.txt"
+          gh pr diff "$PR" -R "$REPO" > "$RUNNER_TEMP/pr.diff"
+          # From git, not the contents API: that API's base64 body caps at
+          # 1 MB and uv.lock is past 680 KB (item-4 review round 2, note 3).
+          # The head SHA is a same-repo commit (the job's `if:` and the
+          # Dependabot check above), fetched by SHA and never checked out.
+          git fetch -q origin "$HEAD_SHA"
+          git show "origin/main:uv.lock" > "$RUNNER_TEMP/before.lock"
+          git show "$HEAD_SHA:uv.lock" > "$RUNNER_TEMP/after.lock"
+          git show "origin/main:pyproject.toml" > "$RUNNER_TEMP/before.pyproject"
+          git show "$HEAD_SHA:pyproject.toml" > "$RUNNER_TEMP/after.pyproject"
+          python .github/inbound/depkind.py --files "$RUNNER_TEMP/files.txt" --before "$RUNNER_TEMP/before.lock" --after "$RUNNER_TEMP/after.lock" \
+            --diff "$RUNNER_TEMP/pr.diff" --before-pyproject "$RUNNER_TEMP/before.pyproject" --after-pyproject "$RUNNER_TEMP/after.pyproject" > "$RUNNER_TEMP/kind.json" || rc=$?
+          cat "$RUNNER_TEMP/kind.json"; [ "${rc:-0}" = "0" ] || exit "$rc"
+          echo "kind=$(python -c "import json,os;print(json.load(open(os.environ['RUNNER_TEMP']+'/kind.json'))['kind'])")" >> "$GITHUB_OUTPUT"
+
+      - name: "the gate's verdicts (its job log carries every Floor line; its summaries are never an artifact, FINDINGS IN-14)"
+        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/gate"
+          gh run view "$GATE_RUN" -R "$REPO" --log > "$RUNNER_TEMP/gate/run.log" || true
+          gh run view "$GATE_RUN" -R "$REPO" --json jobs --jq '.jobs[] | "\(.name)\t\(.conclusion)"' > "$RUNNER_TEMP/gate/jobs.txt" || true
+      - name: the gate's bench artifact (latest.json, self_latency.json)
+        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        with:
+          run-id: ${{ env.GATE_RUN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: harness-bench-*
+          path: ${{ runner.temp }}/gate/bench
+
+      - name: prompt for this PR (the prompt file is data; the number and the kind are the only substitutions)
+        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        id: prompt
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          KIND: ${{ steps.kind.outputs.kind }}
+        run: |
+          python .github/inbound/render_prompts.py --check
+          python - <<'PY'
+          import os, pathlib
+          t = pathlib.Path(".github/inbound/prompts/depeval.md").read_text(encoding="utf-8")
+          t = t.replace("$PR", os.environ["PR"]).replace("$KIND", os.environ["KIND"])
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as fh:
+              fh.write("text<<INBOUND_PROMPT_EOF\n" + t + "\nINBOUND_PROMPT_EOF\n")
+          PY
+          echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/depeval.md | cut -c1-64)" >> "$GITHUB_ENV"
+
+      - name: re-read the kill switch before the model runs
+        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: review (model; read-only token; reads the diff as text and the gate's log; the result file is its only write)
+        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        id: model
+        uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: "dependabot[bot]"
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: >-
+            --model ${{ env.MODEL }}
+            --max-turns 30
+            --permission-mode dontAsk
+            --permission-prompts none
+            --allowedTools "Read,Grep,Glob,Task,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(uv run python -m harness check:*),Write(${{ runner.temp }}/depeval-${{ steps.pr.outputs.number }}.json)"
+            --disallowedTools "WebFetch,WebSearch,Edit,Bash(git *),Bash(gh api *),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh pr merge:*),Bash(gh pr review:*),Bash(gh pr ready:*),Bash(gh issue *),Bash(gh workflow *)"
+            --append-system-prompt "The gate's job log is ${{ runner.temp }}/gate/run.log and its bench artifact is under ${{ runner.temp }}/gate/bench. Write your final JSON to ${{ runner.temp }}/depeval-${{ steps.pr.outputs.number }}.json with the Write tool and nothing else."
+
+      - name: keep the result for the apply job
+        if: always() && steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/result"
+          cp "$RUNNER_TEMP/depeval-$PR.json" "$RUNNER_TEMP/result/" 2>/dev/null || echo '{"missing": true}' > "$RUNNER_TEMP/result/depeval-$PR.json"
+          cp "$RUNNER_TEMP/kind.json" "$RUNNER_TEMP/result/" 2>/dev/null || true
+          printf '%s\n' "${{ steps.model.outcome }}" > "$RUNNER_TEMP/result/model-outcome.txt"
+          printf '%s\n' "$PROMPT_SHA" > "$RUNNER_TEMP/result/prompt-sha.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always() && steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
+        with:
+          name: depeval-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/result/
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-classify
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+          if-no-files-found: ignore
+
+  apply:
+    # The write job: no model, no API key; the App token and exactly the
+    # POLICY section 2 dependency rows.
+    needs: classify
+    if: always() && needs.classify.outputs.go == 'true' && needs.classify.outputs.dependabot == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    env:
+      REPO: ${{ github.repository }}
+      PR: ${{ needs.classify.outputs.pr }}
+      KIND: ${{ needs.classify.outputs.kind }}
+      GATE_RUN: ${{ github.event.workflow_run.id }}
+      GATE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v5
+        with:
+          name: depeval-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/result/
+      - name: the gate's verdicts again, by code (the Floor table is never taken from the model's JSON)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/gate"
+          gh run view "$GATE_RUN" -R "$REPO" --log > "$RUNNER_TEMP/gate/run.log" || true
+
+      - name: "re-read the kill switch before the first write (GITHUB_TOKEN, because the App has no Variables scope)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/inbound/killswitch.py --repo "$REPO"
+
+      - name: App token (DESIGN D2; this job only)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+
+      - name: label and comment exactly per POLICY section 2; the assessment is a draft file
+        id: apply
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          python .github/inbound/apply_depeval.py "$RUNNER_TEMP/result/depeval-$PR.json" --kind "$KIND" \
+            --gate-conclusion "$GATE_CONCLUSION" --gate-dir "$RUNNER_TEMP/gate" --pr "$PR" --repo "$REPO" \
+            --gate-run "$GATE_RUN" --drafts-dir "$RUNNER_TEMP/drafts" --run-id "$GITHUB_RUN_ID" --apply > "$RUNNER_TEMP/plan.json" || rc=$?
+          cat "$RUNNER_TEMP/plan.json"; exit "${rc:-0}"
+
+      - name: audit record
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          tmp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          pr = os.environ["PR"]
+          def load(p):
+              try:
+                  return json.loads(p.read_text(encoding="utf-8"))
+              except Exception:
+                  return {}
+          res = load(tmp / "result" / f"depeval-{pr}.json")
+          kind = load(tmp / "result" / "kind.json")
+          plan = load(tmp / "plan.json")
+          def txt(name):
+              p = tmp / "result" / name
+              return p.read_text(encoding="utf-8").strip() if p.exists() else None
+          model_outcome = txt("model-outcome.txt") or "unknown"
+          if model_outcome != "success" or res.get("missing") or not plan:
+              outcome = "failed"
+          elif plan.get("draft"):
+              outcome = "drafted"
+          elif plan.get("label") != "agent:ready-to-merge":
+              outcome = "escalated"
+          else:
+              outcome = "acted"
+          rec = {
+              "job": "inbound-depeval", "item": pr, "outcome": outcome,
+              "prompt_file": ".github/inbound/prompts/depeval.md", "prompt_sha256": txt("prompt-sha.txt"),
+              "prompt_version": json.load(open(".github/inbound/prompts/VERSIONS.json"))["depeval"]["version"],
+              "model": os.environ["MODEL"], "action_sha": os.environ["ACTION_SHA"], "kill_switch_state": "true",
+              "classification": {"category": "dependency", "confidence": "high", "evidence": [os.environ.get("KIND", "unknown")] + (kind.get("reasons") or [])[:3]},
+              "decision": plan.get("label") or f"model step {model_outcome}",
+              "actions_taken": ([f"label:{plan['label']}", "sticky comment"] if plan.get("label") else []) + ([plan["draft"]] if plan.get("draft") else []),
+          }
+          args = ["python", ".github/inbound/ledger.py", "write", str(tmp / "audit" / "record.json")]
+          for k, v in rec.items():
+              args += ["--field", f"{k}={json.dumps(v)}"]
+          subprocess.run(args, check=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: draft-${{ github.run_id }}-pr${{ needs.classify.outputs.pr }}
+          path: ${{ runner.temp }}/drafts/
+          retention-days: 90
+          if-no-files-found: ignore
