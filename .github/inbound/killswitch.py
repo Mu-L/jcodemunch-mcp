@@ -19,6 +19,7 @@ from pathlib import Path
 
 VARIABLE = "INBOUND_ENABLED"
 EXIT_SKIP = 78  # BSD EX_CONFIG-adjacent; distinct from failure so a caller can tell "off" from "broken"
+LAST_ERROR: dict[str, str] = {}  # why the last read returned None, for the printed verdict
 
 
 def enabled(value: str | None) -> bool:
@@ -38,10 +39,18 @@ def read_variable(name: str = VARIABLE, repo: str | None = None) -> str | None:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30, encoding="utf-8"
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        LAST_ERROR["read"] = f"{type(exc).__name__}"
         return None
     if proc.returncode != 0:
+        # The first live run (2026-09-05) hid `403 Resource not accessible by
+        # integration` behind `value: null`: GITHUB_TOKEN cannot read a
+        # repository variable at all, only the App token can (VERIFICATION
+        # 7.1). The reason is printed so a permission failure is never
+        # mistaken for the switch being off.
+        LAST_ERROR["read"] = (getattr(proc, "stderr", "") or "").strip()[-200:] or f"exit {proc.returncode}"
         return None
+    LAST_ERROR.pop("read", None)
     # Only the one newline `gh` appends; a padded value stays padded and reads OFF.
     return proc.stdout.rstrip("\n").rstrip("\r")
 
@@ -62,7 +71,10 @@ def main(argv: list[str] | None = None) -> int:
 
     value = read_variable(args.variable, args.repo)
     on = enabled(value)
-    print(json.dumps({"variable": args.variable, "value": value, "enabled": on}))
+    out = {"variable": args.variable, "value": value, "enabled": on}
+    if value is None and LAST_ERROR.get("read"):
+        out["error"] = LAST_ERROR["read"]
+    print(json.dumps(out))
     if on:
         return 0
     if args.record:

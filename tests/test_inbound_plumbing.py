@@ -259,3 +259,20 @@ def test_the_run_that_asks_is_not_counted_against_its_own_daily_budget():
     assert budget.count_other_runs([{"databaseId": 7}], "7") == 0
     ok, reasons = budget.evaluate("inbound-sweep", budget.count_other_runs([{"databaseId": 7}], "7"), 0, 0.0, False)
     assert ok is True and reasons == [], reasons
+
+
+def test_a_failed_switch_read_names_its_error(monkeypatch, capsys):
+    """First live run (2026-09-05, run 33936406280): `gh variable get` on
+    GITHUB_TOKEN returned 403 and the verdict printed `value: null` with no
+    reason, so a permission failure read exactly like the switch being
+    off. The stderr reaches the verdict now."""
+    import subprocess as sp
+
+    def fake_run(cmd, **kw):
+        return sp.CompletedProcess(cmd, 1, stdout="", stderr="gh: Resource not accessible by integration (HTTP 403)\n")
+
+    monkeypatch.setattr(ks.subprocess, "run", fake_run)
+    rc = ks.main(["--repo", "o/r"])
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[0])
+    assert rc == ks.EXIT_SKIP and out["enabled"] is False and out["value"] is None
+    assert "403" in out["error"], out

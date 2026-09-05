@@ -65,14 +65,21 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
       - name: kill switch, budget, and the fix pre-flight (POLICY section 2, bug row)
         id: pre
         env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! printf '%s' "$ISSUE" | grep -Eq '^[0-9]{1,7}$'; then echo "issue number is not digits" >&2; exit 1; fi
           set +e
-          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-fix --item "$ISSUE" --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO" --job inbound-fix --item "$ISSUE" --record "$RUNNER_TEMP/audit/record.json"; k=$?
           python .github/inbound/budget.py --job inbound-fix --repo "$REPO"; b=$?
           python .github/inbound/fix_preflight.py --repo "$REPO" --issue "$ISSUE" --labeler "$LABELER" --labeler-type "$LABELER_TYPE" \
             --app-login "$APP_LOGIN" --record "$RUNNER_TEMP/audit/record.json" > "$RUNNER_TEMP/preflight.json"; p=$?
@@ -153,11 +160,6 @@ jobs:
           PY
           echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/fix.md | cut -c1-64)" >> "$GITHUB_ENV"
 
-      - name: re-read the kill switch before the model runs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO"
-
       - name: /fix-issue (model; non-bare so the layer-4 hooks and deny guard are live; read-only token)
         id: model
         uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
@@ -235,10 +237,17 @@ jobs:
           echo "ok=$([ "$rc" = "0" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "branch=$(python -c "import json,os;print(json.load(open(os.environ['RUNNER_TEMP']+'/publish.json')).get('branch',''))")" >> "$GITHUB_OUTPUT"
 
-      - name: "re-read the kill switch before the first write (GITHUB_TOKEN, because the App has no Variables scope)"
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+      - name: "re-read the kill switch before the first write (the App token; the only token that can read a variable)"
         env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO"
+        run: GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO"
 
       - name: App token (DESIGN D2; this job only)
         id: app

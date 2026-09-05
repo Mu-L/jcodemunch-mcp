@@ -228,7 +228,9 @@ record (`inbound-audit-<run id>` artifact, or `ledger/<YYYY-MM>.jsonl` on
 names the step. A security item is named by number only, everywhere.
 
 **Before the first run (once).** FINDINGS IN-3, IN-4, IN-6, IN-8: create
-the App `jcodemunch-inbound`, store `INBOUND_APP_ID`,
+the App `jcodemunch-inbound` (repository permissions: Contents, Issues,
+Pull requests read and write; Variables read; Metadata read; no webhook;
+installed on this repository only), store `INBOUND_APP_ID`,
 `INBOUND_APP_PRIVATE_KEY` and `ANTHROPIC_API_KEY` as repository secrets,
 add the App to the CLA allowlist, enable private vulnerability reporting,
 and add the ruleset that confines the App to `inbound/**` and

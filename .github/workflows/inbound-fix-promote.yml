@@ -46,11 +46,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
       - name: kill switch
         id: kill
+        env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
         run: |
           set +e
-          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-fix-promote --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO" --job inbound-fix-promote --record "$RUNNER_TEMP/audit/record.json"; k=$?
           set -e
           echo "go=$([ "$k" = "0" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
@@ -102,7 +110,9 @@ jobs:
 
       - name: re-read the kill switch before the write
         if: steps.kill.outputs.go == 'true' && steps.inputs.outputs.pr != ''
-        run: python .github/inbound/killswitch.py --repo "$REPO"
+        env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
+        run: GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO"
 
       - name: App token (DESIGN D2; the two writes below)
         if: steps.kill.outputs.go == 'true' && steps.inputs.outputs.pr != ''

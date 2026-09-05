@@ -54,13 +54,20 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
       - name: kill switch and budget
         id: gate
         env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"; k=$?
           python .github/inbound/budget.py --job inbound-digest --repo "$REPO"; b=$?
           set -e
           if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; else echo "go=true" >> "$GITHUB_OUTPUT"; fi
@@ -150,10 +157,6 @@ jobs:
               fh.write("text<<INBOUND_PROMPT_EOF\n" + t + "\nINBOUND_PROMPT_EOF\n")
           PY
           echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/digest.md | cut -c1-64)" >> "$GITHUB_ENV"
-      - name: re-read the kill switch before the model runs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"
       - name: one paragraph (model; read-only token; the prose file is its only write)
         id: model
         uses: anthropics/claude-code-action@ef8bb1e43bf303cff727a1dd0b8837029fe982a2  # v1.0.215
@@ -232,10 +235,17 @@ jobs:
           python .github/inbound/digest.py --ledger-root /dev/null --repo "$REPO" --render-only \
             --numbers "$RUNNER_TEMP/digest/numbers.json" --prose "$RUNNER_TEMP/prose/prose.md" --markdown "$RUNNER_TEMP/body.md" > "$RUNNER_TEMP/render.json" || rc=$?
           cat "$RUNNER_TEMP/render.json"; exit "${rc:-0}"
-      - name: "re-read the kill switch before the write (GITHUB_TOKEN, because the App has no Variables scope)"
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+      - name: "re-read the kill switch before the write (the App token; the only token that can read a variable)"
         env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"
+        run: GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO" --job inbound-digest --record "$RUNNER_TEMP/audit/record.json"
       - name: App token (DESIGN D2; this job only)
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0

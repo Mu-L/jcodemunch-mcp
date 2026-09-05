@@ -18,8 +18,10 @@ to 15 minutes against a historical median first response of 3.1 h (AUDIT
 §1.3). `workflow_dispatch` is the manual form of the same runner.
 
 **D2. One GitHub identity for writes: a custom GitHub App named
-`jcodemunch-inbound`, with Contents, Issues, Pull requests (read and write)
-and Metadata (read), installed on this repository only.** Not the shared
+`jcodemunch-inbound`, with Contents, Issues, Pull requests (read and write),
+Variables (read; added 2026-09-05, POLICY 8 amended: the only token that
+can read the kill switch) and Metadata (read), installed on this
+repository only.** Not the shared
 Claude GitHub App (its token carries Actions and Workflows write, AUDIT
 §3.4, which POLICY §4.4 forbids) and not `GITHUB_TOKEN` (commits and PRs
 made with it do not trigger the PR gate, so an agent PR would never get
@@ -99,7 +101,7 @@ only if the edit is by the author and the item is not `needs-human`.
 |---|---|
 | workflow | `.github/workflows/inbound-triage.yml` |
 | trigger | `schedule: */15 * * * *`; `workflow_dispatch` with an optional issue number |
-| permissions | Two jobs per item. `classify` (the model): `contents: read`, `issues: read`, `id-token: write` (the action requires it), `github_token` = the read-only `GITHUB_TOKEN`; it holds no write scope at all, so the allow-list is not the only thing between the model and a post. `apply` (no model): `issues: write`, `contents: read`, `actions: read`, the App token from D2, and only `apply_triage.py`. The kill-switch re-read in `apply` uses `GITHUB_TOKEN`, because the App has no Variables scope (item-2 review, finding 2). |
+| permissions | Two jobs per item. `classify` (the model): `contents: read`, `issues: read`, `id-token: write` (the action requires it), `github_token` = the read-only `GITHUB_TOKEN`; it holds no write scope at all, so the allow-list is not the only thing between the model and a post. `apply` (no model): `issues: write`, `contents: read`, `actions: read`, the App token from D2, and only `apply_triage.py`. The kill-switch reads use a `switchtok` App token minted first in every no-model job (POLICY 8 as amended 2026-09-05; `GITHUB_TOKEN` cannot read a variable); `classify` has no read of its own and starts from `queue`'s. |
 | secrets | `ANTHROPIC_API_KEY` in `classify`; App id and key in `apply` only |
 | model | `claude-sonnet-5`, `--max-turns 12` |
 | reads | up to 5 issues labelled `inbound:queued` (oldest first); for each, the issue via `gh issue view --comments` (the only Bash tools allowed: `Bash(gh issue view:*)` and `Bash(gh search issues:*)` for duplicate candidates; `gh api *` is disallowed by name because its `-f` form is a POST); the tree at `main` (Read, Grep, Glob); `docs/inbound/POLICY.md` §1 and §2 |
