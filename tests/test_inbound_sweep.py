@@ -225,3 +225,19 @@ def test_one_malformed_draft_holds_itself_only(tmp_path, monkeypatch):
     by = {x["file"]: x for x in r}
     assert by["bad.md"]["action"] == "hold" and "KeyError" in by["bad.md"]["reason"]
     assert by["8-r1.md"]["action"] == "post" and len(posted) == 1
+
+
+def test_the_summary_is_written_into_a_directory_that_does_not_exist_yet(tmp_path, monkeypatch):
+    """Third live sweep (2026-09-05, run 33941021629): every step of the
+    work succeeded and the run failed writing `--summary` into
+    `$RUNNER_TEMP/audit/`, a directory only a DECLINE creates. The first
+    sweep to pass its gate was the first with nowhere to write."""
+    import subprocess as sp
+    monkeypatch.setattr(sweep.subprocess, "run", lambda *a, **k: sp.CompletedProcess(a, 1, stdout="", stderr="no gh here"))
+    ledger = tmp_path / "ledger"
+    (ledger / "ledger").mkdir(parents=True)
+    (tmp_path / "artifacts").mkdir()
+    out = tmp_path / "audit" / "deeper" / "sweep-summary.json"
+    rc = sweep.main(["--ledger-dir", str(ledger), "--artifacts-dir", str(tmp_path / "artifacts"), "--repo", "o/r", "--app-login", "x", "--summary", str(out)])
+    assert rc == 0 and out.exists(), out
+    assert json.loads(out.read_text(encoding="utf-8"))["ledger_rows_added"] == 0

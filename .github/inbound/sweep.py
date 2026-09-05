@@ -238,6 +238,11 @@ def main(argv: list[str] | None = None) -> int:
         "ran_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
     }
     if args.summary:
+        # The third live sweep (2026-09-05, run 33941021629) did every step
+        # of its work and died here: `$RUNNER_TEMP/audit/` exists only when
+        # a decline wrote a record into it, so the first sweep that PASSED
+        # its gate had no directory to write the summary into.
+        args.summary.parent.mkdir(parents=True, exist_ok=True)
         args.summary.write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

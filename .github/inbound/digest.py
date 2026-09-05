@@ -280,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
         s = json.loads(args.numbers.read_text(encoding="utf-8"))
         prose = args.prose.read_text(encoding="utf-8") if args.prose and args.prose.exists() else None
         ok, why = prose_admissible(prose, s) if prose else (False, "no paragraph")
+        args.markdown.parent.mkdir(parents=True, exist_ok=True)
         args.markdown.write_text(
             render(s["week"], s, args.repo, f"https://github.com/{args.repo}/blob/inbound-ledger", prose if ok else None),
             encoding="utf-8", newline="\n",
@@ -305,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(s, sort_keys=True))
     if args.markdown:
         prose = args.prose.read_text(encoding="utf-8") if args.prose and args.prose.exists() else None
+        args.markdown.parent.mkdir(parents=True, exist_ok=True)
         args.markdown.write_text(
             render(s["week"], s, args.repo, f"https://github.com/{args.repo}/blob/inbound-ledger", prose),
             encoding="utf-8", newline="\n",
