@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -116,7 +117,16 @@ def runs_today(job: str, repo: str | None, today: str) -> int:
     ]
     if repo:
         args += ["-R", repo]
-    return len(_gh_json(args))
+    return count_other_runs(_gh_json(args), os.environ.get("GITHUB_RUN_ID"))
+
+
+def count_other_runs(runs: list, current_run_id: str | None) -> int:
+    """Runs of this job already started today, EXCLUDING the run that is
+    asking. The first live sweep (2026-09-05, run 33936406280) counted
+    itself and declined with "runs_per_day: 1 of 1 used": a job allowed
+    one run a day could never run. A run that declined at its gate still
+    counts (FINDINGS IN-17)."""
+    return sum(1 for r in runs if str(r.get("databaseId")) != str(current_run_id or ""))
 
 
 def open_agent_prs(repo: str | None) -> int:
