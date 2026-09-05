@@ -168,6 +168,15 @@ def test_kill_switch_precedes_every_write(path: Path):
             assert not any("create-github-app-token" in (s.get("uses") or "") for s in steps), (
                 f"{path.name}:{name}: a job without its own switch read must hold no App token"
             )
+            # and it writes nothing: a write here would follow no read of
+            # its own (live-fixes review, finding 2: the comment claimed it
+            # and nothing asserted it; a `gh issue` write appended to each
+            # model job stayed green)
+            writes = [
+                i for i, r in runs
+                if re.search(r"gh (issue|pr) (edit|comment|create|ready|close)|git push|apply_triage|apply_depeval|gh api -X (POST|PATCH|PUT|DELETE)", r)
+            ]
+            assert not writes, f"{path.name}:{name}: a job with no switch read of its own carries a write at step(s) {writes}"
             continue
         first_write = [
             i

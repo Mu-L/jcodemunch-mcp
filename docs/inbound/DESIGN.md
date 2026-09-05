@@ -203,7 +203,7 @@ is the one budget the policy exempts, because a grammar update has never
 been measured (AUDIT §2.3) and a truncated measurement is worse than none.
 
 **As built (2026-09-04, item 4; amended after review round 1).** The
-evaluation is two jobs, the shape item 2's review settled on: `classify`
+evaluation is three jobs since 2026-09-05 (a `gate` job with no model reads the switch and the budget first, POLICY 8 as amended); the shape item 2's review settled on: `classify`
 (model; `GITHUB_TOKEN` read-only, `contents: read`, `pull-requests: read`,
 `actions: read`, `id-token: write`; no App token; the result JSON is its
 only write, kept as an artifact) and `apply` (no model, no API key; the
@@ -234,7 +234,7 @@ artifact for the sweep; the sticky comment carries our numbers, the
 reviewer's reasons and a line saying a draft awaits approval. Nothing the
 model wrote is posted.
 
-**The full-corpus bench is started by a label, and is two jobs.** `apply`
+**The full-corpus bench is started by a label, and is three jobs** (a `gate` job with no model and no PR code reads the switch and the budget first, since 2026-09-05). `apply`
 labels the PR `agent:bench-pending`; `inbound-bench-full.yml` triggers on
 that `pull_request: labeled` event (same-repo, `dependabot/` head, the
 label name, all in the job `if:`). Its `bench` job is read-only and holds
