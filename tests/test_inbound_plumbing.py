@@ -245,3 +245,34 @@ def test_sdist_excludes_the_github_directory():
     sdist = pyproject.split("[tool.hatch.build.targets.sdist]", 1)[1]
     sdist = sdist.split(chr(10) + "[", 1)[0]
     assert '".github/"' in sdist
+
+
+def test_the_run_that_asks_is_not_counted_against_its_own_daily_budget():
+    """The first live sweep (2026-09-05, run 33936406280) counted itself in
+    `runs_today` and declined with "runs_per_day: 1 of 1 used": a job
+    allowed one run a day could never run. The asking run is excluded;
+    every other run today, declined or not, still counts."""
+    runs = [{"databaseId": 1}, {"databaseId": 2}, {"databaseId": 3}]
+    assert budget.count_other_runs(runs, "3") == 2
+    assert budget.count_other_runs(runs, 3) == 2
+    assert budget.count_other_runs(runs, None) == 3, "no run id known: count everything (fail closed)"
+    assert budget.count_other_runs([{"databaseId": 7}], "7") == 0
+    ok, reasons = budget.evaluate("inbound-sweep", budget.count_other_runs([{"databaseId": 7}], "7"), 0, 0.0, False)
+    assert ok is True and reasons == [], reasons
+
+
+def test_a_failed_switch_read_names_its_error(monkeypatch, capsys):
+    """First live run (2026-09-05, run 33936406280): `gh variable get` on
+    GITHUB_TOKEN returned 403 and the verdict printed `value: null` with no
+    reason, so a permission failure read exactly like the switch being
+    off. The stderr reaches the verdict now."""
+    import subprocess as sp
+
+    def fake_run(cmd, **kw):
+        return sp.CompletedProcess(cmd, 1, stdout="", stderr="gh: Resource not accessible by integration (HTTP 403)\n")
+
+    monkeypatch.setattr(ks.subprocess, "run", fake_run)
+    rc = ks.main(["--repo", "o/r"])
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[0])
+    assert rc == ks.EXIT_SKIP and out["enabled"] is False and out["value"] is None
+    assert "403" in out["error"], out

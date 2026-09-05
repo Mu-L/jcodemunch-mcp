@@ -2,7 +2,7 @@
 version: 2
 model: claude-sonnet-5
 job: inbound-depeval
-policy_sha256: 097d1b9463d643ade134dab89ce84189089ac327627cc30af551125fa185cf52
+policy_sha256: b6e93ef20e6dfe301f5008a38e0e09e5e39e595abf475c722cbe026420be2f0d
 ---
 <!-- BEGIN policy:preamble -->
 <!-- inbound-preamble v1 -->

@@ -145,14 +145,39 @@ def test_kill_switch_precedes_every_write(path: Path):
     if path.stem == "inbound-selfcheck":
         return
     doc = _wf(path)
-    for name, job in _jobs(doc).items():
+    jobs = _jobs(doc)
+    for name, job in jobs.items():
         steps = _steps(job)
         runs = [
             (i, (s.get("run") or "") + " " + (s.get("uses") or ""))
             for i, s in enumerate(steps)
         ]
         kill = [i for i, r in runs if "killswitch.py" in r]
-        assert kill, f"{path.name}:{name} has no kill-switch step"
+        if not kill:
+            # VERIFICATION 7.1: only the App token can read the switch, and a
+            # job that runs the model or PR code never holds it. Such a job
+            # has no read of its own; it starts only from a no-model job's
+            # `go`, read seconds earlier, and it writes nothing.
+            needs = job.get("needs") or []
+            needs = [needs] if isinstance(needs, str) else list(needs)
+            gate = [n for n in needs if any("killswitch.py" in (s.get("run") or "") for s in _steps(jobs.get(n, {})))]
+            cond = str(job.get("if", ""))
+            assert gate and any(f"needs.{g}.outputs.go == 'true'" in cond for g in gate), (
+                f"{path.name}:{name} has no kill-switch step and does not start from a gate job's go: {cond!r}"
+            )
+            assert not any("create-github-app-token" in (s.get("uses") or "") for s in steps), (
+                f"{path.name}:{name}: a job without its own switch read must hold no App token"
+            )
+            # and it writes nothing: a write here would follow no read of
+            # its own (live-fixes review, finding 2: the comment claimed it
+            # and nothing asserted it; a `gh issue` write appended to each
+            # model job stayed green)
+            writes = [
+                i for i, r in runs
+                if re.search(r"gh (issue|pr) (edit|comment|create|ready|close)|git push|apply_triage|apply_depeval|gh api -X (POST|PATCH|PUT|DELETE)", r)
+            ]
+            assert not writes, f"{path.name}:{name}: a job with no switch read of its own carries a write at step(s) {writes}"
+            continue
         first_write = [
             i
             for i, r in runs
@@ -433,3 +458,31 @@ def test_a_job_that_executes_pr_code_holds_no_app_token(path: Path):
         )
         mints = any("create-github-app-token" in (s.get("uses") or "") for s in _steps(job))
         assert not (executes_pr and mints), f"{path.name}:{name}: executes PR code and mints the App token in one job"
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
+def test_every_kill_switch_read_uses_the_app_token(path: Path):
+    """VERIFICATION 7.1 (first live run, 2026-09-05): `gh variable get` on
+    GITHUB_TOKEN is `403 Resource not accessible by integration` (no
+    `permissions:` scope covers variables) and `${{ vars.* }}` is frozen at
+    queue time (measured: `true` two minutes after the flip to `false`).
+    Every kill-switch invocation runs under a token minted by
+    `create-github-app-token` in the SAME job, before it; budget.py keeps
+    GITHUB_TOKEN (the App has no Actions scope)."""
+    doc = _wf(path)
+    for name, job in _jobs(doc).items():
+        steps = _steps(job)
+        tok = [i for i, s in enumerate(steps) if "create-github-app-token" in (s.get("uses") or "") and s.get("id") == "switchtok"]
+        for i, s in enumerate(steps):
+            run = s.get("run") or ""
+            if "killswitch.py" not in run:
+                continue
+            assert tok and tok[0] < i, f"{path.name}:{name}: kill switch at step {i} with no `switchtok` App token before it"
+            env = s.get("env") or {}
+            assert env.get("SWITCH_TOKEN") == "${{ steps.switchtok.outputs.token }}", (path.name, name, env)
+            for line in run.replace("\\n", " ").splitlines():
+                if "killswitch.py" in line:
+                    assert 'GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py' in line, (path.name, name, line.strip()[:90])
+            if "budget.py" in run:
+                gh = env.get("GH_TOKEN") or (job.get("env") or {}).get("GH_TOKEN", "")
+                assert "secrets.GITHUB_TOKEN" in gh, (path.name, name, "budget.py reads runs with GITHUB_TOKEN")

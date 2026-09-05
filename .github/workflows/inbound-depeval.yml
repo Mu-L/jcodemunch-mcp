@@ -36,13 +36,66 @@ env:
   MODEL: claude-sonnet-5
 
 jobs:
+  gate:
+    # No model and no PR code: the switch is read with the App token (the only
+    # token that can read a repository variable, VERIFICATION 7.1) and the budget
+    # with GITHUB_TOKEN; the next job holds neither the App token nor a read of
+    # its own and starts only from this job's `go`.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+    env:
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+      - name: kill switch and budget
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
+        run: |
+          set +e
+          GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO" --job inbound-depeval --record "$RUNNER_TEMP/audit/record.json"; k=$?
+          python .github/inbound/budget.py --job inbound-depeval --repo "$REPO"; b=$?
+          set -e
+          if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: inbound-audit-${{ github.run_id }}-gate
+          path: ${{ runner.temp }}/audit/
+          retention-days: 90
+          if-no-files-found: ignore
+
   classify:
+    needs: gate
     # The model job: read-only token, no App, no write scope of any kind.
     # Dependabot only, and all three signals (DESIGN section 9).
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.actor.login == 'dependabot[bot]' &&
-      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
+      needs.gate.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -71,16 +124,9 @@ jobs:
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
       - run: uv sync --locked --group dev
 
-      - name: kill switch and budget
+      - name: gate (read by the `gate` job with the App token; this job holds no App token)
         id: gate
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set +e
-          python .github/inbound/killswitch.py --repo "$REPO" --job inbound-depeval --record "$RUNNER_TEMP/audit/record.json"; k=$?
-          python .github/inbound/budget.py --job inbound-depeval --repo "$REPO"; b=$?
-          set -e
-          if [ "$k" != "0" ] || [ "$b" != "0" ]; then echo "go=false" >> "$GITHUB_OUTPUT"; else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+        run: echo "go=true" >> "$GITHUB_OUTPUT"
 
       - name: find the PR and check it is Dependabot's
         if: steps.gate.outputs.go == 'true'
@@ -157,12 +203,6 @@ jobs:
               fh.write("text<<INBOUND_PROMPT_EOF\n" + t + "\nINBOUND_PROMPT_EOF\n")
           PY
           echo "PROMPT_SHA=$(sha256sum .github/inbound/prompts/depeval.md | cut -c1-64)" >> "$GITHUB_ENV"
-
-      - name: re-read the kill switch before the model runs
-        if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO"
 
       - name: review (model; read-only token; reads the diff as text and the gate's log; the result file is its only write)
         if: steps.gate.outputs.go == 'true' && steps.pr.outputs.dependabot == 'true'
@@ -242,10 +282,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/gate"
           gh run view "$GATE_RUN" -R "$REPO" --log > "$RUNNER_TEMP/gate/run.log" || true
 
-      - name: "re-read the kill switch before the first write (GITHUB_TOKEN, because the App has no Variables scope)"
+      - name: switch-reading token (App; the only token that can read a repository variable, VERIFICATION 7.1)
+        id: switchtok
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.INBOUND_APP_ID }}
+          private-key: ${{ secrets.INBOUND_APP_PRIVATE_KEY }}
+      - name: "re-read the kill switch before the first write (the App token; the only token that can read a variable)"
         env:
+          SWITCH_TOKEN: ${{ steps.switchtok.outputs.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/inbound/killswitch.py --repo "$REPO"
+        run: GH_TOKEN="$SWITCH_TOKEN" python .github/inbound/killswitch.py --repo "$REPO"
 
       - name: App token (DESIGN D2; this job only)
         id: app

@@ -8,17 +8,31 @@
 jobs under `.github/workflows/inbound-*.yml` let Claude Code, running from
 GitHub Actions, label and draft responses to inbound issues, evaluate
 Dependabot PRs, and attempt a fix on an issue a maintainer labels
-`agent-fix`, so the human's role narrows to reviewing PRs. Every job reads
-one repository variable, `INBOUND_ENABLED`, and only the exact string
-`true` turns anything on; the variable is absent, so nothing runs until a
-human sets it after Phase 5 verification. Nothing headless merges, tags,
+`agent-fix`, so the human's role narrows to reviewing PRs. One repository
+variable, `INBOUND_ENABLED`, is the switch, and only the exact string
+`true` turns anything on; every job with no model reads it before its
+first step and again before its first write, and a job that runs the
+model or PR code starts only from that read. Nothing headless merges, tags,
 publishes, closes, deletes, edits another account's text, or touches the
 standard, the thresholds, ARCHAEOLOGY, the workflows, or `.claude/`;
 `tests/test_inbound_workflows.py` asserts the structural half over every
 workflow file and the self-check enforces the never-touch list on every
 agent-authored PR. The App that writes on the jobs' behalf holds Contents,
-Issues and Pull requests only, and no job that runs a model holds any write
-scope. Details, per job, in `docs/inbound/DESIGN.md`.
+Issues and Pull requests, plus Variables read, and no job that runs a model
+holds any write scope. Details, per job, in `docs/inbound/DESIGN.md`.
+
+The first live run (2026-09-05) found two defects before anything ran.
+The switch was read with `GITHUB_TOKEN`, which cannot read a repository
+variable at all (`403 Resource not accessible by integration`; no
+`permissions:` scope covers variables), and the reader hid the 403 as
+"absent", so every job declined while reporting the switch off; the
+`vars` context is no substitute, measured as a queue-time snapshot (`true`
+two minutes after the flip to `false`). The switch is read with the App
+token now, the only token that can, in the jobs that hold no model; the
+reader prints its error; depeval and bench-full gained a gate job so a
+model or PR-code job is never first. And the daily budget counted the run
+that was asking, so a job allowed one run a day always declined itself.
+VERIFICATION section 7.
 
 ### Changed - the sdist no longer carries `.github/`
 

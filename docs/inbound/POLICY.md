@@ -303,13 +303,25 @@ reviewer of the plumbing PR caught the second copy.)
 
 One switch: the repository variable `INBOUND_ENABLED`. The jobs run only
 when it reads exactly `true`. Absent, empty, or any other value means OFF,
-so a mis-set switch fails closed. Every job's first step reads it through
-the API (`gh variable get INBOUND_ENABLED`) at run time, not from the
-`vars` context captured when the run was queued, and exits with a `skipped`
-audit record when it is not `true`. A second step re-reads it immediately
-before the first write (label, comment, push, PR). Setting it to anything
-else stops every job within one step boundary; running jobs finish the
-step they are in and then stop.
+so a mis-set switch fails closed. Every job that holds no model and runs
+no PR code reads it through the API (`gh variable get INBOUND_ENABLED`)
+at run time, not from the `vars` context captured when the run was
+queued, and exits with a `skipped` audit record when it is not `true`. A
+second read happens immediately before the first write (label, comment,
+push, PR). A job that runs the model or PR code holds no read of its
+own: it starts only from a gate job's read taken seconds before, and it
+writes nothing. Setting the switch to anything else stops every write
+within one step boundary; a running model job finishes and its output is
+then refused by the write job's re-read.
+
+**Amended 2026-09-05 from the first live run (VERIFICATION 7.1).** The
+read needs the App token with the Variables (read) permission: `gh
+variable get` on `GITHUB_TOKEN` is `403 Resource not accessible by
+integration`, no `permissions:` scope covers repository variables, and
+`${{ vars.INBOUND_ENABLED }}` is frozen when the run is queued (measured:
+`true` two minutes after the flip to `false`). The first draft read with
+`GITHUB_TOKEN` in every job, so no job could ever read `true`, and the
+reader hid the 403 as `value: null`; the reason is in the verdict now.
 
 Who may flip it: anyone with admin on the repository, through Settings or
 `gh variable set INBOUND_ENABLED --body false`. It is never set by a job.
