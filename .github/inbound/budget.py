@@ -117,9 +117,27 @@ def runs_today(job: str, repo: str | None, today: str) -> int:
     ]
     if repo:
         args += ["-R", repo]
-    runs = _gh_json(args)
-    others = [r for r in runs if str(r.get("databaseId")) != str(os.environ.get("GITHUB_RUN_ID") or "")]
-    return sum(1 for r in others if run_did_work(_run_steps(str(r.get("databaseId")), repo)))
+    ceiling = BUDGETS.get(job, {}).get("runs_per_day", 0)
+    return count_working_runs(
+        other_runs(_gh_json(args), os.environ.get("GITHUB_RUN_ID")),
+        lambda r: _run_steps(str(r.get("databaseId")), repo),
+        ceiling,
+    )
+
+
+def count_working_runs(runs: list, steps_of, ceiling: int) -> int:
+    """Runs that did work, reading each run's steps lazily and stopping at
+    the ceiling: the verdict only needs to know whether the ceiling is
+    reached, and each read is one `gh run view` (review, finding 2: the
+    triage runner fires every 15 minutes and a declined day could cost
+    every later gate up to 200 reads)."""
+    n = 0
+    for r in runs:
+        if ceiling and n >= ceiling:
+            break
+        if run_did_work(steps_of(r)):
+            n += 1
+    return n
 
 
 # Steps every job has whether or not its gate let it through. A run in which
@@ -138,23 +156,29 @@ def _run_steps(run_id: str, repo: str | None) -> list:
 
 
 def run_did_work(steps: list) -> bool:
-    """True when any step outside the plumbing set ran to success. UNKNOWN
-    (no steps readable) counts as work: the budget fails closed."""
+    """True when any step outside the plumbing set RAN (any conclusion but
+    skipped or none: a failed model step spent its budget too; review,
+    finding 3). UNKNOWN (no steps readable) counts as work: the budget
+    fails closed."""
     if not steps:
         return True
     for s in steps:
         name = str(s.get("name") or "")
-        if s.get("conclusion") == "success" and not name.startswith(_PLUMBING_STEP_PREFIXES):
+        if s.get("conclusion") not in ("skipped", None) and not name.startswith(_PLUMBING_STEP_PREFIXES):
             return True
     return False
 
 
+def other_runs(runs: list, current_run_id: str | None) -> list:
+    """Every run but the one that is asking. The first live sweep
+    (2026-09-05, run 33936406280) counted itself and declined with
+    "runs_per_day: 1 of 1 used": a job allowed one run a day could never
+    run."""
+    return [r for r in runs if str(r.get("databaseId")) != str(current_run_id or "")]
+
+
 def count_other_runs(runs: list, current_run_id: str | None) -> int:
-    """Runs of this job already started today, EXCLUDING the run that is
-    asking. The first live sweep (2026-09-05, run 33936406280) counted
-    itself and declined with "runs_per_day: 1 of 1 used": a job allowed
-    one run a day could never run."""
-    return sum(1 for r in runs if str(r.get("databaseId")) != str(current_run_id or ""))
+    return len(other_runs(runs, current_run_id))
 
 
 def open_agent_prs(repo: str | None) -> int:
