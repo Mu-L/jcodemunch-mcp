@@ -276,3 +276,21 @@ def test_a_failed_switch_read_names_its_error(monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out.strip().splitlines()[0])
     assert rc == ks.EXIT_SKIP and out["enabled"] is False and out["value"] is None
     assert "403" in out["error"], out
+
+
+def test_a_run_that_declined_at_its_gate_spends_no_budget():
+    """FINDINGS IN-17, closed 2026-09-05 after the second live sweep: the
+    first sweep of the day had declined (switch unreadable), and the second
+    was declined by the budget for it, `runs_per_day: 1 of 1 used`. A run
+    in which nothing but the plumbing steps succeeded did no work."""
+    declined = [{"name": "Set up job", "conclusion": "success"}, {"name": "Run actions/checkout@abc", "conclusion": "success"},
+                {"name": "switch-reading token (App)", "conclusion": "success"}, {"name": "kill switch and budget", "conclusion": "success"},
+                {"name": "App token (DESIGN D2)", "conclusion": "skipped"}, {"name": "commit the ledger", "conclusion": "skipped"},
+                {"name": "audit record", "conclusion": "success"}, {"name": "Post Run actions/checkout@abc", "conclusion": "success"},
+                {"name": "Complete job", "conclusion": "success"}]
+    assert budget.run_did_work(declined) is False
+    worked = declined[:4] + [{"name": "App token (DESIGN D2)", "conclusion": "success"}, {"name": "commit the ledger", "conclusion": "success"}]
+    assert budget.run_did_work(worked) is True
+    assert budget.run_did_work([]) is True, "no steps readable: fail closed, count it"
+    # `gate (read by the gate job ...)` is the echo step of a model job, plumbing too
+    assert budget.run_did_work([{"name": "gate (read by the gate job)", "conclusion": "success"}]) is False

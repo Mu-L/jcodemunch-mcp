@@ -29,8 +29,10 @@ its required checks). The App's short-lived installation token is minted
 per job by `actions/create-github-app-token` from two secrets, `INBOUND_APP_ID`
 and `INBOUND_APP_PRIVATE_KEY`, and passed to the action's `github_token`
 input. A repository ruleset restricts the App to pushing branches matching
-`inbound/**` and `inbound-ledger` and denies it `main`, on top of the
-existing protection. The App's login is added to CLA Assistant's allowlist
+`inbound/**` and `inbound-ledger`; `main` is excluded from that ruleset
+(FINDINGS IN-19: a ruleset on `main` blocks every human merge too) and
+stays under branch protection, which stops any push there; the App never
+merging a PR is by construction, not by a rule. The App's login is added to CLA Assistant's allowlist
 so `license/cla` posts on its PRs (AUDIT IN-3; verified in Phase 4 item 1
 before anything else is built).
 

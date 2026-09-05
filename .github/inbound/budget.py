@@ -117,15 +117,43 @@ def runs_today(job: str, repo: str | None, today: str) -> int:
     ]
     if repo:
         args += ["-R", repo]
-    return count_other_runs(_gh_json(args), os.environ.get("GITHUB_RUN_ID"))
+    runs = _gh_json(args)
+    others = [r for r in runs if str(r.get("databaseId")) != str(os.environ.get("GITHUB_RUN_ID") or "")]
+    return sum(1 for r in others if run_did_work(_run_steps(str(r.get("databaseId")), repo)))
+
+
+# Steps every job has whether or not its gate let it through. A run in which
+# nothing else succeeded declined at its gate and spent no budget.
+_PLUMBING_STEP_PREFIXES = (
+    "Set up job", "Run actions/", "Post ", "Complete job",
+    "kill switch", "switch-reading token", "gate", "audit record",
+)  # "Post " covers every action's post step, the token step's included (found on run 33939144859)
+
+
+def _run_steps(run_id: str, repo: str | None) -> list:
+    args = ["run", "view", run_id, "--json", "jobs", "--jq", "[.jobs[].steps[] | {name, conclusion}]"]
+    if repo:
+        args += ["-R", repo]
+    return _gh_json(args)
+
+
+def run_did_work(steps: list) -> bool:
+    """True when any step outside the plumbing set ran to success. UNKNOWN
+    (no steps readable) counts as work: the budget fails closed."""
+    if not steps:
+        return True
+    for s in steps:
+        name = str(s.get("name") or "")
+        if s.get("conclusion") == "success" and not name.startswith(_PLUMBING_STEP_PREFIXES):
+            return True
+    return False
 
 
 def count_other_runs(runs: list, current_run_id: str | None) -> int:
     """Runs of this job already started today, EXCLUDING the run that is
     asking. The first live sweep (2026-09-05, run 33936406280) counted
     itself and declined with "runs_per_day: 1 of 1 used": a job allowed
-    one run a day could never run. A run that declined at its gate still
-    counts (FINDINGS IN-17)."""
+    one run a day could never run."""
     return sum(1 for r in runs if str(r.get("databaseId")) != str(current_run_id or ""))
 
 
