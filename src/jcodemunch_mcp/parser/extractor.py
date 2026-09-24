@@ -13544,92 +13544,136 @@ def _parse_fsharp_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
                 return
 
         elif node.type == "function_or_value_defn":
-            fdl = _first_child_of_type(node, "function_declaration_left")
-            vdl = _first_child_of_type(node, "value_declaration_left")
-            if fdl:
-                ident = _first_child_of_type(fdl, "identifier")
-                if ident:
+            # #824: EVERY binding of a `let rec ... and ...` chain, not the
+            # first. No node addresses one binding alone (its left and body
+            # are siblings of the defn), so every binding records the whole
+            # defn: the rule (#826's shared multi-name spec), never a
+            # synthesised range (#414).
+            for left in _fs_binding_lefts(node):
+                if left.type == "function_declaration_left":
+                    ident = _first_child_of_type(left, "identifier")
+                    if not ident:
+                        continue
                     name = _text(ident)
                     qualified = f"{scope}.{name}" if scope else name
-                    args = _first_child_of_type(fdl, "argument_patterns")
-                    sig = f"let {name}"
-                    if args:
-                        sig += f" {_text(args)}"
-                    # Check for return type annotation
-                    for i, child in enumerate(node.children):
-                        if child.type == ":" and i + 1 < len(node.children):
-                            rt = node.children[i + 1]
-                            if rt.type in ("simple_type", "type"):
-                                sig += f" : {_text(rt)}"
-                            break
-                    symbols.append(Symbol(
-                        id=make_symbol_id(filename, qualified, "function"),
-                        file=filename, name=name, qualified_name=qualified,
-                        kind="function", language="fsharp",
-                        signature=sig,
-                        docstring="",
-                        line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        byte_offset=node.start_byte,
-                        byte_length=node.end_byte - node.start_byte,
-                        content_hash=compute_content_hash(source_bytes[node.start_byte:node.end_byte]),
-                    ))
-            elif vdl:
-                ip = _first_child_of_type(vdl, "identifier_pattern")
-                if ip:
+                    sig = _fs_function_signature(node, left, name)
+                    kind = "function"
+                else:
+                    ip = _first_child_of_type(left, "identifier_pattern")
+                    if not ip:
+                        continue
                     name = _text(ip)
                     qualified = f"{scope}.{name}" if scope else name
                     sig = f"let {name}"
-                    symbols.append(Symbol(
-                        id=make_symbol_id(filename, qualified, "constant"),
-                        file=filename, name=name, qualified_name=qualified,
-                        kind="constant", language="fsharp",
-                        signature=sig,
-                        docstring="",
-                        line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        byte_offset=node.start_byte,
-                        byte_length=node.end_byte - node.start_byte,
-                        content_hash=compute_content_hash(source_bytes[node.start_byte:node.end_byte]),
-                    ))
+                    kind = "constant"
+                symbols.append(Symbol(
+                    id=make_symbol_id(filename, qualified, kind),
+                    file=filename, name=name, qualified_name=qualified,
+                    kind=kind, language="fsharp",
+                    signature=sig,
+                    docstring="",
+                    line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    byte_offset=node.start_byte,
+                    byte_length=node.end_byte - node.start_byte,
+                    content_hash=compute_content_hash(source_bytes[node.start_byte:node.end_byte]),
+                ))
             return
 
         elif node.type == "type_definition":
-            td = _first_child_of_type(node, "record_type_defn", "union_type_defn",
-                                       "type_abbrev_defn", "enum_type_defn",
-                                       "class_type_defn", "anon_type_defn")
-            if td:
+            # #824: EVERY definition of a `type ... and ...` chain, not the
+            # first. Span: the whole `type_definition` (keyword included,
+            # byte-identical to before) when it holds one definition, the
+            # definition node when it holds several (#837's rule: the widest
+            # node addressing the name alone).
+            defns = _fs_defn_nodes(node)
+            for td in defns:
                 ident = _first_child_of_type(td, "type_name", "identifier")
-                if ident:
-                    name = _text(ident)
-                    qualified = f"{scope}.{name}" if scope else name
-                    sig_text = _text(node).split("\n")[0].strip()[:120]
-                    container = Symbol(
-                        id=make_symbol_id(filename, qualified, "type"),
-                        file=filename, name=name, qualified_name=qualified,
-                        kind="type", language="fsharp",
-                        signature=sig_text,
-                        docstring="",
-                        line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        byte_offset=node.start_byte,
-                        byte_length=node.end_byte - node.start_byte,
-                        content_hash=compute_content_hash(source_bytes[node.start_byte:node.end_byte]),
-                    )
-                    symbols.append(container)
-                    _walk_members(td, container)
+                if not ident:
+                    continue
+                span = node if len(defns) == 1 else td
+                name = _text(ident)
+                qualified = f"{scope}.{name}" if scope else name
+                sig_text = _text(span).split("\n")[0].strip()[:120]
+                container = Symbol(
+                    id=make_symbol_id(filename, qualified, "type"),
+                    file=filename, name=name, qualified_name=qualified,
+                    kind="type", language="fsharp",
+                    signature=sig_text,
+                    docstring="",
+                    line=span.start_point[0] + 1,
+                    end_line=span.end_point[0] + 1,
+                    byte_offset=span.start_byte,
+                    byte_length=span.end_byte - span.start_byte,
+                    content_hash=compute_content_hash(source_bytes[span.start_byte:span.end_byte]),
+                )
+                symbols.append(container)
+                _walk_members(td, container)
             return
 
         for child in node.children:
             _walk(child, scope)
 
-    def _member(node, owner: Symbol, name: str, kind: str) -> None:
+    #: The six definition node types a `type_definition` chains with `and`.
+    _FS_DEFN_TYPES = ("record_type_defn", "union_type_defn", "type_abbrev_defn",
+                      "enum_type_defn", "class_type_defn", "anon_type_defn")
+
+    def _fs_defn_nodes(type_definition) -> list:
+        """Every definition of a `type A = ... and B = ...` chain (#824).
+
+        ⚠ A `type_definition` the grammar could not parse yields its FIRST
+        definition only: tree-sitter-fsharp error-recovers a non-`rec`
+        `let ... and ...` chain in a type body into a second `anon_type_defn`
+        named after the binding, and emitting it published a fabricated type
+        owning a real member (review of #824). UNKNOWN is not a chain.
+        """
+        defns = [c for c in type_definition.children if c.type in _FS_DEFN_TYPES]
+        if type_definition.has_error and defns:
+            return defns[:1]
+        return defns
+
+    def _fs_binding_lefts(defn) -> list:
+        """Every `function_declaration_left`/`value_declaration_left` of a
+        `let [rec] ... and ...` chain, in source order (#824)."""
+        return [
+            c for c in defn.children
+            if c.type in ("function_declaration_left", "value_declaration_left")
+        ]
+
+    def _fs_function_signature(defn, left, name: str) -> str:
+        """`let <name> <args>[ : <return type>]` for ONE left of a defn.
+
+        ⚠ The return-type scan is scoped to the children between this left
+        and the next one: scanning the whole defn appended the FIRST `: T`
+        in a chain to every earlier unannotated function (review of #824,
+        `f` read `let f x : int` with `g`'s annotation).
+        """
+        sig = f"let {name}"
+        args = _first_child_of_type(left, "argument_patterns")
+        if args:
+            sig += f" {_text(args)}"
+        children = defn.children
+        start = next((i for i, c in enumerate(children) if c is left or c.id == left.id), None)
+        if start is None:
+            return sig
+        for i in range(start + 1, len(children)):
+            child = children[i]
+            if child.type in ("function_declaration_left", "value_declaration_left"):
+                break
+            if child.type == ":" and i + 1 < len(children):
+                rt = children[i + 1]
+                if rt.type in ("simple_type", "type"):
+                    sig += f" : {_text(rt)}"
+                break
+        return sig
+
+    def _member(node, owner: Symbol, name: str, kind: str, signature: Optional[str] = None) -> None:
         qualified, owner_id = _member_of(owner, name)
         symbols.append(Symbol(
             id=make_symbol_id(filename, qualified, kind),
             file=filename, name=name, qualified_name=qualified,
             kind=kind, language="fsharp",
-            signature=_text(node).split("\n")[0].strip()[:120],
+            signature=(signature if signature is not None else _text(node).split("\n")[0].strip())[:120],
             docstring="",
             parent=owner_id,
             line=node.start_point[0] + 1,
@@ -13659,17 +13703,26 @@ def _parse_fsharp_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
                     if vd is not None:
                         el = _first_child_of_type(vd, "function_or_value_defn") or el
                 if el.type == "function_or_value_defn":
-                    fdl = _first_child_of_type(el, "function_declaration_left")
-                    vdl = _first_child_of_type(el, "value_declaration_left")
-                    if fdl is not None:
-                        ident = _first_child_of_type(fdl, "identifier")
-                        if ident is not None:
-                            _member(el, owner, _text(ident), "method")
-                    elif vdl is not None:
-                        ip = _first_child_of_type(vdl, "identifier_pattern")
-                        if ip is not None:
-                            mutable = any(c.type == "mutable" for c in vdl.children)
-                            _member(el, owner, _text(ip), "field" if mutable else "constant")
+                    # #824: every left of a `let rec ... and` chain in a body.
+                    # In a chain each member's signature is its OWN left
+                    # (review: the defn's first line names the first binding);
+                    # a single left keeps the line it always had.
+                    lefts = _fs_binding_lefts(el)
+                    for left in lefts:
+                        sig = f"let {_text(left)}" if len(lefts) > 1 else None
+                        if left.type == "function_declaration_left":
+                            ident = _first_child_of_type(left, "identifier")
+                            if ident is not None:
+                                if len(lefts) > 1:
+                                    # The same signature the module-level branch
+                                    # builds, return type included (review).
+                                    sig = _fs_function_signature(el, left, _text(ident))
+                                _member(el, owner, _text(ident), "method", sig)
+                        else:
+                            ip = _first_child_of_type(left, "identifier_pattern")
+                            if ip is not None:
+                                mutable = any(c.type == "mutable" for c in left.children)
+                                _member(el, owner, _text(ip), "field" if mutable else "constant", sig)
                 elif el.type == "member_defn":
                     mpd = _first_child_of_type(el, "method_or_prop_defn")
                     poi = _first_child_of_type(mpd if mpd is not None else el, "property_or_ident")
