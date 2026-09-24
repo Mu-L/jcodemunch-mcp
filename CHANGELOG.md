@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Fixed - a JS/TS class expression is a class, named by what binds it (#803)
+
+`const C = class { x = 1; m() {} }` indexed `C` as a `constant`, `m` as
+a method with no owner, and the field `x` not at all. #781 withheld the
+field on purpose, because a member with no class to own it is #698's
+defect. An anonymous `export default class { ... }` published the same
+bare methods. A class expression inside a function published `f.k`,
+qualified as if the function declared `k`. The class node was in every JS
+spec's `container_node_types` and in no `symbol_node_types`, so nothing
+ever emitted it.
+
+A class expression is now a `class` named by its binder, the way `const d
+= function inner() {}` is already `d`. For a declarator that is the
+declarator's name (`const C = class Inner {}` is `C`). An anonymous
+`export default class`, TypeScript's `export =` and `module.exports` are
+`default`, and a named one keeps its own name (`module.exports = class
+UserService {}` is `UserService`, as `export default class Named {}` has
+always been `Named`). `obj.P = class {}` is `P`. Parentheses and TypeScript's `as`,
+`satisfies`, `!` and `<T>` wrappers are seen through. The methods and
+fields hang off it as they do off a class declaration. Its signature is
+the header up to the body, as a class declaration's is.
+
+⚠⚠ A class expression NOTHING binds (`new (class { ... })()`, `return
+class { ... }`, an argument) has no name to borrow, so it gets no symbol,
+and its methods keep what they always published: bare at module level, or
+qualified under the enclosing function. Its fields stay withheld (#781).
+The first draft withheld the methods too, and review measured the cost on
+the TypeScript mixin (`return class extends Base { stampNow() {} }`):
+`search_symbols("stampNow")` answered a confident ABSENT for a method that
+exists and `main` found. A false absence claim is worse than lexical
+nesting, so the issue's "not qualified under the function" does not hold
+for this shape. A class expression in a class-field initializer is
+unchanged, since its members were already qualified under the field.
+
+Ids move: `C#constant` (or `C#variable`) becomes `C#class`, and a bound
+class expression's bare `m#method` becomes `C.m#method`, in `.js`/`.ts`
+files and in every script re-parsed as JS/TS (Astro frontmatter, Razor
+`<script>` blocks, template files such as `foo.ts.j2`). `PARSER_GENERATION` 8 names all of it. The #781 absence test listed two bound shapes, which
+pinned this gap (Practice 9), so it now lists unbound ones. The NestJS
+corpus the issue measured is not checked out here and was not re-run.
+Filed by @jgravelle (#803).
+
 ### Fixed - five tools asked a kind set typed before `field`, `property` and `variable` existed (#806)
 
 `get_repo_map`, `get_repo_outline` and `get_symbol_importance` each ranked
