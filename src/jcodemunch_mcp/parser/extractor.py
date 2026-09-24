@@ -1171,6 +1171,10 @@ def _extract_symbol(
             and language in _MODULE_SCOPE_VARIABLE_LANGUAGES
         ):
             kind = "variable"
+        # Kotlin has no refiner that settles immutability first, so it answers
+        # both halves itself, keyed on the node's own scope (#807).
+        if language == "kotlin" and kind == "property":
+            kind = kotlin_file_scope_binding_kind(node, source_bytes) or kind
 
     # Extract name first. A cleanly-named symbol is kept even when a syntax
     # error sits deeper in its body: the old blanket `node.has_error` bail
@@ -1344,6 +1348,141 @@ def kotlin_property_is_local(node) -> bool:
     """
     parent = node.parent
     return parent is None or parent.type not in _KOTLIN_MEMBER_PARENTS
+
+
+def kotlin_file_scope_binding_kind(node, source_bytes: bytes) -> Optional[str]:
+    """The kind of a FILE-SCOPE Kotlin property, or None for a member (#807).
+
+    ⚠⚠ Kotlin published `val topLevel = 1` and `var topVar = 2` as `property`,
+    the word `KIND_ORDER` reserves for class state, with `parent=None`. The
+    ruling is the one Swift and Scala already carry at module scope, with JS
+    `const`/`let` and Go `const`/`var` beside them: `var` is a `variable`; a
+    `val` with no accessor and no delegate is a `constant` (its value is its
+    initializer, or for a declaration-only `expect val` whatever the `actual`
+    supplies); a `val` whose READ runs code -- a getter, which every extension
+    property has, or a delegate -- is a `variable`, because its value can
+    differ between reads (Swift's top-level computed `var` reads the same).
+
+    ⚠ The CONSTANT channel still decides first and this never overrides it:
+    `const val` and a SCREAMING_CASE `val` (#428, #732) are `constant` at file
+    scope even with a getter or delegate (`val LOG by lazy { ... }`), because
+    `kotlin_property_is_constant` reads the name as the author's declaration.
+    In a class body that name rule is the whole answer, since Kotlin uses
+    `val` for ordinary properties.
+
+    ⚠⚠ **Scope is the node's DIRECT parent, never `parent_is_container`.** An
+    object literal's members (`fun f() = object : R { val a = 1 }`) have a
+    function or a property as their parent SYMBOL and are still members; a
+    rule keyed on the missing container would call them constants.
+
+    ⚠⚠ At file scope tree-sitter-kotlin SPILLS an accessor or delegate written
+    on its own line into a SIBLING: a `getter` node; an `assignment` or
+    `call_expression` starting `get(` when the getter's body holds an object
+    literal (`val g: Any\\n  get() = object { ... }`, which it error-recovers);
+    a `prefix_expression(annotation, get(...))` for an annotated block-bodied
+    one; and an expression starting `by` (`val vm: VM\\n    by viewModels()`).
+    Its annotations may also spill as `annotation` siblings ahead of it. So
+    the sibling is read by its FIRST TOKEN as well as by its type, skipping
+    comments and annotations (`_KOTLIN_SPILL_SKIP`) at every level.
+
+    ⚠⚠ The two token halves are gated DIFFERENTLY, because Kotlin's grammar
+    is: a getter binds after an initializer AND after an optional `;`
+    (`(NL* ';')? NL* getter`), so `get(` counts in both cases; a delegate
+    cannot follow an initializer or a `;`, so `by` counts only for a `val`
+    with no initializer and no `;` in the gap (the grammar keeps `;` as no
+    node, so it is read from the gap bytes, comments and annotations
+    excluded).
+
+    ⚠ A getter with NO BODY (`val a = 1 get`, `@JvmName("x") get`) is the
+    default accessor: no code runs on read, so it does not count, and on the
+    token path a `get` whose next TOKEN is not `(` is an ordinary expression.
+    Newlines and comments between `get` and `(` are whitespace to Kotlin
+    (`'get' {NL} '('`), so the next token is read from the tree.
+
+    ⚠ Not handled, recorded: Kotlin 2.x's experimental explicit backing field
+    (`val x: Int\\n  field = 1\\n  get() = field + 1`, opt-in via
+    `-Xexplicit-backing-fields`) spills `field` first, so its getter is not
+    reached and the `val` reads `constant`.
+    """
+    if node.parent is None or node.parent.type != "source_file":
+        return None
+    is_val = False
+    has_initializer = False
+    for child in node.children:
+        if child.type == "binding_pattern_kind":
+            is_val = source_bytes[child.start_byte:child.end_byte] == b"val"
+        elif child.type in ("property_delegate", "receiver_type"):
+            return "variable"
+        elif child.type == "getter" and _kotlin_getter_has_body(child):
+            return "variable"
+        elif child.type == "=":
+            has_initializer = True
+    if not is_val:
+        return "variable"
+    gap = bytearray()
+    cursor = node.end_byte
+    following = node.next_named_sibling
+    # Comments, and the annotations of a spilled accessor, which the grammar
+    # spills as siblings of their own ahead of it (`@JvmName("k") get() = ...`).
+    while following is not None and following.type in _KOTLIN_SPILL_SKIP:
+        gap += source_bytes[cursor:following.start_byte]
+        cursor = following.end_byte
+        following = following.next_named_sibling
+    if following is None:
+        return "constant"
+    if following.type == "getter":
+        return "variable" if _kotlin_getter_has_body(following) else "constant"
+    gap += source_bytes[cursor:following.start_byte]
+    # The first token NOT inside an annotation: a block-bodied getter with an
+    # annotation spills as `prefix_expression(annotation, get(...))`.
+    first = following
+    while first.child_count:
+        first = next(
+            (c for c in first.children if c.type not in _KOTLIN_SPILL_SKIP),
+            first.children[0],
+        )
+        if first.type in _KOTLIN_SPILL_SKIP:
+            break
+    token = source_bytes[first.start_byte:first.end_byte]
+    if token == b"get":
+        # Kotlin's grammar is `'get' {NL} '('` with comments as whitespace, so
+        # the next TOKEN is read from the tree, never the next byte.
+        after = _kotlin_next_leaf(first)
+        called = after is not None and source_bytes[after.start_byte:after.end_byte] == b"("
+        return "variable" if called else "constant"
+    if token == b"by" and not has_initializer and b";" not in gap:
+        return "variable"
+    return "constant"
+
+
+#: Nodes between a file-scope Kotlin property and its spilled accessor that
+#: are not the accessor: comments, and the annotations the grammar spills
+#: ahead of it (as siblings, or as the first child of a `prefix_expression`).
+_KOTLIN_SPILL_SKIP = frozenset({"line_comment", "multiline_comment", "annotation"})
+
+
+def _kotlin_next_leaf(node):
+    """The leaf after `node` in document order, skipping comments, or None."""
+    current = node
+    while current is not None:
+        sibling = current.next_sibling
+        while sibling is not None and sibling.type in ("line_comment", "multiline_comment"):
+            sibling = sibling.next_sibling
+        if sibling is not None:
+            while sibling.child_count:
+                sibling = sibling.children[0]
+            if sibling.type in ("line_comment", "multiline_comment"):
+                current = sibling
+                continue
+            return sibling
+        current = current.parent
+    return None
+
+
+def _kotlin_getter_has_body(getter) -> bool:
+    """Does this Kotlin `getter` run code on read? A bodiless `get` is the
+    default accessor and returns the backing field (#807 review)."""
+    return any(child.type == "function_body" for child in getter.children)
 
 
 def kotlin_property_is_constant(node, source_bytes: bytes) -> bool:
@@ -1842,13 +1981,12 @@ _MEMBER_ONLY_STATE_KINDS = frozenset({"field", "property"})
 #: Languages whose module-scope binding is demoted out of a member kind.
 #:
 #: ⚠⚠ **A NAMED SET, not "every language", and Kotlin is the reason.** Kotlin
-#: has published a top-level `val`/`var` as `property` since #732, which
+#: published a top-level `val`/`var` as `property` from #732 to #807, which
 #: contradicts `KIND_ORDER`'s own rule -- and demoting it here would be wrong a
 #: SECOND way: `variable` is defined there as a module-scope MUTABLE binding,
 #: and a Kotlin top-level `val` is immutable without being SCREAMING_CASE, so
-#: `kotlin_property_is_constant` has already declined it. Neither `property` nor
-#: `variable` is obviously right for it, that decision is outside #769/#770/
-#: #787/#788, and it moves ids in a released language. Filed instead.
+#: `kotlin_property_is_constant` has already declined it. Kotlin answers both
+#: halves itself instead, through `kotlin_file_scope_binding_kind` (#807).
 #:
 #: ⚠ Membership is safe for these two BY CONSTRUCTION: their refiner OR SPEC MAP
 #: has already turned every immutable module-scope binding into a `constant`, so

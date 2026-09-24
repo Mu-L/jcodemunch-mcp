@@ -1,0 +1,275 @@
+"""A Kotlin top-level `val`/`var` is a module binding, not a member (#807).
+
+Kotlin published `val topLevel = 1` and `var topVar = 2` as `property`, the
+word `KIND_ORDER` reserves for class state: "a top-level binding belongs to no
+type, and reusing that kind would mix module bindings into every consumer
+asking about a class's members." Both had `parent=None`.
+
+Ruling, the one Swift and Scala already carry (`let`/`val` -> `constant`,
+`var` -> `variable` at module scope), and JS `const` and Go `const` beside
+them:
+- a file-scope `var` is a `variable`;
+- a file-scope `val` whose value is its initializer is a `constant`;
+- a file-scope `val` whose READ runs code (a getter, which every extension
+  property has, or a delegate) is a `variable`: its value can differ between
+  reads, which is what Swift's top-level computed `var` already reads as.
+  A getter or a `by` delegate on its own line is a SIBLING of the
+  declaration at file scope (tree-sitter-kotlin spills it), so the sibling
+  is read too, past comments.
+- The constant channel decides first: `const val` and a SCREAMING_CASE
+  `val` stay `constant` even with an accessor (#428, #732).
+
+#732's SCREAMING_CASE rule still decides the class-body case, where Kotlin
+uses `val` for ordinary properties; members of classes, objects, companions
+and object literals stay `property`. Scope is the node's DIRECT parent
+(`source_file`), never "no container parent": an object literal's members
+have a function or a property as their parent symbol and are members.
+"""
+
+from __future__ import annotations
+
+from unittest import mock
+
+from jcodemunch_mcp.parser.extractor import parse_file
+
+
+def _kinds(source: str, filename: str = "Top.kt") -> dict[str, str]:
+    with mock.patch("jcodemunch_mcp.config.is_language_enabled", return_value=True):
+        return {s.qualified_name: s.kind for s in parse_file(source, filename, "kotlin")}
+
+
+def test_the_reported_pair_splits_by_mutability():
+    assert _kinds("val topLevel = 1\nvar topVar = 2\n") == {
+        "topLevel": "constant",
+        "topVar": "variable",
+    }
+
+
+def test_no_top_level_binding_carries_a_member_word():
+    source = (
+        "val a = 1\n"
+        "var b = 2\n"
+        "private val c = 3\n"
+        "internal var d = 4\n"
+        "lateinit var e: String\n"
+        "@JvmField val f = 5\n"
+        "val g: Int = 6\n"
+        "expect val h: Int\n"
+        "val String.i: Char get() = this[0]\n"
+        "val j by lazy { 7 }\n"
+        "val k: Int\n  get() = 8\n"
+        "var l: Int = 9\n  set(v) { field = v }\n"
+    )
+    kinds = _kinds(source)
+    assert set(kinds) == set("abcdefghijkl"), kinds
+    assert not {q for q, k in kinds.items() if k in ("property", "field")}, kinds
+
+
+def test_an_initialised_val_is_a_constant_whatever_its_modifiers():
+    kinds = _kinds("private val c = 3\n@JvmField val f = 5\nval g: Int = 6\n")
+    assert kinds == {"c": "constant", "f": "constant", "g": "constant"}
+
+
+def test_a_val_whose_read_runs_code_is_a_variable():
+    """A getter (same line or the next) or a delegate: the value can differ
+    between reads, so it is not a constant."""
+    kinds = _kinds(
+        "val String.i: Char get() = this[0]\n"
+        "val j by lazy { 7 }\n"
+        "val k: Int\n  get() = 8\n"
+        "val after = 9\n"
+    )
+    assert kinds == {"i": "variable", "j": "variable", "k": "variable", "after": "constant"}
+
+
+def test_a_spilled_accessor_or_delegate_is_read_past_comments():
+    """Review: tree-sitter-kotlin spills a delegate on its own line into a
+    sibling expression starting with `by`, and a comment between a declaration
+    and its spilled getter hid the getter. Both published `constant`."""
+    kinds = _kinds(
+        "val d\n  by lazy { 1 }\n"
+        "private val vm: VM\n    by viewModels()\n"
+        "val k: Int\n  // why\n  get() = 8\n"
+        "val m: Int\n  /** doc */\n  get() = 9\n"
+        "val after = 10\n"
+    )
+    assert kinds == {"d": "variable", "vm": "variable", "k": "variable", "m": "variable", "after": "constant"}
+
+
+def test_a_recovered_getter_holding_an_object_literal_is_still_a_getter():
+    """Review round 3: a getter on its own line whose body holds an object
+    literal is error-recovered into an `assignment` or `call_expression`
+    starting `get(`, never a `getter` node, and published `constant`."""
+    kinds = _kinds(
+        "val g: Any\n  get() = object { val gg = 1 }\n"
+        "val h: Any\n  get() { return object { val hh = 1 } }\n"
+        "val r: Runnable\n  get() = object : Runnable { override fun run() {} }\n"
+        "val after = 1\n"
+    )
+    assert {k: kinds.get(k) for k in ("g", "h", "r", "after")} == {
+        "g": "variable", "h": "variable", "r": "variable", "after": "constant",
+    }
+
+
+def test_a_semicolon_inside_a_comment_does_not_end_the_declaration():
+    """Review round 3: the `;` check read the comment bytes too."""
+    kinds = _kinds(
+        "private val vm: VM // lazily; see docs\n    by viewModels()\n"
+        "val d: Int /* ; */\n  by lazy { 1 }\n"
+    )
+    assert kinds == {"vm": "variable", "d": "variable"}
+
+
+def test_a_call_named_by_after_an_initialised_val_is_not_its_delegate():
+    kinds = _kinds("val a = 1\nby(3)\n")
+    assert kinds["a"] == "constant", kinds
+
+
+def test_a_spilled_getter_after_an_initializer_is_still_a_getter():
+    """Review round 4: the two token halves are gated differently. A getter
+    may read the backing field its initializer sets, so a next-line `get`
+    binds after `= 1` (Kotlin's `NL* getter`); a delegate cannot follow an
+    initializer, so `by` does not.
+
+    ⚠ Review round 5: the sample must be the file's LAST declaration. With a
+    declaration after it, tree-sitter parses a clean `getter` node and the
+    token path is never reached, so the first version of this test passed
+    against the unsplit gate."""
+    kinds = _kinds("val a: Any = 1\n  get() = object { val q = 1 }\n")
+    assert kinds["a"] == "variable", kinds
+
+
+def test_a_getter_binds_after_an_optional_semicolon_and_a_delegate_does_not():
+    """Review round 7: Kotlin's grammar is `(NL* ';')? NL* getter`, so a `;`
+    ends only the delegate half. The first version stopped both halves at a
+    `;`, so the annotated or object-literal forms (token path) published
+    `constant` while the plain form (a clean `getter` node) read `variable`."""
+    assert _kinds("val a: Any? = null;\n  get() { return field ?: 5 }\nclass X\n")["a"] == "variable"
+    assert _kinds("val b: Any? = null;\n  @A get() { return field ?: 5 }\nclass X\n")["b"] == "variable"
+    assert _kinds("val c: Any? = null; get() { return object {\n val q = 1 } }\n")["c"] == "variable"
+    assert _kinds("val d: Any? = null;\n  @A get() = field ?: object { val q = 1 }\n")["d"] == "variable"
+    assert _kinds("expect val e: Int; by(1)\n")["e"] == "constant"
+
+
+def test_an_annotated_recovered_getter_is_read_past_its_spilled_annotations():
+    """Review round 6: the annotations of a recovered getter spill as sibling
+    `annotation` nodes ahead of it. Each sample is the file's LAST
+    declaration, the only place the token path is reached."""
+    assert _kinds('val k: Any\n  @JvmName("kk") get() = object { val z = 1 }\n')["k"] == "variable"
+    assert _kinds("val k: Any\n  @A @B(1) get() { return object { val z = 1 } }\n")["k"] == "variable"
+    # A block-bodied annotated getter followed by a declaration spills as
+    # `prefix_expression(annotation, get(...))`: the annotation is INSIDE.
+    assert _kinds("val k: Any\n  @A get() { return 5 }\nclass After\n")["k"] == "variable"
+    # A real annotated declaration after a val is not its accessor.
+    assert _kinds('val k = 1\n@Deprecated("x")\nfun f() = 2\n')["k"] == "constant"
+
+
+def test_a_newline_or_comment_between_get_and_its_paren_is_whitespace():
+    """Review round 8: Kotlin's grammar is `'get' {NL} '('` with comments as
+    whitespace; a byte check for `(` after spaces missed all of these."""
+    for source in (
+        "val a: Any\n  get\n  () = object { val q = 1 }\n",
+        "val a: Any\r\n  get\r\n  () = object { val q = 1 }\r\n",
+        "val a: Any\n  get /* c */ () = object { val q = 1 }\n",
+        "val a: Any\n  get // c\n  () = object { val q = 1 }\n",
+        "val a: Any\n  @A get\n  () { return object { val q = 1 } }\nclass X\n",
+        "val a: Any = 1; get /* c */ () = object { val q = 1 }\n",
+    ):
+        assert _kinds(source)["a"] == "variable", source
+    # A bodiless `get` before a declaration is still the default accessor.
+    assert _kinds("val a = 1\nget\nfun f() = 2\n")["a"] == "constant"
+
+
+def test_a_bodiless_getter_runs_no_code_so_the_val_is_a_constant():
+    """Review round 5: `get` with no body is the default accessor. The value
+    is the initializer, whatever the annotation or the line it sits on."""
+    assert _kinds("val a = 1 get\n") == {"a": "constant"}
+    assert _kinds("val b: Int = 1\n  get\n") == {"b": "constant"}
+    assert _kinds('val c: Int = 1 @Deprecated("") get\n') == {"c": "constant"}
+    assert _kinds('val d: Int = 1\n  @JvmName("x") get\n') == {"d": "constant"}
+    # A bare `get` expression in a script is not an accessor call.
+    assert _kinds("val get = 1\nval a = 2\nget + a\n", "s.kts")["a"] == "constant"
+    # A getter WITH a body still counts, on the same line or the next.
+    assert _kinds("val e: Int = 1 get() = field\n") == {"e": "variable"}
+    assert _kinds("val f: Int = 1\n  get() = field\n") == {"f": "variable"}
+    # Review: a `;` ends the declaration, and the grammar keeps no node for it.
+    assert _kinds("expect val b: Int; by(1)\n")["b"] == "constant"
+
+
+def test_an_object_literal_member_follows_its_owners_new_id():
+    """The one stored field that moves beside the kind: `parent`, for members
+    of an object literal anywhere in a file-scope initializer."""
+    with mock.patch("jcodemunch_mcp.config.is_language_enabled", return_value=True):
+        symbols = parse_file(
+            "var h: Any = object {\n  val w = 1\n}\n"
+            "val l = run {\n  object : Runnable {\n    val z = 1\n    override fun run() {}\n  }\n}\n",
+            "a.kt",
+            "kotlin",
+        )
+    parents = {s.qualified_name: s.parent for s in symbols}
+    assert parents["h.w"] == "a.kt::h#variable", parents
+    assert parents["l.z"] == "a.kt::l#constant", parents
+    # Review round 3: a delegate is not an initializer, and moves it too.
+    with mock.patch("jcodemunch_mcp.config.is_language_enabled", return_value=True):
+        delegated = parse_file("val g by lazy {\n  object {\n    val gg = 1\n  }\n}\n", "a.kt", "kotlin")
+    assert {s.qualified_name: s.parent for s in delegated}["g.gg"] == "a.kt::g#variable"
+
+
+def test_expect_and_actual_are_pinned_as_they_read():
+    """An `expect val` has no accessor or delegate in its own file, so it is a
+    constant; an `actual` with a getter is a variable. One multiplatform
+    declaration can carry two kinds across its files, decided per file."""
+    assert _kinds("expect val h: Int\n") == {"h": "constant"}
+    assert _kinds("actual val h: Int get() = 2\n") == {"h": "variable"}
+    assert _kinds("actual val h: Int = 2\n") == {"h": "constant"}
+
+
+def test_the_constant_channel_decides_first_even_over_an_accessor():
+    """A SCREAMING_CASE or `const` name is the author's declaration (#428,
+    #732) and wins at file scope; the name-less twin follows the #807 rule."""
+    assert _kinds("val LOG by lazy { 1 }\nval MAX get() = 3\nval log by lazy { 1 }\n") == {
+        "LOG": "constant",
+        "MAX": "constant",
+        "log": "variable",
+    }
+
+
+def test_every_var_is_a_variable():
+    kinds = _kinds("var b = 2\ninternal var d = 4\nlateinit var e: String\nvar l: Int = 9\n  set(v) { field = v }\n")
+    assert kinds == {"b": "variable", "d": "variable", "e": "variable", "l": "variable"}
+
+
+def test_the_screaming_case_and_const_channel_is_unmoved():
+    assert _kinds("const val C = 1\nval MAX_X = 2\n") == {"C": "constant", "MAX_X": "constant"}
+
+
+def test_members_stay_properties():
+    source = (
+        "class K {\n  val p = 1\n  var q = 2\n"
+        "  companion object {\n    val cv = 3\n    var cvar = 4\n  }\n}\n"
+        "object O {\n  val r = 5\n  var s = 6\n}\n"
+        "enum class E { A;\n  val t = 7\n}\n"
+    )
+    kinds = _kinds(source)
+    for member in ("K.p", "K.q", "K.cv", "K.cvar", "O.r", "O.s", "E.t"):
+        assert kinds.get(member) == "property", (member, kinds)
+
+
+def test_an_object_literal_member_is_a_member_although_its_parent_is_not_a_type():
+    """The scope test is the node's direct parent, never `parent_is_container`:
+    these members' parent SYMBOL is a function and a property."""
+    kinds = _kinds(
+        "fun f() = object : Runnable {\n  val a = 1\n  override fun run() {}\n}\n"
+        "val o = object {\n  val b = 2\n}\n"
+    )
+    assert kinds["f.a"] == "property", kinds
+    assert kinds["o.b"] == "property", kinds
+    assert kinds["o"] == "constant", kinds
+
+
+def test_a_script_file_follows_the_same_rule():
+    assert _kinds("val x = 1\nvar y = 2\n", "build.gradle.kts") == {"x": "constant", "y": "variable"}
+
+
+def test_a_local_is_still_not_a_symbol():
+    assert _kinds("fun f() {\n  val local = 1\n  var other = 2\n}\n") == {"f": "function"}
