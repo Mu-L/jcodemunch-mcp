@@ -293,6 +293,14 @@ INDEX_VERSION = 17
 #   class-scoped `const` was emitted bare (`LIMIT`) and is `TAudit.LIMIT`
 #   with an owner, so its old id resolves to nothing until re-parsed.
 #
+#   ⚠⚠ **And #841: a Zig `packed`/`extern` struct or union (and `opaque`)
+#   MOVES from `constant` to `class`/`type`** on unchanged content, and its
+#   fields and fns are NEW owned symbols; and in the OTHER direction a
+#   constant whose initializer's text merely begins with `struct`, `enum`
+#   or `union` (`const V = struct_like;`) was a fabricated `class`/`type`
+#   and MOVES to `constant`. An already-indexed `.zig` file serves the old
+#   answer for both until re-parsed.
+#
 #   ⚠⚠ **And #837: spans MOVE for every name of a multi-declarator JS/TS/TSX
 #   `let`/`const`/`var`** (and of a `const f = () => ..., g = ...` function
 #   pair): each records its own `variable_declarator` instead of the whole
