@@ -358,6 +358,16 @@ INDEX_VERSION = 17
 #   frontmatter, Razor `<script>` blocks and template-underlying JS. Member
 #   spans are unchanged; the new class symbol spans its binder's statement
 #   (a `const C = class` spans exactly what `C#constant` did).
+#
+#   ⚠⚠ **And #802: a TypeScript constructor PARAMETER PROPERTY is a member
+#   of its class.** `constructor(private readonly svc: Svc) {}` adds
+#   `C.svc#constant` (`readonly`) or `C.svc#field`, owned by the class and
+#   spanning the parameter. The symbols are new, in `.ts`/`.tsx`
+#   files and every script re-parsed as TypeScript (Astro frontmatter,
+#   template-underlying TS). A member of a class with no symbol is withheld.
+#   One id moves: a STATIC member sharing the name (`static a` beside
+#   `constructor(public a)`) goes from `C.a#field` to `C.a#field~1` or
+#   `~2`, by source order.
 PARSER_GENERATION = 8
 
 
