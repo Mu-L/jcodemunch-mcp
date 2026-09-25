@@ -12,7 +12,7 @@ from ..storage import IndexStore
 from ..parser import parse_file, get_language_for_path
 from ..parser.symbols import compute_content_hash
 from ._utils import index_status_to_tool_error, resolve_repo
-from .get_blast_radius import _build_reverse_adjacency, _bfs_importers
+from .get_blast_radius import _build_reverse_adjacency, _bfs_importers, blast_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,11 @@ def get_changed_symbols(
 
     Returns:
         Dict with from_sha, to_sha, changed_files, changed_symbols, added_symbols,
-        removed_symbols, and optionally blast_radius per symbol.
+        removed_symbols, and optionally blast_radius per symbol. An EMPTY
+        blast_radius carries `blast_verdict` (state / absence_refused / reason);
+        the full verdict per file is in `blast_verdicts`, their shared coverage in
+        `blast_coverage`, and `blast_radius_unavailable` says why none was
+        computed (#718).
     """
     start = time.perf_counter()
     max_blast_depth = max(1, min(max_blast_depth, 5))
@@ -199,9 +203,79 @@ def get_changed_symbols(
 
     # For blast radius: build reverse adjacency from current index
     rev_adj = None
+    source_files: frozenset = frozenset()
     if include_blast_radius and index.imports is not None:
         source_files = frozenset(index.source_files)
         rev_adj = _build_reverse_adjacency(index.imports, source_files, index.alias_map, getattr(index, "psr4_map", None))
+
+    # (#718) The walk alone cannot tell "nothing depends on this" from "the
+    # graph cannot reach this", and this path shipped a bare `[]` that read as
+    # no downstream impact. `blast_verdict` is the one answer standalone
+    # `get_blast_radius` already gives, asked only for an EMPTY blast, because a
+    # found importer is positive evidence.
+    # ⚠ The verdict describes the FILE's importer walk, so it is asked once per
+    # file and published once, in `blast_verdicts`; each entry carries the three
+    # keys a consumer branches on. The `coverage` block every verdict carries is
+    # the same for all of them and is published once, in `blast_coverage`.
+    _blast_by_file: dict[str, list[str]] = {}
+    blast_verdicts: dict[str, dict] = {}
+    blast_coverage: Optional[dict] = None
+    index_head = index.git_head or ""
+
+    def _graph_gap(file_path: str) -> Optional[dict]:
+        """Why the index's graph cannot answer for `until_sha`, or None.
+
+        ⚠⚠ The graph is the INDEX's, and the default `since_sha` IS the indexed
+        commit, so in the tool's default mode the graph predates `until_sha`.
+        An importer added in the diff is then invisible to it while this very
+        response lists the file in `changed_files` (review round 1 of #718).
+        The graph still answers when it IS `until_sha`'s, or when it is
+        `since_sha`'s and no other file changed, since only another file can
+        add an importer.
+        """
+        if index_head and resolved_until.startswith(index_head[:40]):
+            return None
+        others = [f for f in changed_files if f != file_path]
+        if index_head and resolved_since.startswith(index_head[:40]) and not others:
+            return None
+        return {
+            "reason": "graph_not_at_until_sha",
+            "graph_sha": index_head[:12] or None,
+            "until_sha": resolved_until[:12],
+            "other_changed_files": len(others),
+            "note": (
+                f"The importer graph is the index's (at {index_head[:12] or 'an unknown commit'}), "
+                f"not {resolved_until[:12]}'s, and {len(others)} other file(s) differ "
+                "between the two, so an importer at the target commit may be one this "
+                "graph never saw. An empty result here is NOT evidence that nothing "
+                "depends on this; re-index at the target commit and ask again."
+            ),
+        }
+
+    def _attach_blast(entry: dict, file_path: str) -> None:
+        nonlocal blast_coverage
+        if file_path not in _blast_by_file:
+            flat, _ = _bfs_importers(file_path, rev_adj, max_blast_depth)
+            _blast_by_file[file_path] = flat
+            if not flat:
+                verdict = blast_verdict(
+                    index, source_files, file_path, 0, graph_gap=_graph_gap(file_path)
+                )[0]
+                cov = verdict.pop("coverage", None)
+                if cov is not None:
+                    blast_coverage = cov
+                inc = verdict.get("incomplete")
+                if inc and inc.get("note") == verdict.get("note"):
+                    inc.pop("note")
+                blast_verdicts[file_path] = verdict
+        entry["blast_radius"] = list(_blast_by_file[file_path])
+        verdict = blast_verdicts.get(file_path)
+        if verdict is not None:
+            entry["blast_verdict"] = {
+                "state": verdict["state"],
+                "absence_refused": bool(verdict.get("absence_refused")),
+                "reason": (verdict.get("incomplete") or {}).get("reason"),
+            }
 
     # For each changed file, parse both versions and diff symbol sets
     added_symbols: list[dict] = []
@@ -231,16 +305,14 @@ def get_changed_symbols(
             entry = dict(after_syms[key])
             entry["change_type"] = "added"
             if include_blast_radius and rev_adj is not None:
-                flat, _ = _bfs_importers(file_path, rev_adj, max_blast_depth)
-                entry["blast_radius"] = flat
+                _attach_blast(entry, file_path)
             added_symbols.append(entry)
 
         for key in before_keys - after_keys:
             entry = dict(before_syms[key])
             entry["change_type"] = "removed"
             if include_blast_radius and rev_adj is not None:
-                flat, _ = _bfs_importers(file_path, rev_adj, max_blast_depth)
-                entry["blast_radius"] = flat
+                _attach_blast(entry, file_path)
             removed_symbols.append(entry)
 
         for key in before_keys & after_keys:
@@ -252,15 +324,13 @@ def get_changed_symbols(
                 entry["change_type"] = "renamed"
                 entry["previous_name"] = b["name"]
                 if include_blast_radius and rev_adj is not None:
-                    flat, _ = _bfs_importers(file_path, rev_adj, max_blast_depth)
-                    entry["blast_radius"] = flat
+                    _attach_blast(entry, file_path)
                 changed_symbols.append(entry)
             elif b["content_hash"] != a["content_hash"] and (b["content_hash"] or a["content_hash"]):
                 entry = dict(a)
                 entry["change_type"] = "modified"
                 if include_blast_radius and rev_adj is not None:
-                    flat, _ = _bfs_importers(file_path, rev_adj, max_blast_depth)
-                    entry["blast_radius"] = flat
+                    _attach_blast(entry, file_path)
                 changed_symbols.append(entry)
 
     def _sort_key(e: dict) -> tuple:
@@ -303,6 +373,17 @@ def get_changed_symbols(
         "removed_count": len(removed_symbols),
         "changed_count": len(changed_symbols),
     }
+    if blast_verdicts:
+        result["blast_verdicts"] = blast_verdicts
+        if blast_coverage is not None:
+            result["blast_coverage"] = blast_coverage
+    if include_blast_radius and rev_adj is None:
+        # (#718) Asked for and not computable: say so, or the absent
+        # `blast_radius` keys read as a request that was ignored.
+        result["blast_radius_unavailable"] = (
+            "this index holds no import graph, so no blast radius was computed; "
+            "re-index the repository to build one"
+        )
     if diag_snapshot is not None:
         result["diagnostics_as_of"] = diag_snapshot.get("as_of")
         result["diagnostics_current"] = diagnostics_currency(diag_snapshot.get("as_of"), resolved_until)

@@ -210,6 +210,76 @@ def _unresolved_package_edges(
     }
 
 
+def blast_verdict(
+    index,
+    source_files: frozenset,
+    sym_file: str,
+    result_count: int,
+    *,
+    probe: Optional[bool] = None,
+    graph_gap: Optional[dict] = None,
+) -> tuple[dict, Optional[dict]]:
+    """THE verdict on an importer walk from ``sym_file``: ``(verdict, unresolvable)``.
+
+    One authority for every caller that walks the importer graph, because the
+    walk alone cannot tell "nothing depends on this" from "the graph cannot
+    reach this" (#415), and a second call site that ran the walk without asking
+    shipped a bare ``[]`` that read as no downstream impact (#718,
+    ``get_changed_symbols``). ``unresolvable`` is returned so a caller can
+    withhold a number it would otherwise compute from the zero.
+
+    ``result_count`` is what the caller found by every channel it ran; only an
+    empty answer is probed, since a found importer is positive evidence.
+    ``probe`` overrides that when the caller's notion of "answered nothing"
+    counts a channel ``result_count`` does not (standalone's cross-repo
+    importers): the extraction is behaviour-neutral for the standalone tool.
+    ``graph_gap`` is a caller's own reason the graph cannot answer -- a graph
+    built from a different revision than the one asked about. It outranks the
+    package probe, because it names what the caller can fix, and yields to
+    ``file_not_in_index``, which is the more specific statement of the same gap.
+
+    ⚠ ``file_not_in_index`` never fires for the standalone tool, whose symbol
+    comes from the index. It exists for a caller holding a path the index never
+    saw -- a file added since the indexed commit -- whose empty walk is a
+    question the graph was never asked.
+    """
+    unresolvable: Optional[dict] = None
+    if probe is None:
+        probe = result_count == 0
+    if probe:
+        if sym_file not in source_files:
+            unresolvable = {
+                "reason": "file_not_in_index",
+                "file": sym_file,
+                "note": (
+                    f"'{sym_file}' is not in the index, so its importers were never "
+                    "in the graph this walk read. An empty result here is NOT "
+                    "evidence that nothing depends on it; re-index and ask again."
+                ),
+            }
+        elif graph_gap:
+            unresolvable = dict(graph_gap)
+        else:
+            unresolvable = _unresolved_package_edges(
+                index.imports,
+                source_files,
+                sym_file,
+                index.alias_map,
+                getattr(index, "psr4_map", None),
+            )
+    verdict = build_verdict(
+        result_count=result_count,
+        scanned_files=len(source_files),
+        coverage=index_coverage_meta(index),
+        # An empty answer measured while the .db was being rewritten underneath
+        # this call cannot prove absence either, and that gate outranks ours: it
+        # names something the caller can retry.
+        index_changed=_index_changed_since_load(index),
+        incomplete=unresolvable,
+    )["verdict"]
+    return verdict, unresolvable
+
+
 def _bfs_importers(
     start: str, rev: dict[str, list[str]], depth: int
 ) -> tuple[list[str], dict[int, list[str]]]:
@@ -577,16 +647,12 @@ def get_blast_radius(
         and not callers
         and not cross_repo_confirmed
     )
-    unresolvable = (
-        _unresolved_package_edges(
-            index.imports,
-            source_files,
-            sym_file,
-            index.alias_map,
-            getattr(index, "psr4_map", None),
-        )
-        if answered_nothing
-        else None
+    verdict, unresolvable = blast_verdict(
+        index,
+        source_files,
+        sym_file,
+        0 if answered_nothing else max(total, len(confirmed), len(callers)),
+        probe=answered_nothing,
     )
 
     elapsed = (time.perf_counter() - start) * 1000
@@ -629,16 +695,7 @@ def get_blast_radius(
     # `absence_refused`, and the dispatcher turns that into
     # `absence_citable: False` + `absence_blocked_by` with no second rule to keep
     # in sync.
-    result["_meta"]["verdict"] = build_verdict(
-        result_count=0 if answered_nothing else max(total, len(confirmed), len(callers)),
-        scanned_files=len(source_files),
-        coverage=index_coverage_meta(index),
-        # An empty answer measured while the .db was being rewritten underneath
-        # this call cannot prove absence either, and that gate outranks ours: it
-        # names something the caller can retry.
-        index_changed=_index_changed_since_load(index),
-        incomplete=unresolvable,
-    )["verdict"]
+    result["_meta"]["verdict"] = verdict
     if call_depth > 0:
         result["caller_count"] = len(callers)
         result["callers"] = callers
